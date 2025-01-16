@@ -10,43 +10,16 @@
 #       @Azure/sonic-fundamentals
 
 # Ansible
+ansible @nexthop-ai/nexthop-sonic-mgmt-review
 
 # Documents
-docs    @wangxin @yxieca
+docs   @nexthop-ai/nexthop-sonic-mgmt-review
 
 # spytest
-spytest @ramakristipati @lolyu @yxieca
+spytest @nexthop-ai/nexthop-sonic-mgmt-review
 
 # test reporting
-test_reporting  @wangxin
+test_reporting  @nexthop-ai/nexthop-sonic-mgmt-review
 
 # tests
-tests/platform_tests    @prgeor
-tests/platform_tests/mellanox @keboliu @Junchao-Mellanox
-tests/platform_tests/fwutil @prgeor @alexrallen
-tests/platform_tests/files @prgeor @Junchao-Mellanox
-tests/platform_tests/test_auto_negotiation.py @prgeor @Junchao-Mellanox
-tests/platform_tests/thermal_control_test_helper.py @prgeor @Junchao-Mellanox
-tests/system_health @prgeor @Junchao-Mellanox
-tests/show_techsupport @yxieca @noaOrMlnx
-tests/qos @XuChen-MSFT @wsycqyz
-tests/qos/test_buffer.py @neethajohn @stephenxs
-tests/qos/test_buffer_traditional.py @neethajohn @stephenxs
-tests/qos/files/dynamic_buffer_param.json @neethajohn @stephenxs
-tests/qos/files/mellanox @stephenxs @keboliu
-tests/qos/args @neethajohn @stephenxs
-tests/common/mellanox_data.py @keboliu @Junchao-Mellanox
-tests/dhcp_relay @jcaiMR
-tests/bgp @jcaiMR @StormLiangMS
-tests/route @jcaiMR
-tests/fib @jcaiMR
-tests/ip @jcaiMR
-tests/ipfwd @jcaiMR
-tests/radv @jcaiMR
-tests/fdb @jcaiMR
-tests/pfcwd @lipxu @neethajohn
-tests/lldp @ZhaohuiS
-tests/cacl @ZhaohuiS
-tests/dualtor @lolyu @wsycqyz
-tests/dualtor_io @lolyu @wsycqyz
-tests/dualtor_mgmt @lolyu @wsycqyz
+tests @nexthop-ai/nexthop-sonic-mgmt-review
