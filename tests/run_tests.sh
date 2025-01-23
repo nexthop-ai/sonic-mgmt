@@ -445,8 +445,7 @@ while getopts "h?a:b:c:C:d:e:Ef:F:i:I:k:l:m:n:oOp:q:rs:S:t:u:x" opt; do
             TOPOLOGY=${OPTARG}
             ;;
         u )
-	    FORCE_UTIL=$OPTARG
-            echo $FORCE_UTIL
+	        FORCE_UTIL=$OPTARG
             ;;
         x )
             set -x
