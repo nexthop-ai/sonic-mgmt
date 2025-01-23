@@ -165,8 +165,6 @@ function read_yaml
   dut=${line_arr[11]}
   duts=$(python -c "from __future__ import print_function; print(','.join(eval(\"$dut\")))")
   inv_name=${line_arr[12]}
-  # Remove the dpu duts by the keyword 'dpu' in the dut name
-  duts=$(echo $duts | sed "s/,[^,]*dpu[^,]*//g")
 }
 
 function read_file
@@ -277,7 +275,7 @@ function add_topo
         $ansible_options $@
 
   if [[ "$ptf_imagename" != "docker-keysight-api-server" ]]; then
-    ansible-playbook fanout_connect.yml -i $vmfile --limit "$server" --vault-password-file="${passwd}" -e "dut=$duts" $@
+    ansible-playbook fanout.yml -i ${inv_name}  --vault-password-file="${passwd}"
   fi
 
   # Delete the obsoleted arp entry for the PTF IP
@@ -285,7 +283,7 @@ function add_topo
 
   cache_files_path_value=$(is_cache_exist)
   if [[ -n $cache_files_path_value ]]; then
-    echo "$testbed_name" > $cache_files_path_value/$duts
+    echo "$testbed_name" > $cache_files_path_value/$dut
   fi
 
   echo Done
@@ -696,7 +694,7 @@ function deploy_topo_with_cache
   fi
 
   read_file ${testbed_name}
-  setup_name=$duts
+  setup_name=$dut
   if [[ "$setup_name" == "" ]]; then
       echo "No such testbed: $testbed_name, exiting..."
       exit
