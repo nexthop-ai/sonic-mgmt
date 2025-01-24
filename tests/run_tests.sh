@@ -95,7 +95,7 @@ function setup_environment()
     LOG_PATH="logs"
 
     AUTO_RECOVER="True"
-    BYPASS_UTIL="False"
+    FORCE_UTIL="none"
     CLI_LOG_LEVEL='warning'
     EXTRA_PARAMETERS=""
     FILE_LOG_LEVEL='debug'
@@ -246,7 +246,7 @@ function run_debug_tests()
     echo "ANSIBLE_CONFIG:        ${ANSIBLE_CONFIG}"
     echo "ANSIBLE_LIBRARY:       ${ANSIBLE_LIBRARY}"
     echo "AUTO_RECOVER:          ${AUTO_RECOVER}"
-    echo "BYPASS_UTIL:           ${BYPASS_UTIL}"
+    echo "FORCE_UTIL:            ${FORCE_UTIL}"
     echo "CLI_LOG_LEVEL:         ${CLI_LOG_LEVEL}"
     echo "EXTRA_PARAMETERS:      ${EXTRA_PARAMETERS}"
     echo "FILE_LOG_LEVEL:        ${FILE_LOG_LEVEL}"
@@ -287,22 +287,28 @@ function pre_post_extra_params()
 function prepare_dut()
 {
     echo "=== Preparing DUT for subsequent tests ==="
+    echo "prepare_dut: BEG: $(date)"
     echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
     python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    echo "prepare_dut: END: $(date)"
 }
 
 function cleanup_dut()
 {
     echo "=== Cleaning up DUT after tests ==="
+    echo "cleanup_dut: BEG: $(date)"
     echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
     python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    echo "cleanup_dut: END: $(date)"
 }
 
 function run_group_tests()
 {
     echo "=== Running tests in groups ==="
+    echo "run_group_tests: BEG: $(date)"
     echo Running: python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
     python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
+    echo "run_group_tests: END: $(date)"
 }
 
 function run_individual_tests()
@@ -363,7 +369,7 @@ function run_individual_tests()
 setup_environment
 
 
-while getopts "h?a:b:c:C:d:e:Ef:F:i:I:k:l:m:n:oOp:q:rs:S:t:ux" opt; do
+while getopts "h?a:b:c:C:d:e:Ef:F:i:I:k:l:m:n:oOp:q:rs:S:t:u:x" opt; do
     case ${opt} in
         h|\? )
             show_help_and_exit 0
@@ -439,7 +445,7 @@ while getopts "h?a:b:c:C:d:e:Ef:F:i:I:k:l:m:n:oOp:q:rs:S:t:ux" opt; do
             TOPOLOGY=${OPTARG}
             ;;
         u )
-            BYPASS_UTIL="True"
+	        FORCE_UTIL=$OPTARG
             ;;
         x )
             set -x
@@ -454,7 +460,7 @@ if [[ x"${TEST_METHOD}" != x"debug" ]]; then
 fi
 setup_test_options
 
-if [[ x"${TEST_METHOD}" != x"debug" && x"${BYPASS_UTIL}" == x"False" ]]; then
+if [[ x"${TEST_METHOD}" != x"debug" && (x"${FORCE_UTIL}" == x"none") || (x"${FORCE_UTIL}" == x"prepare") ]]; then
     RESULT=0
     prepare_dut || RESULT=$?
     if [[ ${RESULT} != 0 ]]; then
@@ -469,9 +475,11 @@ if [[ x"${TEST_METHOD}" != x"debug" && x"${BYPASS_UTIL}" == x"False" ]]; then
 fi
 
 RC=0
-run_${TEST_METHOD}_tests || RC=$?
+if [[ (x"${FORCE_UTIL}" == x"none") || (x"${FORCE_UTIL}" == x"run") ]]; then
+    run_${TEST_METHOD}_tests || RC=$?
+fi
 
-if [[ x"${TEST_METHOD}" != x"debug" && x"${BYPASS_UTIL}" == x"False" ]]; then
+if [[ x"${TEST_METHOD}" != x"debug" && (x"${FORCE_UTIL}" == x"none") || (x"${FORCE_UTIL}" == x"cleanup") ]]; then
     cleanup_dut
 fi
 
