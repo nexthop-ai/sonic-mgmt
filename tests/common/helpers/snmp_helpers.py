@@ -14,6 +14,14 @@ DEF_CHECK_INTERVAL = 10
 
 global_snmp_facts = {}
 
+def is_snmp_subagent_running(duthost):
+    cmd = "docker exec snmp supervisorctl status snmp-subagent"
+    output = duthost.shell(cmd)
+    if "RUNNING" in output["stdout"]:
+        logger.info("SNMP Sub-Agent is Running")
+        return True
+    logger.info("SNMP Sub-Agent is Not Running")
+    return False
 
 def _get_snmp_facts(localhost, host, version, community, is_dell, include_swap, module_ignore_errors):
     snmp_facts = localhost.snmp_facts(host=host, version=version, community=community, is_dell=is_dell,

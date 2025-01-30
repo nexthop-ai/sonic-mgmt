@@ -12,7 +12,20 @@ pytestmark = [
 
 def test_snmp_system_info_matches_show_version(duthosts, rand_one_dut_hostname, creds_all_duts):
     """
-    Verifies that system information retrieved via SNMP matches "show version" output.
+    Verify that system information retrieved via SNMP matches the output of 'show version' command.
+    
+    This test performs the following steps:
+    1. Retrieves system information using 'show version' command
+    2. Performs SNMP walk to get system information
+    3. Compares both outputs to ensure consistency
+    
+    Args:
+        duthosts: Fixture providing access to all DUT hosts
+        rand_one_dut_hostname: Fixture selecting a random DUT
+        creds_all_duts: Fixture providing SNMP credentials for all DUTs
+    
+    Raises:
+        pytest.fail: If any verification step fails
     """
     duthost = duthosts[rand_one_dut_hostname]
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
