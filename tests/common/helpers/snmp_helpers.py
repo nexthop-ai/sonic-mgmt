@@ -14,6 +14,7 @@ DEF_CHECK_INTERVAL = 10
 
 global_snmp_facts = {}
 
+
 def is_snmp_subagent_running(duthost):
     cmd = "docker exec snmp supervisorctl status snmp-subagent"
     output = duthost.shell(cmd)
@@ -23,16 +24,18 @@ def is_snmp_subagent_running(duthost):
     logger.info("SNMP Sub-Agent is Not Running")
     return False
 
+
 def _get_snmp_facts(localhost, host, version, community, is_dell, include_swap, module_ignore_errors):
     snmp_facts = localhost.snmp_facts(host=host, version=version, community=community, is_dell=is_dell,
                                       module_ignore_errors=module_ignore_errors, include_swap=include_swap)
     return snmp_facts
 
 
-def _update_snmp_facts(localhost, host, version, community, is_dell, include_swap):
+def _update_snmp_facts(localhost, host, version, community, is_dell, include_swap, duthost):
     global global_snmp_facts
 
     try:
+        snmp_subagent_running = is_snmp_subagent_running(duthost)
         global_snmp_facts = _get_snmp_facts(localhost, host, version, community, is_dell, include_swap,
                                             module_ignore_errors=False)
     except RunAnsibleModuleFail as e:
@@ -40,7 +43,7 @@ def _update_snmp_facts(localhost, host, version, community, is_dell, include_swa
         global_snmp_facts = {}
         return False
 
-    return True
+    return snmp_subagent_running and True
 
 def snmpwalk(duthosts, duthost, oid, version="2c", community="public", timeout=30):
     """Performs an SNMP walk."""
@@ -84,9 +87,9 @@ def snmpwalk(duthosts, duthost, oid, version="2c", community="public", timeout=3
     except subprocess.TimeoutExpired as e:
         #Handle the timeout:
         logger.error(f"snmpwalk timed out: {e}")
-        raise #Re-raise    
+        raise #Re-raise
 
-def get_snmp_facts(localhost, host, version, community, is_dell=False, module_ignore_errors=False,
+def get_snmp_facts(duthost, localhost, host, version, community, is_dell=False, module_ignore_errors=False,
                    wait=False, include_swap=False, timeout=DEF_WAIT_TIMEOUT, interval=DEF_CHECK_INTERVAL):
     if not wait:
         return _get_snmp_facts(localhost, host, version, community, is_dell, include_swap, module_ignore_errors)
@@ -94,7 +97,7 @@ def get_snmp_facts(localhost, host, version, community, is_dell=False, module_ig
     global global_snmp_facts
 
     pytest_assert(wait_until(timeout, interval, 0, _update_snmp_facts, localhost, host, version,
-                             community, is_dell, include_swap), "Timeout waiting for SNMP facts")
+                             community, is_dell, include_swap, duthost), "Timeout waiting for SNMP facts")
     return global_snmp_facts
 
 
