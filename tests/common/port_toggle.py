@@ -23,19 +23,57 @@ def port_toggle(duthost, tbinfo, ports=None, wait_time_getter=None, wait_after_p
         watch: Logging system state
     """
     def __get_down_ports(expect_up=True):
-        """Check interface status and return the down ports in a set."""
-        ports_down = duthost.interface_facts(up_ports=ports)["ansible_facts"]["ansible_interface_link_down_ports"]
-        db_ports_down = duthost.show_interface(command="status", up_ports=ports)[
-            "ansible_facts"]["ansible_interface_link_down_ports"]
-        if expect_up:
-            return set(ports_down) | set(db_ports_down)
-        else:
-            return set(ports_down) & set(db_ports_down)
+        """Check interface status and return the down ports in a set.
+        
+        Args:
+            expect_up: If True, return ports that should be up but are down
+                      If False, return ports that are confirmed down (both admin and oper)
+        """
+        interface_status = duthost.show_interface(command="status", up_ports=ports)["ansible_facts"]
+        
+        down_ports = set()
+        for port in ports:
+            if port not in interface_status["int_status"]:
+                continue
+            
+            port_status = interface_status["int_status"][port]
+            admin_state = port_status.get("admin_state", "").lower()
+            oper_state = port_status.get("oper_state", "").lower()
+            
+            if expect_up:
+                # For ports expected to be up, report if either admin or oper is down
+                if admin_state != "up" or oper_state != "up":
+                    down_ports.add(port)
+            else:
+                # For ports expected to be down, only report if both admin and oper are down
+                if admin_state == "down" and oper_state == "down":
+                    down_ports.add(port)
+        
+        logger.debug("Port states for %s (expect_up=%s):", ports, expect_up)
+        logger.debug("Down ports: %s", down_ports)
+        return down_ports
 
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
     if not ports:
         logger.info("No ports specified, toggling all minigraph neighbors ports")
         ports = list(mg_facts["minigraph_neighbors"].keys())
+
+    # Check initial port status
+    interface_status = duthost.show_interface(command="status", up_ports=ports)["ansible_facts"]
+    initially_down_ports = set()
+    for port in ports:
+        if port in interface_status["int_status"]:
+            port_status = interface_status["int_status"][port]
+            if port_status.get("oper_state", "").lower() != "up":
+                initially_down_ports.add(port)
+    
+    if initially_down_ports:
+        logger.warning("Some ports are already down before toggle: %s", initially_down_ports)
+        # Remove initially down ports from the toggle list
+        ports = [p for p in ports if p not in initially_down_ports]
+        if not ports:
+            logger.info("No ports to toggle after removing down ports")
+            return
 
     if not wait_time_getter:
         wait_time_getter = default_port_toggle_wait_time
