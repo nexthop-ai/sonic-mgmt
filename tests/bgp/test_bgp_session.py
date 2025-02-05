@@ -88,12 +88,6 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
             get_ip = f"({vrfname}, '{ip}')"
         else:
             get_ip = ip
-        if ip in neighbor_ip_to_interfaces:
-        logger.debug(ip)
-        if check_frr_mgmt_framework_config(duthost):
-            get_ip = f"({vrfname}, '{ip}')"
-        else:
-            get_ip = ip
         logger.debug(neighbor_ip_to_interfaces)
         logger.debug(neighbor_ip_to_interfaces[get_ip])
         if get_ip in neighbor_ip_to_interfaces:
