@@ -147,9 +147,9 @@ def check_frr_mgmt_framework_config(duthost):
     Returns:
         bool: True if frr_mgmt_framework_config is "true", False otherwise
     """
-    res = duthost.shell('redis-dump -d 4 --pretty -k \"DEVICE_METADATA|localhost\"')
-    frr_config = res.get("DEVICE_METADATA|localhost", {}).get("value", {}).get("frr_mgmt_framework_config", "")
-    return frr_config.lower() == "true"
+    frr_config = duthost.shell('sonic-db-cli CONFIG_DB HGET "DEVICE_METADATA|localhost" "frr_mgmt_framework_config"')
+    return frr_config == "true"
+
 
 def verify_bgp_session_down(duthost, bgp_neighbor):
     """Verify the bgp session to the DUT is established."""
