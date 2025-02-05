@@ -137,19 +137,6 @@ def check_frr_mgmt_framework_config(duthost):
     frr_config = duthost.shell('sonic-db-cli CONFIG_DB HGET "DEVICE_METADATA|localhost" "frr_mgmt_framework_config"')
     return frr_config == "true"
 
-def check_frr_mgmt_framework_config(duthost):
-    """
-    Check if frr_mgmt_framework_config is set to "true" in DEVICE_METADATA
-
-    Args:
-        duthost: DUT host object
-
-    Returns:
-        bool: True if frr_mgmt_framework_config is "true", False otherwise
-    """
-    frr_config = duthost.shell('sonic-db-cli CONFIG_DB HGET "DEVICE_METADATA|localhost" "frr_mgmt_framework_config"')
-    return frr_config == "true"
-
 
 def verify_bgp_session_down(duthost, bgp_neighbor):
     """Verify the bgp session to the DUT is established."""
