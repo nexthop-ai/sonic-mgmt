@@ -8,6 +8,7 @@ from tests.common.helpers.assertions import pytest_require
 from tests.common.reboot import reboot
 
 logger = logging.getLogger(__name__)
+vrfname = 'default'
 
 pytestmark = [
     pytest.mark.topology("t0", "t1"),
@@ -40,7 +41,7 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
     # If frr_mgmt_framework_config is set to true, expect vrf name in the config facts
     if check_frr_mgmt_framework_config(duthost):
         bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
-        bgp_neighbors = bgp_neighbors["default"]
+        bgp_neighbors = bgp_neighbors[vrfname]
     else:
         bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
     portchannels = config_facts.get('PORTCHANNEL_MEMBER', {})
@@ -84,13 +85,13 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
     # If frr_mgmt_framework_config is set to true, expect vrf name in the config facts
     for ip, details in bgp_neighbors.items():
 	if check_frr_mgmt_framework_config(duthost):
-            get_ip = f"('default', '{ip}')"
+            get_ip = f"({vrfname}, '{ip}')"
         else:
             get_ip = ip
         if ip in neighbor_ip_to_interfaces:
         logger.debug(ip)
         if check_frr_mgmt_framework_config(duthost):
-            get_ip = f"('default', '{ip}')"
+            get_ip = f"({vrfname}, '{ip}')"
         else:
             get_ip = ip
         logger.debug(neighbor_ip_to_interfaces)
