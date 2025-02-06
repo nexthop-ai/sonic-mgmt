@@ -2,7 +2,7 @@ import logging
 import pytest
 import time
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.snmp_helpers import get_snmp_facts
+from tests.common.helpers.snmp_helpers import get_snmp_facts, SnmpOIDs
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,6 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
     """
     duthost = duthosts[rand_one_dut_hostname]
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
-    test_oid = ".1.3.6.1.2.1.1.1.0"  # sysDescr
     v3_config = None
 
     try:
@@ -112,7 +111,8 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
                 privacy=invalid_config.get("privacy", v3_config["priv_protocol"]),
                 privkey=invalid_config.get("privpassword", v3_config["priv_password"]),
                 level="authPriv",
-                wait=True
+                wait=True,
+                oid=SnmpOIDs.SYS_DESCR  # Using SnmpOIDs.SYS_DESCR directly
             )
             pytest.fail(f"SNMPv3 GET succeeded with invalid credentials for case: {test_case['name']}")
             
