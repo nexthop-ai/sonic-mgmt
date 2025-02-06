@@ -5,7 +5,7 @@ from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.snmp_helpers import get_snmp_facts, SnmpOIDs
 
 pytestmark = [
-    pytest.mark.topology('t0'),
+    pytest.mark.topology('any'),
     pytest.mark.device_type('vs')
 ]
 

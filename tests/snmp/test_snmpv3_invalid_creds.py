@@ -6,6 +6,11 @@ from tests.common.helpers.snmp_helpers import get_snmp_facts
 
 logger = logging.getLogger(__name__)
 
+pytestmark = [
+    pytest.mark.topology('any'),
+    pytest.mark.device_type('vs')
+]
+
 def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
     """Setup SNMPv3 user on DUT"""
     if not username:
@@ -79,15 +84,7 @@ def cleanup_snmpv3_user(duthost, username):
 def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, test_case):
     """
     Test SNMPv3 GET operation with invalid credentials
-    
-    Args:
-        duthosts: All DUT hosts
-        rand_one_dut_hostname: Random DUT hostname
-        localhost: Localhost fixture
-        test_case: Parameterized test case containing:
-            - name: Name of the test case
-            - modify: Function to modify credentials
-            - error_msg: Expected error message
+    Will only run on virtual switch devices, but works with any topology
     """
     duthost = duthosts[rand_one_dut_hostname]
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
@@ -166,3 +163,4 @@ def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
     finally:
         if v3_config:
             cleanup_snmpv3_user(duthost, v3_config["username"])
+
