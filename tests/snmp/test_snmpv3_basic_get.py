@@ -2,7 +2,7 @@ import pytest
 import logging
 import time
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.snmp_helpers import get_snmp_facts
+from tests.common.helpers.snmp_helpers import get_snmp_facts, SnmpOIDs
 
 pytestmark = [
     pytest.mark.topology('t0'),
@@ -55,9 +55,12 @@ def cleanup_snmpv3_user(duthost, username):
         logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")
 
 @pytest.mark.parametrize("oid", [
-    ".1.3.6.1.2.1.1.1.0",  # sysDescr
-    ".1.3.6.1.2.1.1.3.0",  # sysUpTime
-    ".1.3.6.1.2.1.1.5.0",  # sysName
+    SnmpOIDs.SYS_DESCR,
+    SnmpOIDs.SYS_UPTIME,
+    SnmpOIDs.SYS_NAME,
+    SnmpOIDs.HOST_CPU_LOAD_1,
+    SnmpOIDs.IF_NUMBER,
+    SnmpOIDs.ENT_PHYSICAL_DESCR
 ])
 def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
     """Test SNMPv3 GET operation for various OIDs"""
@@ -109,7 +112,7 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
     duthost = duthosts[rand_one_dut_hostname]
     
     # Get custom parameters from pytest command line
-    oid = request.config.getoption("--oid", default=".1.3.6.1.2.1.1.1.0")
+    oid = request.config.getoption("--oid", default=SnmpOIDs.SYS_DESCR)  # Using SnmpOIDs instead of hardcoded value
     username = request.config.getoption("--snmp-user", default=None)
     auth_pass = request.config.getoption("--snmp-auth-pass", default=None)
     priv_pass = request.config.getoption("--snmp-priv-pass", default=None)
@@ -161,3 +164,4 @@ def pytest_addoption(parser):
     parser.addoption("--snmp-user", action="store", help="SNMPv3 username")
     parser.addoption("--snmp-auth-pass", action="store", help="SNMPv3 auth password")
     parser.addoption("--snmp-priv-pass", action="store", help="SNMPv3 priv password")
+
