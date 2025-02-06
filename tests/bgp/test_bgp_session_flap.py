@@ -12,7 +12,7 @@ import time
 from tests.common.utilities import InterruptableThread
 import textfsm
 import traceback
-from tests.common.devices.eos import EosHost
+from tests.common.devices.sonic import SonicHost
 
 from natsort import natsorted
 
@@ -94,12 +94,12 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
 
     logger.info("DUT BGP Config: {}".format(duthost.shell("vtysh -n {} -c \"show run bgp\"".format(namespace),
                                                           module_ignore_errors=True)))
-    if isinstance(nbrhosts[tor1]["host"], EosHost):
-        logger.info("Neighbor BGP Config: {}".format(
-            nbrhosts[tor1]["host"].eos_command(commands=["show run | section bgp"])))
+    if isinstance(nbrhosts[tor1]["host"], SonicHost):
+        nbrhosts[tor1]["host"].command("show runningconfig bgp")
     else:
-        logger.info("Neighbor BGP Config: {}".format(
-            nbrhosts[tor1]["host"].shell("show runningconfig bgp")))
+        # use industry standard 'show run | sec bgp'
+        nbrhosts[tor1]["host"].commands(commands=["show run | section bgp"]) 
+
     logger.info('Setup_info: {}'.format(setup_info))
 
     #  get baseline BGP CPU and Memory Utilization
