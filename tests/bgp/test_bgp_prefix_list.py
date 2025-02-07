@@ -10,6 +10,8 @@ import pytest
 import time
 import traceback
 import json
+from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import wait_until
 
 from natsort import natsorted
 
@@ -118,7 +120,6 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     Raises:
          Failure if config commands fail
     '''
-
     config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
@@ -168,8 +169,10 @@ def verify_prefix_list(duthost, prefix_list_name,first_bgp_neighbor, allowed_pre
     adv_routes_list = list(adv_routes.keys())
     logger.info(adv_routes)
     logger.info(adv_routes_list)
-    assert allowed_prefix in adv_routes_list
-    assert denied_prefix not in adv_routes_list
+    pytest_assert(wait_until(60, 10, 0, lambda: allowed_prefix in adv_routes_list), "Allowed prefix is not advertised out")
+    pytest_assert(wait_until(60, 10, 0, lambda: denied_prefix not in adv_routes_list), "Denied prefix is advertised out")
+    #assert allowed_prefix in adv_routes_list
+    #assert denied_prefix not in adv_routes_list
 
 def cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, asn, neighbor_ip):
     '''
