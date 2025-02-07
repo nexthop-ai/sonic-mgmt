@@ -147,7 +147,6 @@ def snmpwalk(duthosts, duthost, oid, version=SnmpVersion.V2C, timeout=30, **kwar
             For v2c: community (str)
             For v3: username, level, auth_protocol, priv_protocol, auth_key, priv_key
     """
-    logger.debug(f"duthosts in snmpwalk: {duthosts}")
     try:
         management_ip = duthost.facts.get('ansible_host')
         logger.debug(f"mgmt_ip from duthost.facts: {management_ip}")
@@ -157,12 +156,12 @@ def snmpwalk(duthosts, duthost, oid, version=SnmpVersion.V2C, timeout=30, **kwar
         if not management_ip:
             raise ValueError(f"Could not determine management IP for {duthost.hostname}")
 
-        command = ["snmpwalk", f"-v{version}", "-On"]  # Added -On for numeric OID output
+        command = ["snmpwalk", f"-v{version}", "-On", "-t", str(timeout)]
         
         if version == SnmpVersion.V2C:
             if 'community' not in kwargs:
                 raise ValueError("community parameter is required for SNMPv2c")
-            command.extend([f"-c{kwargs['community']}"])
+            command.extend(["-c", kwargs['community']])
         elif version == SnmpVersion.V3:
             required_params = ['username', 'level', 'auth_protocol', 'priv_protocol', 'auth_key', 'priv_key']
             missing_params = [param for param in required_params if param not in kwargs]
@@ -178,16 +177,27 @@ def snmpwalk(duthosts, duthost, oid, version=SnmpVersion.V2C, timeout=30, **kwar
                 "-X", kwargs['priv_key']
             ])
         else:
-            raise ValueError("version must be either 'v2c' or 'v3'")
+            raise ValueError("version must be either '2c' or '3'")
 
-        command.extend([str(management_ip), oid])
+        command.extend([str(management_ip), str(oid)])
         logger.debug(f"Executing SNMP command: {' '.join(command)}")
         
-        process = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=True)
+        process = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         
+        if process.returncode != 0:
+            error_msg = process.stderr.strip()
+            logger.error(f"SNMP command failed: {error_msg}")
+            if "Timeout" in error_msg:
+                raise TimeoutError("SNMP request timed out")
+            raise RuntimeError(f"SNMP command failed: {error_msg}")
+
         # Parse SNMP output lines into (oid_part, value) pairs
         snmp_lines = [line.split(" = ", 1) for line in process.stdout.splitlines() if line and " = " in line]
         
+        if not snmp_lines:
+            logger.warning("No SNMP data received in response")
+            return {}
+
         # Process each value to remove quotes and type information
         processed_values = {
             oid_part.strip('.'): (value.split(':', 1)[1] if ':' in value else value).strip().strip('"')
@@ -203,57 +213,151 @@ def snmpwalk(duthosts, duthost, oid, version=SnmpVersion.V2C, timeout=30, **kwar
                for oid, value in processed_values.items() if '.' in oid}
         }
 
-        logger.debug(f"Raw SNMP output:\n{process.stdout}")
         logger.debug(f"Processed SNMP data keys: {list(snmp_data.keys())}")
         return snmp_data
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"snmpwalk command failed: \n return code: {e.returncode}, \n stdout: {e.stdout}, \n stderr: {e.stderr}")
-        raise
-
     except subprocess.TimeoutExpired as e:
-        logger.error(f"snmpwalk timed out: {e}")
+        logger.error(f"SNMP command timed out after {timeout} seconds")
+        raise TimeoutError(f"SNMP command timed out: {str(e)}")
+    except Exception as e:
+        logger.error(f"SNMP command failed with error: {str(e)}")
         raise
 
-def get_snmp_facts(localhost, host, version, is_dell=False, module_ignore_errors=False,
-                   wait=False, include_swap=False, timeout=DEF_WAIT_TIMEOUT, interval=DEF_CHECK_INTERVAL,
-                   **kwargs):
+def get_snmp_facts(duthost, localhost, host, version, community, is_dell=False, module_ignore_errors=False,
+                   wait=False, include_swap=False, timeout=DEF_WAIT_TIMEOUT, interval=DEF_CHECK_INTERVAL):
+    """
+    Original get_snmp_facts function for v2c compatibility
+    """
+    if not wait:
+        return _get_snmp_facts(localhost, host, version, community, is_dell, include_swap, module_ignore_errors)
+
+    global global_snmp_facts
+
+    if not wait_until(timeout, interval, 0,
+                     lambda: _update_snmp_facts(localhost, host, version, community, is_dell, include_swap, duthost)):
+        if module_ignore_errors:
+            return {}
+        raise RuntimeError("SNMP facts retrieval failed")
+
+    return global_snmp_facts
+
+
+def get_snmp_facts_v3(localhost=None, wait=False, timeout=DEF_WAIT_TIMEOUT, 
+                      interval=DEF_CHECK_INTERVAL, **kwargs):
     """
     Get SNMP facts with optional wait. Supports both SNMPv2c and SNMPv3.
+    
+    Args:
+        localhost: Ansible localhost object
+        wait: Whether to wait for facts to be available
+        timeout: Maximum wait time
+        interval: Wait interval
+        **kwargs: Additional SNMP parameters
+            version: SNMP version ('v2c' or 'v3')
+            host: Target host IP
+            For v2c: community
+            For v3: username, integrity (auth protocol), privacy (priv protocol),
+                   authkey, privkey, level
     """
-    if version == "v2c":
-        if "community" not in kwargs:
-            raise ValueError("community parameter is required for SNMPv2c")
-        module_args = dict(host=host, version=version, community=kwargs["community"])
-    elif version == "v3":
-        # Map modern parameter names to what snmp_facts module expects
-        module_args = {
-            'host': host,
+    version = kwargs.get('version')
+    
+    def _get_facts():
+        try:
+            ansible_kwargs = {
+                'version': version,
+                'host': kwargs.get('host'),
+                'timeout': kwargs.get('timeout', timeout),
+                'is_dell': kwargs.get('is_dell', False),
+                'is_eos': kwargs.get('is_eos', False),
+                'include_swap': kwargs.get('include_swap', False)
+            }
+
+            if version == 'v2c':
+                ansible_kwargs['community'] = kwargs.get('community')
+            elif version == 'v3':
+                ansible_kwargs.update({
+                    'username': kwargs.get('username'),
+                    'level': kwargs.get('level', 'authPriv'),
+                    'integrity': kwargs.get('integrity', 'sha'),
+                    'authkey': kwargs.get('authkey'),
+                    'privacy': kwargs.get('privacy', 'aes'),
+                    'privkey': kwargs.get('privkey')
+                })
+
+            # Remove None values and False community
+            ansible_kwargs = {k: v for k, v in ansible_kwargs.items() 
+                            if v is not None and not (k == 'community' and v == 'False')}
+
+            facts = localhost.snmp_facts(**ansible_kwargs)
+            return bool(facts)
+        except Exception as e:
+            logger.warning(f"Failed to get SNMP facts: {str(e)}")
+            return False
+
+    try:
+        if not wait:
+            ansible_kwargs = {
+                'version': version,
+                'host': kwargs.get('host'),
+                'timeout': kwargs.get('timeout', timeout),
+                'is_dell': kwargs.get('is_dell', False),
+                'is_eos': kwargs.get('is_eos', False),
+                'include_swap': kwargs.get('include_swap', False)
+            }
+
+            if version == 'v2c':
+                ansible_kwargs['community'] = kwargs.get('community')
+            elif version == 'v3':
+                ansible_kwargs.update({
+                    'username': kwargs.get('username'),
+                    'level': kwargs.get('level', 'authPriv'),
+                    'integrity': kwargs.get('integrity', 'sha'),
+                    'authkey': kwargs.get('authkey'),
+                    'privacy': kwargs.get('privacy', 'aes'),
+                    'privkey': kwargs.get('privkey')
+                })
+
+            # Remove None values and False community
+            ansible_kwargs = {k: v for k, v in ansible_kwargs.items() 
+                            if v is not None and not (k == 'community' and v == 'False')}
+            
+            return localhost.snmp_facts(**ansible_kwargs)
+
+        if not wait_until(timeout, interval, 0, _get_facts):
+            raise TimeoutError(f"Timeout waiting for SNMP facts after {timeout} seconds")
+
+        ansible_kwargs = {
             'version': version,
-            'username': kwargs['username'],
-            'level': kwargs.get('security_level', 'authPriv'),
-            'integrity': kwargs['auth_protocol'].lower(),  # sha or md5
-            'authkey': kwargs['auth_key'],
-            'privacy': kwargs['priv_protocol'].lower(),    # aes or des
-            'privkey': kwargs['priv_key']
+            'host': kwargs.get('host'),
+            'timeout': kwargs.get('timeout', timeout),
+            'is_dell': kwargs.get('is_dell', False),
+            'is_eos': kwargs.get('is_eos', False),
+            'include_swap': kwargs.get('include_swap', False)
         }
-    else:
-        raise ValueError("Version must be either 'v2c' or 'v3'")
 
-    if wait:
-        def _get_snmp_facts():
-            try:
-                facts = localhost.snmp_facts(**module_args)
-                return bool(facts)
-            except Exception:
-                return False
+        if version == 'v2c':
+            ansible_kwargs['community'] = kwargs.get('community')
+        elif version == 'v3':
+            ansible_kwargs.update({
+                'username': kwargs.get('username'),
+                'level': kwargs.get('level', 'authPriv'),
+                'integrity': kwargs.get('integrity', 'sha'),
+                'authkey': kwargs.get('authkey'),
+                'privacy': kwargs.get('privacy', 'aes'),
+                'privkey': kwargs.get('privkey')
+            })
 
-        if not wait_until(timeout, interval, 0, _get_snmp_facts):
-            if not module_ignore_errors:
-                raise Exception("Failed to get SNMP facts")
+        # Remove None values and False community
+        ansible_kwargs = {k: v for k, v in ansible_kwargs.items() 
+                        if v is not None and not (k == 'community' and v == 'False')}
+        
+        return localhost.snmp_facts(**ansible_kwargs)
+
+    except Exception as e:
+        logger.error(f"Error getting SNMP facts: {str(e)}")
+        if kwargs.get('module_ignore_errors', False):
             return {}
-
-    return localhost.snmp_facts(**module_args)
+        raise
 
 
 def get_snmp_output(ip, duthost, nbr, creds_all_duts, oid=SnmpOIDs.SYS_DESCR, version=SnmpVersion.V2C):

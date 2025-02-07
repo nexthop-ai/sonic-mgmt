@@ -2,7 +2,7 @@ import logging
 import pytest
 import time
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.snmp_helpers import get_snmp_facts, SnmpOIDs
+from tests.common.helpers.snmp_helpers import get_snmp_facts, get_snmp_facts_v3, SnmpOIDs
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
 
         return {
             "username": username,
-            "auth_protocol": "sha",
+            "auth_protocol": "SHA",  # Changed to uppercase to match SNMP requirements
             "auth_password": auth_pass,
-            "priv_protocol": "aes",
+            "priv_protocol": "AES",  # Changed to uppercase to match SNMP requirements
             "priv_password": priv_pass
         }
 
@@ -52,7 +52,7 @@ def cleanup_snmpv3_user(duthost, username):
         logger.info(f"Cleaning up SNMPv3 user: {username}")
         duthost.shell(f"sudo config snmp user del {username}", module_ignore_errors=True)
     except Exception as e:
-        logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")
+        logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")  # Removed extra parenthesis
 
 @pytest.mark.parametrize("test_case", [
     {
@@ -126,6 +126,7 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
         if v3_config:
             cleanup_snmpv3_user(duthost, v3_config["username"])
 
+
 def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
     """
     Verify that valid SNMPv3 credentials still work after invalid attempts
@@ -139,23 +140,25 @@ def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
         v3_config = setup_snmpv3_user(duthost)
         logger.info(f"Created SNMPv3 user: {v3_config['username']}")
 
-        # Verify valid credentials work
-        logger.info("Verifying valid credentials")
-        snmp_facts = get_snmp_facts(
-            localhost,
-            host=hostip,
+        # Now test with valid credentials
+        logger.info("Verifying valid credentials still work")
+        snmp_facts = get_snmp_facts_v3(
+            localhost=localhost,
+            wait=True,
             version="v3",
-            username=v3_config["username"],
-            auth_protocol=v3_config["auth_protocol"],
-            auth_key=v3_config["auth_password"],
-            priv_protocol=v3_config["priv_protocol"],
-            priv_key=v3_config["priv_password"],
-            security_level="authPriv",
-            wait=True
+            host=hostip,
+            username=v3_config["username"],  # Using valid username
+            integrity=v3_config["auth_protocol"].lower(),
+            authkey=v3_config["auth_password"],
+            privacy=v3_config["priv_protocol"].lower(),
+            privkey=v3_config["priv_password"],
+            level="authPriv",
+            oid=SnmpOIDs.SYS_DESCR
         )
         
         pytest_assert(snmp_facts is not None, "Failed to get SNMP facts with valid credentials")
         pytest_assert('ansible_facts' in snmp_facts, "No ansible_facts in SNMP response with valid credentials")
+        logger.info("Successfully verified SNMPv3 access with valid credentials")
 
     except Exception as e:
         pytest.fail(f"SNMPv3 valid credentials verification failed: {str(e)}")

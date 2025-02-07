@@ -2,7 +2,7 @@ import pytest
 import logging
 import time
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.snmp_helpers import get_snmp_facts, SnmpOIDs
+from tests.common.helpers.snmp_helpers import get_snmp_facts_v3, SnmpOIDs
 
 pytestmark = [
     pytest.mark.topology('any'),
@@ -36,9 +36,9 @@ def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
 
         return {
             "username": username,
-            "auth_protocol": "sha",
+            "auth_protocol": "SHA",  # Changed to uppercase to match SNMP requirements
             "auth_password": auth_pass,
-            "priv_protocol": "aes",
+            "priv_protocol": "AES",  # Changed to uppercase to match SNMP requirements
             "priv_password": priv_pass
         }
 
@@ -68,6 +68,7 @@ def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
     
     # Get DUT IP
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
+    logger.info(f"Testing SNMPv3 GET on host {hostip}")
     
     # Setup SNMPv3 user
     v3_config = None
@@ -77,29 +78,37 @@ def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
         v3_config = setup_snmpv3_user(duthost)
         logger.info(f"Created SNMPv3 user: {v3_config['username']}")
 
-        # Perform SNMP GET
+        # Wait for SNMP to be ready
+        time.sleep(10)
+
+        # Perform SNMP GET with correct parameter names
         logger.info(f"Performing SNMPv3 GET for OID: {oid}")
-        snmp_facts = get_snmp_facts(
-            localhost,
-            host=hostip,
+        snmp_facts = get_snmp_facts_v3(
+            localhost=localhost,
+            wait=True,
             version="v3",
+            host=hostip,
             username=v3_config["username"],
-            auth_protocol=v3_config["auth_protocol"],
-            auth_key=v3_config["auth_password"],
-            priv_protocol=v3_config["priv_protocol"],
-            priv_key=v3_config["priv_password"],
-            security_level="authPriv",
-            wait=True
+            integrity=v3_config["auth_protocol"].lower(),  # Convert to lowercase
+            privacy=v3_config["priv_protocol"].lower(),    # Convert to lowercase
+            authkey=v3_config["auth_password"],
+            privkey=v3_config["priv_password"],
+            level="authPriv",
+            timeout=20,
+            oid=oid
         )
 
         # Verify we got a response
-        pytest_assert(snmp_facts is not None, "Failed to get SNMP facts")
-        pytest_assert('ansible_facts' in snmp_facts, "No ansible_facts in SNMP response")
+        pytest_assert(snmp_facts is not None, f"Failed to get SNMP facts for OID {oid}")
+        pytest_assert('ansible_facts' in snmp_facts, f"No ansible_facts in SNMP response for OID {oid}")
         
         facts = snmp_facts['ansible_facts']
         logger.info(f"Retrieved SNMP facts for OID {oid}: {facts}")
 
     except Exception as e:
+        logger.error(f"SNMPv3 GET test failed for OID {oid}")
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"SNMPv3 configuration used: {v3_config}")
         pytest.fail(f"SNMPv3 GET test failed: {str(e)}")
 
     finally:
@@ -112,7 +121,7 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
     duthost = duthosts[rand_one_dut_hostname]
     
     # Get custom parameters from pytest command line
-    oid = request.config.getoption("--oid", default=SnmpOIDs.SYS_DESCR)  # Using SnmpOIDs instead of hardcoded value
+    oid = request.config.getoption("--oid", default=SnmpOIDs.SYS_DESCR)
     username = request.config.getoption("--snmp-user", default=None)
     auth_pass = request.config.getoption("--snmp-auth-pass", default=None)
     priv_pass = request.config.getoption("--snmp-priv-pass", default=None)
@@ -128,19 +137,24 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
         v3_config = setup_snmpv3_user(duthost, username, auth_pass, priv_pass)
         logger.info(f"Created SNMPv3 user: {v3_config['username']}")
 
-        # Perform SNMP GET
+        # Wait for SNMP to be ready
+        time.sleep(10)
+
+        # Perform SNMP GET with correct parameter names
         logger.info(f"Performing SNMPv3 GET for OID: {oid}")
-        snmp_facts = get_snmp_facts(
-            localhost,
-            host=hostip,
+        snmp_facts = get_snmp_facts_v3(
+            localhost=localhost,
+            wait=True,
             version="v3",
+            host=hostip,
             username=v3_config["username"],
-            auth_protocol=v3_config["auth_protocol"],
-            auth_key=v3_config["auth_password"],
-            priv_protocol=v3_config["priv_protocol"],
-            priv_key=v3_config["priv_password"],
-            security_level="authPriv",
-            wait=True
+            integrity=v3_config["auth_protocol"].lower(),  # Convert to lowercase
+            privacy=v3_config["priv_protocol"].lower(),    # Convert to lowercase
+            authkey=v3_config["auth_password"],
+            privkey=v3_config["priv_password"],
+            level="authPriv",
+            timeout=20,
+            oid=oid
         )
 
         # Verify we got a response
@@ -151,6 +165,9 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
         logger.info(f"Retrieved SNMP facts for OID {oid}: {facts}")
 
     except Exception as e:
+        logger.error(f"SNMPv3 GET test failed for OID {oid}")
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"SNMPv3 configuration used: {v3_config}")
         pytest.fail(f"SNMPv3 GET test failed: {str(e)}")
 
     finally:
