@@ -171,8 +171,6 @@ def verify_prefix_list(duthost, prefix_list_name,first_bgp_neighbor, allowed_pre
     logger.info(adv_routes_list)
     pytest_assert(wait_until(60, 10, 0, lambda: allowed_prefix in adv_routes_list), "Allowed prefix is not advertised out")
     pytest_assert(wait_until(60, 10, 0, lambda: denied_prefix not in adv_routes_list), "Denied prefix is advertised out")
-    #assert allowed_prefix in adv_routes_list
-    #assert denied_prefix not in adv_routes_list
 
 def cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, asn, neighbor_ip):
     '''
@@ -229,7 +227,7 @@ def test_prefix_list_application(setup):
     first_bgp_neighbor = list(bgp_neighbors.keys())[0]  # Get the first key
     logger.info(first_bgp_neighbor)
 
-    # Step 2.4: Extract the remote AS number of the first BGP neighbor
+    # Step 2.4: Extract the local AS number of the first BGP neighbor
     first_bgp_asn = bgp_neighbors[first_bgp_neighbor]['local AS']
 
     # Step 2.5 Delete outbound route-map if any configured
