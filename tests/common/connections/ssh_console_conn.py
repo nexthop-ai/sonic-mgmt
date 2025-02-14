@@ -1,12 +1,14 @@
 import time
 import re
-from .base_console_conn import CONSOLE_SSH_DIGI_CONFIG, BaseConsoleConn, CONSOLE_SSH
+from .base_console_conn import CONSOLE_SSH_DIGI_CONFIG, CONSOLE_SSH_LANTRONIX_CONFIG, BaseConsoleConn, CONSOLE_SSH
 from netmiko.ssh_exception import NetMikoAuthenticationException
 from paramiko.ssh_exception import SSHException
 
 
 class SSHConsoleConn(BaseConsoleConn):
     def __init__(self, **kwargs):
+        self.menu_port = None
+
         if "console_username" not in kwargs \
                 or "console_password" not in kwargs:
             raise ValueError("Either console_username or console_password is not set")
@@ -21,10 +23,13 @@ class SSHConsoleConn(BaseConsoleConn):
         if self.console_type == CONSOLE_SSH:
             # Login requires port to be provided
             kwargs['username'] = kwargs['console_username'] + r':' + str(kwargs['console_port'])
-            self.menu_port = None
         elif self.console_type.endswith("config"):
             # Login to config menu only requires username
             kwargs['username'] = kwargs['console_username']
+        elif self.console_type.endswith("to_port"):
+            # Login to the per-line TCP port, starting at port 10000
+            kwargs['username'] = kwargs['console_username']
+            kwargs['port'] = str(10000 + int(kwargs['console_port']))
         else:
             # Login requires menu port
             kwargs['username'] = kwargs['console_username']
@@ -77,10 +82,10 @@ class SSHConsoleConn(BaseConsoleConn):
         """
         Helper function to handle final stages of session preparation.
         """
-        # Digi config menu has a unique prompt terminator (----->)
-        if self.console_type == CONSOLE_SSH_DIGI_CONFIG:
+        # > as prompt terminator
+        if self.console_type in [CONSOLE_SSH_DIGI_CONFIG, CONSOLE_SSH_LANTRONIX_CONFIG]:
             self.set_base_prompt(">")
-        else:
+        else: # # as prompt terminator
             self.set_base_prompt()
 
         # Clear the read buffer
