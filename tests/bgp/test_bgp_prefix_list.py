@@ -88,8 +88,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
 
 def delete_existing_outbound(duthost, asn):
     '''
-    Configures test prefix-list as per the parameters.
-    Adds loopback interfaces to add to BGP table.
+    Check and delete existing outbound route-maps to avoid conflicts.
     Args:
          duthost: DUT (Device Under Test).
          asn : DUT AS Number
@@ -108,7 +107,6 @@ def delete_existing_outbound(duthost, asn):
 def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     '''
     Configures test prefix-list as per the parameters. 
-    Adds loopback interfaces to add to BGP table.
     Args:
          duthost: DUT (Device Under Test).
          prefix_list_name: Name of the test prefix-list to be configured
