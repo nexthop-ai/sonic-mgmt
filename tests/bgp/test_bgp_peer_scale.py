@@ -22,105 +22,47 @@ BASE_BGP_ASN = 65100  # Starting ASN for new peers
 SVI_NETWORK_TEMPLATE = "192.168.{}.0/24"  # Template for SVI networks
 PEERS_PER_DUT = 2  # Number of additional peers to configure per DUT
 
-def setup_svi_interface(duthost, vlan_id, ip_addr, prefix_len):
-    """Configure a new SVI interface on the DUT."""
-    try:
-        vlan_intf = "Vlan{}".format(vlan_id)
-        ip_with_prefix = "{}/{}".format(ip_addr, prefix_len)
-        
-        logger.info("Creating VLAN %d and interface %s with IP %s", 
-                   vlan_id, vlan_intf, ip_with_prefix)
-        
-        # Get physical interfaces for VLAN members
-        config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-        phys_interfaces = [intf for intf in config_facts.get('PORT', {}).keys() 
-                          if 'Ethernet' in intf]
-        
-        if not phys_interfaces:
-            logger.error("No physical interfaces found for VLAN members")
-            return False
-            
-        # Use first available interface as VLAN member
-        vlan_member = phys_interfaces[0]
-        
-        # Step 1: Create VLAN
-        cmds = [
-            "sudo config vlan add {}".format(vlan_id),
-            # Add physical interface as VLAN member in untagged mode
-            "sudo config vlan member add {} {}".format(vlan_id, vlan_member),
-            # Configure IP address on VLAN interface
-            "sudo config interface ip add {} {}".format(vlan_intf, ip_with_prefix)
-        ]
-        
-        for cmd in cmds:
-            result = duthost.shell(cmd)
-            if result['rc'] != 0:
-                error_msg = "Command '{}' failed with return code {}\nError: {}\nOutput: {}".format(
-                    cmd, result['rc'], result['stderr'], result['stdout'])
-                logger.error(error_msg)
-                # Get current VLAN and interface status for debugging
-                try:
-                    vlan_status = duthost.shell("show vlan")['stdout']
-                    intf_status = duthost.shell("show interfaces status")['stdout']
-                    logger.error("Current VLAN status:\n%s", vlan_status)
-                    logger.error("Current interface status:\n%s", intf_status)
-                except Exception as e:
-                    logger.error("Failed to get debug information: %s", str(e))
-                return False
-            logger.info("Successfully executed: %s", cmd)
-        
-        # Step 2: Wait for interface to come up with increased timeout
-        def check_interface_up():
-            try:
-                result = duthost.shell("show interfaces status {}".format(vlan_intf))
-                if result['rc'] != 0:
-                    logger.error("Failed to check interface status: %s", result['stderr'])
-                    return False
-                return "up" in result['stdout'].lower()
-            except Exception as e:
-                logger.error("Error checking interface status: %s", str(e))
-                return False
-        
-        # Wait up to 60 seconds for interface to come up
-        for attempt in range(20):
-            if check_interface_up():
-                logger.info("Interface %s is up", vlan_intf)
+def verify_vlan_interface_status(duthost, vlan_id):
+    """Verify VLAN interface status using show ip interfaces command."""
+    vlan_intf = "Vlan{}".format(vlan_id)
+    
+    # Use show ip interfaces to check status
+    output = duthost.shell("show ip interfaces")["stdout"]
+    
+    # Parse the output to check if interface exists and is up
+    for line in output.splitlines():
+        if vlan_intf in line:
+            if "up/up" in line:
                 return True
-            
-            logger.info("Waiting for interface %s to come up (attempt %d/20)...", 
-                       vlan_intf, attempt + 1)
+            else:
+                logger.error("Interface %s is not up/up: %s", vlan_intf, line)
+                return False
+    
+    logger.error("Interface %s not found in show ip interfaces output", vlan_intf)
+    return False
+
+def setup_svi_interface(duthost, vlan_id, ip_addr, prefix_len):
+    """Configure a new SVI (VLAN) interface on the DUT."""
+    vlan_intf = "Vlan{}".format(vlan_id)
+    ip_with_prefix = "{}/{}".format(ip_addr, prefix_len)
+    
+    try:
+        # Configure VLAN and IP
+        duthost.shell("config vlan add {}".format(vlan_id))
+        duthost.shell("config interface ip add {} {}".format(vlan_intf, ip_with_prefix))
+        
+        # Wait for interface to come up
+        for attempt in range(10):
+            if verify_vlan_interface_status(duthost, vlan_id):
+                logger.info("Interface %s is up and configured with IP %s", vlan_intf, ip_with_prefix)
+                return True
             time.sleep(3)
         
-        # Get detailed interface status for debugging if interface didn't come up
-        try:
-            intf_status = duthost.shell("show interfaces status")['stdout']
-            vlan_status = duthost.shell("show vlan")['stdout']
-            bgp_status = duthost.shell("show ip bgp summary")['stdout']
-            logger.error("Interface failed to come up. Debug information:")
-            logger.error("Interface status:\n%s", intf_status)
-            logger.error("VLAN status:\n%s", vlan_status)
-            logger.error("BGP status:\n%s", bgp_status)
-        except Exception as e:
-            logger.error("Failed to get debug information: %s", str(e))
-        
-        logger.error("Interface %s failed to come up after 60 seconds", vlan_intf)
+        logger.error("Interface %s failed to come up after configuration", vlan_intf)
         return False
         
     except Exception as e:
-        logger.error("Failed to setup SVI interface: %s", str(e))
-        import traceback
-        logger.error("Traceback: %s", traceback.format_exc())
-        # Get system state for debugging
-        try:
-            intf_status = duthost.shell("show interfaces status")['stdout']
-            vlan_status = duthost.shell("show vlan")['stdout']
-            bgp_status = duthost.shell("show ip bgp summary")['stdout']
-            logger.error("System state at failure:")
-            logger.error("Interface status:\n%s", intf_status)
-            logger.error("VLAN status:\n%s", vlan_status)
-            logger.error("BGP status:\n%s", bgp_status)
-        except Exception as debug_e:
-            logger.error("Failed to get debug information: %s", str(debug_e))
+        logger.error("Failed to configure interface %s: %s", vlan_intf, str(e))
         return False
 
 def cleanup_svi_interface(duthost, vlan_id, ip_addr, prefix_len):
