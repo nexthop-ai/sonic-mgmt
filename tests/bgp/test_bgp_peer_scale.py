@@ -134,7 +134,7 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn):
                 logger.info("BGP peer %s configured successfully with AS %s", neighbor_ip, remote_asn)
                 return True
             else:
-                logger.error("BGP peer configuration verification failed. Expected remote AS %s, got %s", 
+                logger.error("BGP peer configuration verification failed. Expected remote AS %s, got %s",
                              remote_asn, bgp_info.get('remoteAs', 'None'))
                 logger.error("Full BGP neighbor info: %s", bgp_info)
                 return False
@@ -150,7 +150,7 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn):
 def get_free_ip_pair(vlan_id):
     """Get a pair of non-overlapping IP addresses for local and neighbor use based on VLAN ID."""
     # Use VLAN ID to create unique subnet for each VLAN
-    # For example: 
+    # For example:
     # VLAN 2000 -> 192.168.200.0/24
     # VLAN 2001 -> 192.168.201.0/24
     third_octet = vlan_id % 256  # Ensure we stay within valid range
@@ -249,7 +249,7 @@ def test_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, setup_peer_s
     def check_bgp_peer_status(duthost, neighbor_ip):
         """Helper function to check BGP peer status."""
         bgp_facts = duthost.bgp_facts()['ansible_facts']
-        return (neighbor_ip in bgp_facts['bgp_neighbors'] and 
+        return (neighbor_ip in bgp_facts['bgp_neighbors'] and
                 bgp_facts['bgp_neighbors'][neighbor_ip]['state'] == 'established')
     
     for config in setup_peer_scale:
@@ -269,9 +269,9 @@ def test_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, setup_peer_s
         lines = output.strip().split('\n')[2:]  # Skip header and separator lines
         for line in lines:
             fields = line.split()
-            if len(fields) >= 4 and fields[0] == vlan_name:
+            if len(fields) >= 3 and fields[0] == vlan_name:
                 interface_found = True
-                configured_ip = fields[1].split('/')[0]  # Extract IP without mask
+                configured_ip = fields[1].split('/')[0].strip()
                 if configured_ip == config['local_ip']:
                     ip_configured = True
                 if "up/up" in fields[2]:
