@@ -4,7 +4,6 @@ Test BGP peer scaling by adding multiple BGP peers on SONiC DUTs.
 import logging
 import pytest
 import ipaddress
-import time
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.topology('t0'),
-    pytest.mark.device_type('vs')
 ]
 
 # Constants for BGP peer scaling
@@ -137,7 +135,7 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn):
                 return True
             else:
                 logger.error("BGP peer configuration verification failed. Expected remote AS %s, got %s", 
-                           remote_asn, bgp_info.get('remoteAs', 'None'))
+                             remote_asn, bgp_info.get('remoteAs', 'None'))
                 logger.error("Full BGP neighbor info: %s", bgp_info)
                 return False
         except Exception as e:
@@ -199,7 +197,7 @@ def setup_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname):
             local_ip, neighbor_ip = get_free_ip_pair(vlan_id)
             
             logger.info("Configuring peer %d: VLAN %d, Local IP %s, Neighbor IP %s, Local ASN %s, Remote ASN %s",
-                       peer_index + 1, vlan_id, local_ip, neighbor_ip, local_asn, remote_asn)
+                        peer_index + 1, vlan_id, local_ip, neighbor_ip, local_asn, remote_asn)
             
             # Setup SVI interface with /24 mask
             if not setup_svi_interface(duthost, vlan_id, local_ip, 24):
@@ -256,30 +254,54 @@ def test_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, setup_peer_s
     
     for config in setup_peer_scale:
         duthost = config['duthost']
+        vlan_name = f"Vlan{config['vlan_id']}"
         
-        # Step 1: Verify VLAN interface configuration and status
-        interface_facts = duthost.show_interface(command="status")["ansible_facts"]["int_status"]
-        vlan_name = "Vlan{}".format(config['vlan_id'])
+        # Get show ip interfaces output
+        output = duthost.shell("show ip interfaces")["stdout"]
+        logger.info(f"Show IP interfaces output:\n{output}")
         
+        # Parse the output to verify if VLAN interface is up
+        interface_found = False
+        ip_configured = False
+        status_up = False
+        configured_ip = None
+
+        lines = output.strip().split('\n')[2:]  # Skip header and separator lines
+        for line in lines:
+            fields = line.split()
+            if len(fields) >= 4 and fields[0] == vlan_name:
+                interface_found = True
+                configured_ip = fields[1].split('/')[0]  # Extract IP without mask
+                if configured_ip == config['local_ip']:
+                    ip_configured = True
+                if "up/up" in fields[2]:
+                    status_up = True
+                break
+
         pytest_assert(
-            vlan_name in interface_facts,
-            "VLAN interface {} not found on {}".format(vlan_name, duthost.hostname)
+            interface_found,
+            f"VLAN interface {vlan_name} not found in show ip interfaces output on {duthost.hostname}"
         )
-        
+
         pytest_assert(
-            interface_facts[vlan_name]["oper_state"] == "up",
-            "VLAN interface {} is not up on {}".format(vlan_name, duthost.hostname)
+            ip_configured,
+            f"Incorrect IP address configured on {vlan_name}. Expected {config['local_ip']}, got {configured_ip}"
         )
-        
-        # Step 2: Verify BGP peer configuration
+
+        pytest_assert(
+            status_up,
+            f"Interface {vlan_name} is not up on {duthost.hostname}"
+        )
+
+        # Verify BGP peer configuration
         bgp_facts = duthost.bgp_facts()['ansible_facts']
         pytest_assert(
             config['neighbor_ip'] in bgp_facts['bgp_neighbors'],
             "BGP peer {} not found in BGP neighbors on {}".format(
                 config['neighbor_ip'], duthost.hostname)
         )
-        
-        # Step 3: Verify BGP session establishment
+
+        # Verify BGP session establishment
         pytest_assert(
             wait_until(60, 5, 0, check_bgp_peer_status, duthost, config['neighbor_ip']),
             "BGP peer {} failed to establish on {}".format(
