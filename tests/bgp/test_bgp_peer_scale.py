@@ -4,6 +4,7 @@ Test BGP peer scaling by adding multiple BGP peers on SONiC DUTs.
 import logging
 import pytest
 import ipaddress
+import time
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -105,10 +106,55 @@ def get_free_ipv6_pair(vlan_id):
     return str(net[1]), str(net[2])
 
 
+def ensure_port_is_up(duthost, port):
+    """Ensure the port is up and operational."""
+    try:
+        # Check port status
+        port_status = duthost.shell(f"show interfaces status {port}")["stdout"]
+        if "connected" not in port_status.lower():
+            logger.info(f"Port {port} is not connected on {duthost.hostname}, attempting to bring it up")
+            duthost.shell(f"config interface startup {port}")
+            time.sleep(10)  # Wait for port to initialize
+            
+            # Check again
+            port_status = duthost.shell(f"show interfaces status {port}")["stdout"]
+            if "connected" not in port_status.lower():
+                return False
+    except Exception as e:
+        logger.error(f"Error checking port status for {port} on {duthost.hostname}: {str(e)}")
+        return False
+    return True
+
+def configure_trunk_port(duthost, trunk_port):
+    """Configure a port as trunk and ensure it's up."""
+    try:
+        # Configure as trunk
+        duthost.shell(f"config interface trunk {trunk_port}")
+        
+        # Ensure port is up
+        if not ensure_port_is_up(duthost, trunk_port):
+            return False
+            
+        # Add port to each VLAN as tagged member
+        return True
+    except Exception as e:
+        logger.error(f"Error configuring trunk port {trunk_port} on {duthost.hostname}: {str(e)}")
+        return False
+
 @pytest.fixture(scope="module")
 def setup_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts):
     """Setup additional BGP peers (both IPv4 and IPv6) on each DUT and corresponding neighbor hosts."""
     configs = []
+    
+    # Get an available port for trunk
+    dut_config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+    available_ports = dut_config_facts.get('PORT', {}).keys()
+    trunk_port = next(iter(available_ports))  # Get first available port
+    
+    # Configure trunk port first
+    if not configure_trunk_port(duthost, trunk_port):
+        pytest.fail(f"Failed to configure trunk port {trunk_port} on {duthost.hostname}")
+    
     for dut_index, duthost in enumerate(duthosts):
         nbrhost = nbrhosts[dut_index] if dut_index < len(nbrhosts) else nbrhosts[-1]
         
@@ -134,6 +180,7 @@ def setup_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts):
         
         vlan_intf = f"Vlan{vlan_id}"
         duthost.shell(f"config vlan add {vlan_id}")
+        duthost.shell(f"config vlan member add {vlan_id} {trunk_port} --tagged")
         duthost.add_ip_addr_to_vlan(vlan_intf, f"{local_ip}/24")
         duthost.add_ip_addr_to_vlan(vlan_intf, f"{local_ipv6}/64")
         
@@ -175,6 +222,8 @@ def setup_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts):
     for config in configs:
         cleanup_host_config(config['duthost'], [config], is_dut=True)
         cleanup_host_config(config['nbrhost'], [config], is_dut=False)
+        # Remove trunk configuration
+        config['duthost'].shell(f"config interface no trunk {trunk_port}")
 
 
 def cleanup_host_config(host, host_configs, is_dut=True):
