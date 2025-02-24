@@ -17,7 +17,6 @@ pytestmark = [
 # Constants for BGP peer scaling
 BASE_VLAN_ID = 2000  # Starting VLAN ID for new peers
 BASE_BGP_ASN = 65100  # Starting ASN for new peers
-SVI_NETWORK_TEMPLATE = "192.168.{}.0/24"  # Template for SVI networks
 PEERS_PER_DUT = 2  # Number of additional peers to configure per DUT
 
 
@@ -125,6 +124,7 @@ def ensure_port_is_up(duthost, port):
         return False
     return True
 
+
 def configure_trunk_port(duthost, trunk_port):
     """Configure a port as trunk and ensure it's up."""
     try:
@@ -141,89 +141,199 @@ def configure_trunk_port(duthost, trunk_port):
         logger.error(f"Error configuring trunk port {trunk_port} on {duthost.hostname}: {str(e)}")
         return False
 
-@pytest.fixture(scope="module")
-def setup_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts):
-    """Setup additional BGP peers (both IPv4 and IPv6) on each DUT and corresponding neighbor hosts."""
+
+def get_remote_asn(duthost):
+    """Get the remote ASN from the existing BGP neighbors."""
+    bgp_facts = duthost.bgp_facts()['ansible_facts']
+    existing_peers = bgp_facts.get('bgp_neighbors', {})
+    for peer_ip, peer_data in existing_peers.items():
+        if 'remote AS' in peer_data and ':' not in peer_ip:
+            return peer_data['remote AS']
+    pytest.fail("No valid remote ASN found in existing BGP neighbors")
+
+
+def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4"):
+    """
+    Common helper function to run BGP peer scale tests for IPv4 or IPv6.
+
+    Args:
+        duthosts: DUT host objects
+        enum_rand_one_per_hwsku_hostname: Test fixture
+        nbrhosts: Neighbor host objects
+        tbinfo: Testbed information dictionary containing topology details
+        addr_family: Address family ("ipv4" or "ipv6")
+    """
     configs = []
 
-    # Get an available port for trunk
-    dut_config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-    available_ports = dut_config_facts.get('PORT', {}).keys()
-    trunk_port = next(iter(available_ports))  # Get first available port
-
-    # Configure trunk port first
-    if not configure_trunk_port(duthost, trunk_port):
-        pytest.fail(f"Failed to configure trunk port {trunk_port} on {duthost.hostname}")
-
     for dut_index, duthost in enumerate(duthosts):
-        nbrhost = nbrhosts[dut_index] if dut_index < len(nbrhosts) else nbrhosts[-1]
-
+        # Get DUT configuration
         config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
         local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
+        remote_asn = get_remote_asn(duthost)
+
+        # Get all current BGP neighbors for this DUT
         bgp_facts = duthost.bgp_facts()['ansible_facts']
-        existing_peers = bgp_facts.get('bgp_neighbors', {})
-        remote_asn = None
-        for peer_ip, peer_data in existing_peers.items():
-            if 'remote AS' in peer_data and ':' not in peer_ip:
-                remote_asn = peer_data['remote AS']
-                break
+        current_neighbors = [nbr for nbr in nbrhosts if nbr.hostname in bgp_facts['bgp_neighbors']]
 
-        logger.info(f"Using remote ASN {remote_asn} for new peers on {duthost.hostname}")
-        vlan_id = BASE_VLAN_ID + dut_index
-        vlan_intf = f"Vlan{vlan_id}"
-        local_ip, neighbor_ip = get_free_ip_pair(vlan_id)
-        local_ipv6, neighbor_ipv6 = get_free_ipv6_pair(vlan_id)
+        if not current_neighbors:
+            logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
+            continue
 
-        # Configure DUT side
-        logger.info(f"Configuring additional peers for {duthost.hostname}")
-        logger.info(f"IPv4 - Local: {local_ip}, Neighbor: {neighbor_ip}")
-        logger.info(f"IPv6 - Local: {local_ipv6}, Neighbor: {neighbor_ipv6}")
+        # Get port connections between DUT and neighbors
+        for neighbor_index, nbrhost in enumerate(current_neighbors):
+            # Get the port connecting DUT to this neighbor
+            neighbor_facts = duthost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
+            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items() if v['name'] == nbrhost.hostname}
 
-        duthost.shell(f"config vlan add {vlan_id}")
-        duthost.shell(f"config vlan member add {vlan_id} {trunk_port} --tagged")
-        duthost.add_ip_addr_to_vlan(vlan_intf, f"{local_ip}/24")
-        duthost.add_ip_addr_to_vlan(vlan_intf, f"{local_ipv6}/64")
+            if not dut_nbr_ports:
+                pytest.fail(f"No connection found between {duthost.hostname} and {nbrhost.hostname}")
 
-        if not configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn):
-            pytest.fail(f"Failed to configure IPv4 BGP peer on {duthost.hostname}")
-        if not configure_bgp_peer(duthost, neighbor_ipv6, local_asn, remote_asn, addr_family="ipv6"):
-            pytest.fail(f"Failed to configure IPv6 BGP peer on {duthost.hostname}")
+            # Get the first connected port pair
+            dut_port = next(iter(dut_nbr_ports.keys()))
 
-        # Configure neighbor host side
-        logger.info(f"Configuring BGP on neighbor host {nbrhost.hostname}")
+            # Get the corresponding port on neighbor
+            nbr_facts = nbrhost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
+            nbr_port = next(port for port, info in nbr_facts.items()
+                          if info['name'] == duthost.hostname and info['port'] == dut_port)
 
-        # Create VLAN interface on neighbor
-        nbrhost.shell(f"ip link add link eth0 name {vlan_intf} type vlan id {vlan_id}")
-        nbrhost.shell(f"ip link set {vlan_intf} up")
-        nbrhost.shell(f"ip addr add {neighbor_ip}/24 dev {vlan_intf}")
-        nbrhost.shell(f"ip -6 addr add {neighbor_ipv6}/64 dev {vlan_intf}")
+            # Configure trunk ports on both sides
+            if not configure_trunk_port(duthost, dut_port):
+                pytest.fail(f"Failed to configure trunk port {dut_port} on {duthost.hostname}")
 
-        # Configure BGP on neighbor using the same configure_bgp_peer function
-        if not configure_bgp_peer(nbrhost, local_ip, remote_asn, local_asn):
-            pytest.fail(f"Failed to configure IPv4 BGP peer on {nbrhost.hostname}")
-        if not configure_bgp_peer(nbrhost, local_ipv6, remote_asn, local_asn, addr_family="ipv6"):
-            pytest.fail(f"Failed to configure IPv6 BGP peer on {nbrhost.hostname}")
+            if not configure_trunk_port(nbrhost, nbr_port):
+                pytest.fail(f"Failed to configure trunk port {nbr_port} on {nbrhost.hostname}")
 
-        configs.append({
-            'duthost': duthost,
-            'nbrhost': nbrhost,
-            'vlan_id': vlan_id,
-            'local_ip': local_ip,
-            'neighbor_ip': neighbor_ip,
-            'local_ipv6': local_ipv6,
-            'neighbor_ipv6': neighbor_ipv6,
-            'local_asn': local_asn,
-            'remote_asn': remote_asn
-        })
+            # Configure additional peers for this neighbor
+            for peer_index in range(PEERS_PER_DUT):
+                vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
+                vlan_intf = f"Vlan{vlan_id}"
 
-    yield configs
+                if addr_family == "ipv4":
+                    local_ip, neighbor_ip = get_free_ip_pair(vlan_id)
+                    ip_config = [(local_ip, neighbor_ip, "24")]
+                else:
+                    local_ip, neighbor_ip = get_free_ipv6_pair(vlan_id)
+                    ip_config = [(local_ip, neighbor_ip, "64")]
 
-    # Cleanup both DUT and neighbor configurations
+                # Configure VLANs and add trunk ports as members
+                duthost.shell(f"config vlan add {vlan_id}")
+                duthost.shell(f"config vlan member add {vlan_id} {dut_port} --tagged")
+                nbrhost.shell(f"config vlan add {vlan_id}")
+                nbrhost.shell(f"config vlan member add {vlan_id} {nbr_port} --tagged")
+
+                for lip, nip, prefix in ip_config:
+                    duthost.add_ip_addr_to_vlan(vlan_intf, f"{lip}/{prefix}")
+                    if not configure_bgp_peer(duthost, nip, local_asn, remote_asn, addr_family=addr_family):
+                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
+
+                # Configure neighbor host side
+                logger.info(f"Configuring BGP on neighbor host {nbrhost.hostname}")
+
+                # Create VLAN and VLAN interface on neighbor
+                nbrhost.shell(f"config vlan add {vlan_id}")
+                nbrhost.shell(f"config vlan member add {vlan_id} \"Ethernet2\" --tagged")
+
+                # Add IP address to VLAN interface on neighbor
+                for lip, nip, prefix in ip_config:
+                    nbrhost.add_ip_addr_to_vlan(vlan_intf, f"{nip}/{prefix}")
+                    if not configure_bgp_peer(nbrhost, lip, remote_asn, local_asn, addr_family=addr_family):
+                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
+
+                configs.append({
+                    'duthost': duthost,
+                    'nbrhost': nbrhost,
+                    'vlan_id': vlan_id,
+                    'local_ip': local_ip,
+                    'neighbor_ip': neighbor_ip,
+                    'local_asn': local_asn,
+                    'remote_asn': remote_asn,
+                    'addr_family': addr_family,
+                    'trunk_port': trunk_port
+                })
+
+    # Verify BGP peer configuration and status
+    verify_bgp_peer_scale(configs)
+
+    # Cleanup
     for config in configs:
         cleanup_host_config(config['duthost'], [config], is_dut=True)
         cleanup_host_config(config['nbrhost'], [config], is_dut=False)
-        # Remove trunk configuration
-        config['duthost'].shell(f"config interface no trunk {trunk_port}")
+        config['duthost'].shell(f"config interface no trunk {config['trunk_port']}")
+
+
+def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+    """
+    Verify BGP IPv4 peer scaling by checking:
+    1. All VLAN interfaces are properly configured and up
+    2. All BGP peers are configured
+    3. All BGP sessions are established
+    """
+    run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4")
+
+
+def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+    """
+    Verify BGP IPv6 peer scaling by checking:
+    1. All VLAN interfaces are properly configured and up
+    2. All BGP peers are configured
+    3. All BGP sessions are established
+    """
+    run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
+
+
+def verify_bgp_peer_scale(configs):
+    """
+    Verify BGP peer scale configuration and status
+    """
+    def check_bgp_peer_status(duthost, neighbor_ip):
+        """Helper function to check BGP peer status."""
+        bgp_facts = duthost.bgp_facts()['ansible_facts']
+        return (neighbor_ip in bgp_facts['bgp_neighbors'] and
+                bgp_facts['bgp_neighbors'][neighbor_ip]['state'] == 'established')
+
+    for config in configs:
+        duthost = config['duthost']
+        vlan_name = f"Vlan{config['vlan_id']}"
+
+        # Verify VLAN interface configuration
+        output = duthost.shell("show ip interfaces")["stdout"]
+        interface_found = False
+        ip_configured = False
+        status_up = False
+
+        for line in output.split('\n'):
+            if vlan_name in line:
+                interface_found = True
+                ip_configured = config['local_ip'] in line
+                status_up = 'up' in line.lower()
+                break
+
+        pytest_assert(
+            interface_found,
+            f"VLAN interface {vlan_name} not found in show ip interfaces output on {duthost.hostname}"
+        )
+
+        pytest_assert(
+            ip_configured,
+            f"Incorrect IP address configured on {vlan_name}. Expected {config['local_ip']}"
+        )
+
+        pytest_assert(
+            status_up,
+            f"Interface {vlan_name} is not up on {duthost.hostname}"
+        )
+
+        # Verify BGP peer configuration and status
+        bgp_facts = duthost.bgp_facts()['ansible_facts']
+        pytest_assert(
+            config['neighbor_ip'] in bgp_facts['bgp_neighbors'],
+            f"BGP peer {config['neighbor_ip']} not found in BGP neighbors on {duthost.hostname}"
+        )
+
+        pytest_assert(
+            wait_until(60, 5, 0, check_bgp_peer_status, duthost, config['neighbor_ip']),
+            f"BGP peer {config['neighbor_ip']} failed to establish on {duthost.hostname}"
+        )
 
 
 def cleanup_host_config(host, host_configs, is_dut=True):
@@ -274,75 +384,3 @@ def cleanup_host_config(host, host_configs, is_dut=True):
     except Exception as e:
         host_type = "DUT" if is_dut else "Neighbor"
         logger.error(f"{host_type} cleanup failed: {str(e)}")
-
-
-def test_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, setup_peer_scale):
-    """
-    Verify BGP peer scaling by checking:
-    1. All VLAN interfaces are properly configured and up
-    2. All BGP peers are configured
-    3. All BGP sessions are established
-    """
-    def check_bgp_peer_status(duthost, neighbor_ip):
-        """Helper function to check BGP peer status."""
-        bgp_facts = duthost.bgp_facts()['ansible_facts']
-        return (neighbor_ip in bgp_facts['bgp_neighbors'] and
-                bgp_facts['bgp_neighbors'][neighbor_ip]['state'] == 'established')
-
-    for config in setup_peer_scale:
-        duthost = config['duthost']
-
-        # Verify VLAN interface status
-        vlan_name = f"Vlan{config['vlan_id']}"
-
-        # Get show ip interfaces output
-        output = duthost.shell("show ip interfaces")["stdout"]
-        logger.info(f"Show IP interfaces output:\n{output}")
-
-        # Parse the output to verify if VLAN interface is up
-        interface_found = False
-        ip_configured = False
-        status_up = False
-        configured_ip = None
-
-        lines = output.strip().split('\n')[2:]  # Skip header and separator lines
-        for line in lines:
-            fields = line.split()
-            if len(fields) >= 3 and fields[0] == vlan_name:
-                interface_found = True
-                configured_ip = fields[1].split('/')[0].strip()
-                if configured_ip == config['local_ip']:
-                    ip_configured = True
-                if "up/up" in fields[2]:
-                    status_up = True
-                break
-
-        pytest_assert(
-            interface_found,
-            f"VLAN interface {vlan_name} not found in show ip interfaces output on {duthost.hostname}"
-        )
-
-        pytest_assert(
-            ip_configured,
-            f"Incorrect IP address configured on {vlan_name}. Expected {config['local_ip']}, got {configured_ip}"
-        )
-
-        pytest_assert(
-            status_up,
-            f"Interface {vlan_name} is not up on {duthost.hostname}"
-        )
-
-        # Verify BGP peer configuration
-        bgp_facts = duthost.bgp_facts()['ansible_facts']
-        pytest_assert(
-            config['neighbor_ip'] in bgp_facts['bgp_neighbors'],
-            "BGP peer {} not found in BGP neighbors on {}".format(
-                config['neighbor_ip'], duthost.hostname)
-        )
-
-        # Verify BGP session establishment
-        pytest_assert(
-            wait_until(60, 5, 0, check_bgp_peer_status, duthost, config['neighbor_ip']),
-            "BGP peer {} failed to establish on {}".format(
-                config['neighbor_ip'], duthost.hostname)
-        )
