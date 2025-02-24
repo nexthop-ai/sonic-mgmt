@@ -173,7 +173,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
         # Get all current BGP neighbors for this DUT
         bgp_facts = duthost.bgp_facts()['ansible_facts']
-        current_neighbors = [nbr for nbr in nbrhosts if nbr.hostname in bgp_facts['bgp_neighbors']]
+        current_neighbors = [nbr for nbr in nbrhosts.values() if nbr.name in bgp_facts['bgp_neighbors']]
 
         if not current_neighbors:
             logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
@@ -194,7 +194,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             # Get the corresponding port on neighbor
             nbr_facts = nbrhost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
             nbr_port = next(port for port, info in nbr_facts.items()
-                          if info['name'] == duthost.hostname and info['port'] == dut_port)
+                            if info['name'] == duthost.hostname and info['port'] == dut_port)
 
             # Configure trunk ports on both sides
             if not configure_trunk_port(duthost, dut_port):
@@ -248,7 +248,8 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                     'local_asn': local_asn,
                     'remote_asn': remote_asn,
                     'addr_family': addr_family,
-                    'trunk_port': trunk_port
+                    'trunk_port': dut_port,
+                    'nbr_trunk_port': nbr_port
                 })
 
     # Verify BGP peer configuration and status
@@ -259,6 +260,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
         cleanup_host_config(config['duthost'], [config], is_dut=True)
         cleanup_host_config(config['nbrhost'], [config], is_dut=False)
         config['duthost'].shell(f"config interface no trunk {config['trunk_port']}")
+        config['nbrhost'].shell(f"config interface no trunk {config['nbr_trunk_port']}")
 
 
 def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
