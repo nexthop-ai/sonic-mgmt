@@ -172,18 +172,20 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
         remote_asn = get_remote_asn(duthost)
 
         # Get all current BGP neighbors for this DUT
-        bgp_facts = duthost.bgp_facts()['ansible_facts']
-        current_neighbors = [nbr for nbr in nbrhosts.values() if nbr.name in bgp_facts['bgp_neighbors']]
+        current_neighbors = [nbr["host"] for nbr in nbrhosts.values()]
 
         if not current_neighbors:
             logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
             continue
 
+        # Create mapping between VM hostnames and DUT neighbor names
+        vm_to_dut = {v["host"].hostname: k for k, v in nbrhosts.items()}
+
         # Get port connections between DUT and neighbors
         for neighbor_index, nbrhost in enumerate(current_neighbors):
             # Get the port connecting DUT to this neighbor
             neighbor_facts = duthost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
-            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items() if v['name'] == nbrhost.hostname}
+            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items() if v['name'] == vm_to_dut[nbrhost.hostname]}
 
             if not dut_nbr_ports:
                 pytest.fail(f"No connection found between {duthost.hostname} and {nbrhost.hostname}")
@@ -191,10 +193,9 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             # Get the first connected port pair
             dut_port = next(iter(dut_nbr_ports.keys()))
 
-            # Get the corresponding port on neighbor
-            nbr_facts = nbrhost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
-            nbr_port = next(port for port, info in nbr_facts.items()
-                            if info['name'] == duthost.hostname and info['port'] == dut_port)
+            # Get the corresponding port on neighbor from DUT's neighbor_facts
+            nbr_port = neighbor_facts[dut_port]['port']
+            import pdb; pdb.set_trace()
 
             # Configure trunk ports on both sides
             if not configure_trunk_port(duthost, dut_port):
