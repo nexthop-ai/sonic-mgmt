@@ -5,13 +5,15 @@ import logging
 import pytest
 import ipaddress
 import time
+import re
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
+from tests.common.config_reload import config_reload
 
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.topology('t0'),
+    pytest.mark.topology("t0", "t1"),
 ]
 
 # Constants for BGP peer scaling
@@ -38,7 +40,7 @@ def verify_vlan_interface_status(duthost, vlan_id):
                 logger.error("Interface %s is not up: %s", vlan_intf, line.strip())
                 # Get additional interface details for debugging
                 try:
-                    config = duthost.shell(f"show running-config interface {vlan_intf}")["stdout"]
+                    config = duthost.shell(f"show runningconfiguration interface {vlan_intf}")["stdout"]
                     logger.error("Interface configuration:\n%s", config)
                 except Exception as e:
                     logger.error("Failed to get interface configuration: %s", str(e))
@@ -113,7 +115,7 @@ def ensure_port_is_up(duthost, port):
         if "connected" not in port_status.lower():
             logger.info(f"Port {port} is not connected on {duthost.hostname}, attempting to bring it up")
             duthost.shell(f"config interface startup {port}")
-            time.sleep(10)  # Wait for port to initialize
+            time.sleep(5)  # Wait for port to initialize
 
             # Check again
             port_status = duthost.shell(f"show interfaces status {port}")["stdout"]
@@ -125,21 +127,140 @@ def ensure_port_is_up(duthost, port):
     return True
 
 
-def configure_trunk_port(duthost, trunk_port):
-    """Configure a port as trunk and ensure it's up."""
+def is_trunk_port(duthost, port):
+    """Check if port is already configured as trunk."""
     try:
-        # Configure as trunk
-        duthost.shell(f"config interface trunk {trunk_port}")
-
-        # Ensure port is up
-        if not ensure_port_is_up(duthost, trunk_port):
-            return False
-
-        # Add port to each VLAN as tagged member
-        return True
-    except Exception as e:
-        logger.error(f"Error configuring trunk port {trunk_port} on {duthost.hostname}: {str(e)}")
+        output = duthost.shell("show interfaces switchport status")["stdout"]
+        for line in output.splitlines():
+            if port in line:
+                # Port is trunk if mode is not 'routed'
+                return 'routed' not in line
+        logger.error(f"Port {port} not found in switchport status output")
         return False
+    except Exception as e:
+        logger.error(f"Error checking port mode for {port}: {str(e)}")
+        return False
+
+
+def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
+    """
+    Convert a routed port to trunk port while preserving its IP configuration.
+
+    Args:
+        duthost: DUT host object
+        port: Port name to convert
+        existing_ip: Existing IP address on the port (if any)
+        vlan_id: VLAN ID to move the IP address to (if existing_ip is provided)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Check if port is already a trunk
+        if is_trunk_port(duthost, port):
+            logger.info(f"Port {port} is already a trunk port")
+            return True
+
+        # Get current IP configurations if not provided
+        if not existing_ip:
+            existing_ip = get_interface_ip(duthost, port)
+        
+        # Get IPv6 address
+        existing_ipv6 = get_interface_ip(duthost, port, ip_version=6)
+
+        # Remove IPv4 if it exists
+        if existing_ip:
+            try:
+                duthost.shell(f"sudo config interface ip remove {port} {existing_ip}")
+                time.sleep(2)  # Wait for IP removal to take effect
+            except Exception as e:
+                logger.warning(f"Error while removing IPv4 {existing_ip} from {port}: {str(e)}")
+
+        # Remove IPv6 if it exists and disable link-local
+        if existing_ipv6:
+            try:
+                duthost.shell(f"sudo config interface ip remove {port} {existing_ipv6}")
+                time.sleep(2)  # Wait for IP removal to take effect
+            except Exception as e:
+                logger.warning(f"Error while removing IPv6 {existing_ipv6} from {port}: {str(e)}")
+
+        # Disable IPv6 link-local address
+        try:
+            duthost.shell(f"sudo config interface ipv6 disable use-link-local-only {port}")
+            time.sleep(2)
+        except Exception as e:
+            logger.warning(f"Error while disabling IPv6 link-local on {port}: {str(e)}")
+
+        # Now configure interface as trunk
+        result = duthost.shell(f"sudo config switchport mode trunk {port}")
+        if result['rc'] != 0:
+            logger.error(f"Failed to convert port to trunk: {result['stderr']}")
+            return False
+        
+        # If we need to preserve IP configurations on a VLAN
+        if vlan_id:
+            # Configure VLAN and add port as member
+            duthost.shell(f"sudo config vlan add {vlan_id}")
+            duthost.shell(f"sudo config vlan member add {vlan_id} {port}")
+            
+            # Add IPs to VLAN interface if they existed
+            vlan_intf = f"Vlan{vlan_id}"
+            if existing_ip:
+                duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ip}")
+            if existing_ipv6:
+                duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ipv6}")
+        
+        return ensure_port_is_up(duthost, port)
+        
+    except Exception as e:
+        logger.error(f"Error converting port {port} to trunk on {duthost.hostname}: {str(e)}")
+        return False
+
+
+def get_interface_ip(duthost, interface, ip_version=4):
+    """Get IP address configured on an interface.
+    
+    Args:
+        duthost: DUT host object
+        interface: Interface name to check
+        ip_version: IP version (4 or 6)
+    
+    Returns:
+        str: IP address with prefix or None if not found
+    """
+    try:
+        cmd = "show ip interfaces" if ip_version == 4 else "show ipv6 interfaces"
+        output = duthost.shell(cmd)["stdout"]
+        
+        for line in output.split('\n'):
+            if interface in line:
+                # Match IP/mask format based on version
+                if ip_version == 4:
+                    match = re.search(r'(\d+\.\d+\.\d+\.\d+/\d+)', line)
+                else:
+                    match = re.search(r'([0-9a-fA-F:]+/\d+)', line)
+                    if match and match.group(1).startswith('fe80:'):
+                        continue  # Skip link-local addresses
+                if match:
+                    return match.group(1)
+    except Exception as e:
+        logger.error(f"Error getting IPv{ip_version} for interface {interface}: {str(e)}")
+    return None
+
+
+def get_interface_ipv6(duthost, interface):
+    """Get IPv6 address configured on an interface."""
+    try:
+        output = duthost.shell("show ipv6 interfaces")["stdout"]
+        for line in output.split('\n'):
+            if interface in line:
+                # Match IPv6/prefix format like 2001:db8::1/64, excluding link-local addresses
+                match = re.search(r'([0-9a-fA-F:]+/\d+)', line)
+                if match and not match.group(1).startswith('fe80:'):
+                    return match.group(1)
+    except Exception as e:
+        logger.error(f"Error getting IPv6 for interface {interface}: {str(e)}")
+    return None
 
 
 def get_remote_asn(duthost):
@@ -193,17 +314,32 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
             # Get the first connected port pair
             dut_port = next(iter(dut_nbr_ports.keys()))
-
-            # Get the corresponding port on neighbor from DUT's neighbor_facts
             nbr_port = neighbor_facts[dut_port]['port']
 
-            # Configure trunk ports on both sides
-            if not configure_trunk_port(duthost, dut_port):
-                pytest.fail(f"Failed to configure trunk port {dut_port} on {duthost.hostname}")
+            # Get existing IP addresses before converting to trunk
+            ip_version = 6 if addr_family == "ipv6" else 4
+            dut_ip = get_interface_ip(duthost, dut_port, ip_version=ip_version)
+            nbr_ip = get_interface_ip(nbrhost, nbr_port, ip_version=ip_version)
 
-            if not configure_trunk_port(nbrhost, nbr_port):
-                pytest.fail(f"Failed to configure trunk port {nbr_port} on {nbrhost.hostname}")
+            if not dut_ip or not nbr_ip:
+                pytest.fail(f"Could not get existing IPs for ports {dut_port}/{nbr_port}")
 
+            # Use BASE_VLAN_ID for the first VLAN to preserve existing BGP session
+            first_vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10)
+
+            # Convert ports to trunk while preserving IPs on first VLAN
+            if not convert_to_trunk_port(duthost, dut_port, dut_ip, first_vlan_id):
+                pytest.fail(f"Failed to convert {dut_port} to trunk on {duthost.hostname}")
+
+            if not convert_to_trunk_port(nbrhost, nbr_port, nbr_ip, first_vlan_id):
+                pytest.fail(f"Failed to convert {nbr_port} to trunk on {nbrhost.hostname}")
+
+            # Wait for original BGP session to recover
+            neighbor_ip = nbr_ip.split('/')[0]  # Get IP without subnet mask
+            if not wait_until(60, 5, 0, duthost.check_bgp_session_state, [neighbor_ip]):
+                pytest.fail(f"Original BGP session failed to recover on {duthost.hostname}")
+
+            import pdb; pdb.set_trace()
             # Configure additional peers for this neighbor
             for peer_index in range(PEERS_PER_DUT):
                 vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
@@ -284,16 +420,32 @@ def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
 
 
+def wait_bgp_sessions(duthost, timeout=60):
+    """
+    Wait for all BGP sessions to establish across all ASICs.
+    
+    Args:
+        duthost: DUT host object
+        timeout: Maximum time to wait in seconds (default: 60)
+    
+    Returns:
+        None. Raises assertion error if sessions don't establish.
+    """
+    bgp_neighbors = duthost.get_bgp_neighbors_per_asic(state="all")
+    neighbor_ips = [ip for ip in bgp_neighbors.keys() if ip is not None]
+    if not neighbor_ips:
+        pytest.fail(f"No valid BGP neighbor IPs found on {duthost.hostname}")
+        
+    pytest_assert(
+        wait_until(timeout, 5, 0, duthost.check_bgp_session_state, neighbor_ips),
+        f"Not all BGP sessions are established after {timeout} seconds on {duthost.hostname}"
+    )
+
+
 def verify_bgp_peer_scale(configs):
     """
     Verify BGP peer scale configuration and status
     """
-    def check_bgp_peer_status(duthost, neighbor_ip):
-        """Helper function to check BGP peer status."""
-        bgp_facts = duthost.bgp_facts()['ansible_facts']
-        return (neighbor_ip in bgp_facts['bgp_neighbors'] and
-                bgp_facts['bgp_neighbors'][neighbor_ip]['state'] == 'established')
-
     for config in configs:
         duthost = config['duthost']
         vlan_name = f"Vlan{config['vlan_id']}"
@@ -333,10 +485,7 @@ def verify_bgp_peer_scale(configs):
             f"BGP peer {config['neighbor_ip']} not found in BGP neighbors on {duthost.hostname}"
         )
 
-        pytest_assert(
-            wait_until(60, 5, 0, check_bgp_peer_status, duthost, config['neighbor_ip']),
-            f"BGP peer {config['neighbor_ip']} failed to establish on {duthost.hostname}"
-        )
+        wait_bgp_sessions(duthost)
 
 
 def cleanup_host_config(host, host_configs, is_dut=True):
@@ -387,3 +536,36 @@ def cleanup_host_config(host, host_configs, is_dut=True):
     except Exception as e:
         host_type = "DUT" if is_dut else "Neighbor"
         logger.error(f"{host_type} cleanup failed: {str(e)}")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def restore_topology(duthosts, nbrhosts, tbinfo):
+    """
+    Fixture to restore original topology configuration after tests complete.
+    Automatically applied to all tests in the module.
+    """
+    yield  # Run the test
+
+    logger.info("Restoring original topology configuration...")
+    
+    for duthost in duthosts:
+        try:
+            # Reload original config
+            config_reload(duthost, config_source='config_db', safe_reload=True)
+            
+            # Wait for critical services to be fully started
+            if not wait_until(300, 10, 0, duthost.critical_services_fully_started):
+                logger.error(f"Not all critical services are fully started on {duthost.hostname}")
+                
+            # Get BGP neighbors and wait for sessions to establish
+            wait_bgp_sessions(duthost)
+                
+        except Exception as e:
+            logger.error(f"Error restoring configuration on {duthost.hostname}: {str(e)}")
+            
+    # Clear ARP entries
+    for duthost in duthosts:
+        duthost.shell("sonic-clear arp")
+        duthost.shell("sonic-clear ndp")
+        
+    logger.info("Topology restoration completed")
