@@ -185,7 +185,8 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
         for neighbor_index, nbrhost in enumerate(current_neighbors):
             # Get the port connecting DUT to this neighbor
             neighbor_facts = duthost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
-            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items() if v['name'] == vm_to_dut[nbrhost.hostname]}
+            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items()
+                             if v['name'] == vm_to_dut[nbrhost.hostname]}
 
             if not dut_nbr_ports:
                 pytest.fail(f"No connection found between {duthost.hostname} and {nbrhost.hostname}")
@@ -195,7 +196,6 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
             # Get the corresponding port on neighbor from DUT's neighbor_facts
             nbr_port = neighbor_facts[dut_port]['port']
-            import pdb; pdb.set_trace()
 
             # Configure trunk ports on both sides
             if not configure_trunk_port(duthost, dut_port):
