@@ -151,7 +151,7 @@ def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
         port: Port name to convert
         existing_ip: Existing IP address on the port (if any)
         vlan_id: VLAN ID to move the IP address to (if existing_ip is provided)
-    
+
     Returns:
         bool: True if successful, False otherwise
     """
@@ -164,7 +164,7 @@ def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
         # Get current IP configurations if not provided
         if not existing_ip:
             existing_ip = get_interface_ip(duthost, port)
-        
+
         # Get IPv6 address
         existing_ipv6 = get_interface_ip(duthost, port, ip_version=6)
 
@@ -196,22 +196,22 @@ def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
         if result['rc'] != 0:
             logger.error(f"Failed to convert port to trunk: {result['stderr']}")
             return False
-        
+
         # If we need to preserve IP configurations on a VLAN
         if vlan_id:
             # Configure VLAN and add port as member
             duthost.shell(f"sudo config vlan add {vlan_id}")
             duthost.shell(f"sudo config vlan member add {vlan_id} {port}")
-            
+
             # Add IPs to VLAN interface if they existed
             vlan_intf = f"Vlan{vlan_id}"
             if existing_ip:
                 duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ip}")
             if existing_ipv6:
                 duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ipv6}")
-        
+
         return ensure_port_is_up(duthost, port)
-        
+
     except Exception as e:
         logger.error(f"Error converting port {port} to trunk on {duthost.hostname}: {str(e)}")
         return False
@@ -245,21 +245,6 @@ def get_interface_ip(duthost, interface, ip_version=4):
                     return match.group(1)
     except Exception as e:
         logger.error(f"Error getting IPv{ip_version} for interface {interface}: {str(e)}")
-    return None
-
-
-def get_interface_ipv6(duthost, interface):
-    """Get IPv6 address configured on an interface."""
-    try:
-        output = duthost.shell("show ipv6 interfaces")["stdout"]
-        for line in output.split('\n'):
-            if interface in line:
-                # Match IPv6/prefix format like 2001:db8::1/64, excluding link-local addresses
-                match = re.search(r'([0-9a-fA-F:]+/\d+)', line)
-                if match and not match.group(1).startswith('fe80:'):
-                    return match.group(1)
-    except Exception as e:
-        logger.error(f"Error getting IPv6 for interface {interface}: {str(e)}")
     return None
 
 
@@ -339,7 +324,6 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             if not wait_until(60, 5, 0, duthost.check_bgp_session_state, [neighbor_ip]):
                 pytest.fail(f"Original BGP session failed to recover on {duthost.hostname}")
 
-            import pdb; pdb.set_trace()
             # Configure additional peers for this neighbor
             for peer_index in range(PEERS_PER_DUT):
                 vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
@@ -423,11 +407,11 @@ def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
 def wait_bgp_sessions(duthost, timeout=60):
     """
     Wait for all BGP sessions to establish across all ASICs.
-    
+
     Args:
         duthost: DUT host object
         timeout: Maximum time to wait in seconds (default: 60)
-    
+
     Returns:
         None. Raises assertion error if sessions don't establish.
     """
@@ -435,7 +419,7 @@ def wait_bgp_sessions(duthost, timeout=60):
     neighbor_ips = [ip for ip in bgp_neighbors.keys() if ip is not None]
     if not neighbor_ips:
         pytest.fail(f"No valid BGP neighbor IPs found on {duthost.hostname}")
-        
+
     pytest_assert(
         wait_until(timeout, 5, 0, duthost.check_bgp_session_state, neighbor_ips),
         f"Not all BGP sessions are established after {timeout} seconds on {duthost.hostname}"
