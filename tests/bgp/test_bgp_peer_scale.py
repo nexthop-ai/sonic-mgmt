@@ -13,7 +13,7 @@ from tests.common.config_reload import config_reload
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.topology("t0", "t1"),
+    pytest.mark.topology("t1"),
 ]
 
 # Constants for BGP peer scaling
@@ -110,21 +110,24 @@ def get_free_ipv6_pair(vlan_id):
 def ensure_port_is_up(duthost, port):
     """Ensure the port is up and operational."""
     try:
-        # Check port status
-        port_status = duthost.shell(f"show interfaces status {port}")["stdout"]
-        if "connected" not in port_status.lower():
-            logger.info(f"Port {port} is not connected on {duthost.hostname}, attempting to bring it up")
-            duthost.shell(f"config interface startup {port}")
-            time.sleep(5)  # Wait for port to initialize
+        def _check_port_state():
+            output = duthost.shell("show interface status")["stdout"]
+            for line in output.splitlines():
+                if port in line:
+                    fields = line.split()
+                    # Ensure we have enough fields (Oper is 8th field, index 7)
+                    if len(fields) >= 9:
+                        oper_status = fields[7]
+                        return oper_status.lower() == "up"
+            return False
 
-            # Check again
-            port_status = duthost.shell(f"show interfaces status {port}")["stdout"]
-            if "connected" not in port_status.lower():
-                return False
+        if not wait_until(30, 2, 0, _check_port_state):
+            logger.error(f"Port {port} failed to come up after 30 seconds")
+            return False
+        return True
     except Exception as e:
         logger.error(f"Error checking port status for {port} on {duthost.hostname}: {str(e)}")
         return False
-    return True
 
 
 def is_trunk_port(duthost, port):
@@ -142,15 +145,14 @@ def is_trunk_port(duthost, port):
         return False
 
 
-def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
+def convert_to_trunk_port(duthost, port, vlan_id=None):
     """
     Convert a routed port to trunk port while preserving its IP configuration.
 
     Args:
         duthost: DUT host object
         port: Port name to convert
-        existing_ip: Existing IP address on the port (if any)
-        vlan_id: VLAN ID to move the IP address to (if existing_ip is provided)
+        vlan_id: VLAN ID to move the IP address to
 
     Returns:
         bool: True if successful, False otherwise
@@ -161,33 +163,39 @@ def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
             logger.info(f"Port {port} is already a trunk port")
             return True
 
-        # Get current IP configurations if not provided
-        if not existing_ip:
-            existing_ip = get_interface_ip(duthost, port)
-
-        # Get IPv6 address
+        # Get current IP configurations
+        existing_ip = get_interface_ip(duthost, port)
         existing_ipv6 = get_interface_ip(duthost, port, ip_version=6)
+        logger.info(f"Detected IPs on {port} - IPv4: {existing_ip}, IPv6: {existing_ipv6}")
 
         # Remove IPv4 if it exists
         if existing_ip:
             try:
                 duthost.shell(f"sudo config interface ip remove {port} {existing_ip}")
-                time.sleep(2)  # Wait for IP removal to take effect
+                def check_ipv4_removed():
+                    return not get_interface_ip(duthost, port)
+                if not wait_until(30, 2, 0, check_ipv4_removed):
+                    logger.error(f"Timeout waiting for IPv4 {existing_ip} to be removed from {port}")
+                    return False
             except Exception as e:
                 logger.warning(f"Error while removing IPv4 {existing_ip} from {port}: {str(e)}")
 
-        # Remove IPv6 if it exists and disable link-local
+        # Remove IPv6 if it exists
         if existing_ipv6:
             try:
                 duthost.shell(f"sudo config interface ip remove {port} {existing_ipv6}")
-                time.sleep(2)  # Wait for IP removal to take effect
+                def check_ipv6_removed():
+                    return not get_interface_ip(duthost, port, ip_version=6)
+                if not wait_until(30, 2, 0, check_ipv6_removed):
+                    logger.error(f"Timeout waiting for IPv6 {existing_ipv6} to be removed from {port}")
+                    return False
             except Exception as e:
                 logger.warning(f"Error while removing IPv6 {existing_ipv6} from {port}: {str(e)}")
 
         # Disable IPv6 link-local address
         try:
             duthost.shell(f"sudo config interface ipv6 disable use-link-local-only {port}")
-            time.sleep(2)
+            time.sleep(2)  # Wait for IPv6 link-local to be disabled
         except Exception as e:
             logger.warning(f"Error while disabling IPv6 link-local on {port}: {str(e)}")
 
@@ -219,30 +227,29 @@ def convert_to_trunk_port(duthost, port, existing_ip=None, vlan_id=None):
 
 def get_interface_ip(duthost, interface, ip_version=4):
     """Get IP address configured on an interface.
-    
+
     Args:
         duthost: DUT host object
         interface: Interface name to check
         ip_version: IP version (4 or 6)
-    
+
     Returns:
         str: IP address with prefix or None if not found
     """
     try:
-        cmd = "show ip interfaces" if ip_version == 4 else "show ipv6 interfaces"
-        output = duthost.shell(cmd)["stdout"]
-        
-        for line in output.split('\n'):
-            if interface in line:
-                # Match IP/mask format based on version
-                if ip_version == 4:
-                    match = re.search(r'(\d+\.\d+\.\d+\.\d+/\d+)', line)
-                else:
-                    match = re.search(r'([0-9a-fA-F:]+/\d+)', line)
-                    if match and match.group(1).startswith('fe80:'):
-                        continue  # Skip link-local addresses
-                if match:
-                    return match.group(1)
+        if ip_version == 4:
+            ip_intf_facts = duthost.show_ip_interface()['ansible_facts']['ip_interfaces']
+            if interface in ip_intf_facts:
+                intf_info = ip_intf_facts[interface]
+                if 'ipv4' in intf_info and 'prefix_len' in intf_info:
+                    return f"{intf_info['ipv4']}/{intf_info['prefix_len']}"
+        else:
+            ipv6_interfaces = duthost.show_ipv6_interfaces()
+            if interface in ipv6_interfaces:
+                ipv6_addr = ipv6_interfaces[interface].get('ipv6 address/mask')
+                # Skip link-local addresses
+                if ipv6_addr and not ipv6_addr.startswith('fe80:'):
+                    return ipv6_addr
     except Exception as e:
         logger.error(f"Error getting IPv{ip_version} for interface {interface}: {str(e)}")
     return None
@@ -313,12 +320,13 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             first_vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10)
 
             # Convert ports to trunk while preserving IPs on first VLAN
-            if not convert_to_trunk_port(duthost, dut_port, dut_ip, first_vlan_id):
+            if not convert_to_trunk_port(duthost, dut_port, first_vlan_id):
                 pytest.fail(f"Failed to convert {dut_port} to trunk on {duthost.hostname}")
 
-            if not convert_to_trunk_port(nbrhost, nbr_port, nbr_ip, first_vlan_id):
+            if not convert_to_trunk_port(nbrhost, nbr_port, first_vlan_id):
                 pytest.fail(f"Failed to convert {nbr_port} to trunk on {nbrhost.hostname}")
 
+            import pdb; pdb.set_trace()
             # Wait for original BGP session to recover
             neighbor_ip = nbr_ip.split('/')[0]  # Get IP without subnet mask
             if not wait_until(60, 5, 0, duthost.check_bgp_session_state, [neighbor_ip]):
@@ -530,26 +538,27 @@ def restore_topology(duthosts, nbrhosts, tbinfo):
     """
     yield  # Run the test
 
+    import pdb; pdb.set_trace()
     logger.info("Restoring original topology configuration...")
-    
+
     for duthost in duthosts:
         try:
             # Reload original config
             config_reload(duthost, config_source='config_db', safe_reload=True)
-            
+
             # Wait for critical services to be fully started
             if not wait_until(300, 10, 0, duthost.critical_services_fully_started):
                 logger.error(f"Not all critical services are fully started on {duthost.hostname}")
-                
+
             # Get BGP neighbors and wait for sessions to establish
             wait_bgp_sessions(duthost)
-                
+
         except Exception as e:
             logger.error(f"Error restoring configuration on {duthost.hostname}: {str(e)}")
-            
+
     # Clear ARP entries
     for duthost in duthosts:
         duthost.shell("sonic-clear arp")
         duthost.shell("sonic-clear ndp")
-        
+
     logger.info("Topology restoration completed")
