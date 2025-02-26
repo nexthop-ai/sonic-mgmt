@@ -326,7 +326,6 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             if not convert_to_trunk_port(nbrhost, nbr_port, first_vlan_id):
                 pytest.fail(f"Failed to convert {nbr_port} to trunk on {nbrhost.hostname}")
 
-            import pdb; pdb.set_trace()
             # Wait for original BGP session to recover
             neighbor_ip = nbr_ip.split('/')[0]  # Get IP without subnet mask
             if not wait_until(60, 5, 0, duthost.check_bgp_session_state, [neighbor_ip]):
@@ -538,9 +537,9 @@ def restore_topology(duthosts, nbrhosts, tbinfo):
     """
     yield  # Run the test
 
-    import pdb; pdb.set_trace()
     logger.info("Restoring original topology configuration...")
 
+    # Restore DUT hosts
     for duthost in duthosts:
         try:
             # Reload original config
@@ -550,15 +549,23 @@ def restore_topology(duthosts, nbrhosts, tbinfo):
             if not wait_until(300, 10, 0, duthost.critical_services_fully_started):
                 logger.error(f"Not all critical services are fully started on {duthost.hostname}")
 
-            # Get BGP neighbors and wait for sessions to establish
-            wait_bgp_sessions(duthost)
-
         except Exception as e:
             logger.error(f"Error restoring configuration on {duthost.hostname}: {str(e)}")
 
-    # Clear ARP entries
+    # Restore neighbor hosts
+    for nbrhost in nbrhosts.values():
+        try:
+            host = nbrhost["host"]
+            logger.info(f"Restoring configuration on neighbor {host.hostname}")
+            host.shell("config reload -y")
+        except Exception as e:
+            logger.error(f"Error restoring configuration on neighbor {host.hostname}: {str(e)}")
+
+    # Wait for BGP sessions to establish on all DUTs
     for duthost in duthosts:
-        duthost.shell("sonic-clear arp")
-        duthost.shell("sonic-clear ndp")
+        try:
+            wait_bgp_sessions(duthost)
+        except Exception as e:
+            logger.error(f"Error waiting for BGP sessions on {duthost.hostname}: {str(e)}")
 
     logger.info("Topology restoration completed")
