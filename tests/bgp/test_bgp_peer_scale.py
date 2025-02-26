@@ -5,7 +5,6 @@ import logging
 import pytest
 import ipaddress
 import time
-import re
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.config_reload import config_reload
@@ -172,8 +171,10 @@ def convert_to_trunk_port(duthost, port, vlan_id=None):
         if existing_ip:
             try:
                 duthost.shell(f"sudo config interface ip remove {port} {existing_ip}")
+
                 def check_ipv4_removed():
                     return not get_interface_ip(duthost, port)
+
                 if not wait_until(30, 2, 0, check_ipv4_removed):
                     logger.error(f"Timeout waiting for IPv4 {existing_ip} to be removed from {port}")
                     return False
@@ -184,8 +185,10 @@ def convert_to_trunk_port(duthost, port, vlan_id=None):
         if existing_ipv6:
             try:
                 duthost.shell(f"sudo config interface ip remove {port} {existing_ipv6}")
+
                 def check_ipv6_removed():
                     return not get_interface_ip(duthost, port, ip_version=6)
+
                 if not wait_until(30, 2, 0, check_ipv6_removed):
                     logger.error(f"Timeout waiting for IPv6 {existing_ipv6} to be removed from {port}")
                     return False
