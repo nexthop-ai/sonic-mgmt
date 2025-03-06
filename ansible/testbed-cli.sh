@@ -21,6 +21,8 @@ function usage
   echo "    $0 [options] set-l2 <testbed-name> <vault-password-file>"
   echo "    $0 [options] install-image <testbed-name> <inventory> <image-url>"
   echo "    $0 [options] collect-show-tech <testbed-name> <inventory> <vault-password-file>"
+  echo "    $0 [options] (add-topo-ptf | add-topo-fanout) <testbed-name> <vault-password-file>"
+  echo "    $0 [options] (remove-topo-ptf | remove-topo-fanout) <testbed-name> <vault-password-file>"
   echo
   echo "Options:"
   echo "    -t <tbfile>     : testbed CSV file name (default: 'testbed.yaml')"
@@ -79,6 +81,10 @@ function usage
   echo "To collect show techsupport result of a testbed: $0 collect-show-tech 'testbed-name' 'inventory' ~/.password"
   echo "    collect-show-tech supports specify output path for dumped files"
   echo "        -e output_path=<user-specified-path>"
+  echo "To deploy a PTF for specified testbed on a server: $0 add-topo-ptf 'testbed-name' ~/.password"
+  echo "To deploy the fanout configuration for specified testbed on a server: $0 add-topo-fanout 'testbed-name' ~/.password"
+  echo "To remove the PTF for specified testbed on a server: $0 remove-topo-ptf 'testbed-name' ~/.password"
+  echo "To remove the fanout configuration for specified testbed on a server: $0 remove-topo-fanout 'testbed-name' ~/.password"
   echo
   echo "You should define your testbed in testbed CSV file"
   echo
@@ -247,13 +253,14 @@ function stop_topo_vms
 	  -e VM_base="$vm_base" -e vm_type="$vm_type" -e topo="$topo" $@
 }
 
-function add_topo
+
+function add_topo_ptf
 {
   testbed_name=$1
   passwd=$2
   shift
   shift
-  echo "Deploying topology for testbed '${testbed_name}'"
+  echo "Deploying PTF for testbed '${testbed_name}'"
 
   read_file ${testbed_name}
 
@@ -274,12 +281,35 @@ function add_topo
         -e ptf_extra_mgmt_ip="$ptf_extra_mgmt_ip" -e netns_mgmt_ip="$netns_mgmt_ip" \
         $ansible_options $@
 
+  cache_files_path_value=$(is_cache_exist)
+  if [[ -n $cache_files_path_value ]]; then
+    echo "$testbed_name" > $cache_files_path_value/$dut
+  fi
+}
+
+function add_topo_fanout
+{
+  testbed_name=$1
+  passwd=$2
+  shift
+  shift
+  echo "Deploying fanout settings for testbed '${testbed_name}'"
+
+  read_file ${testbed_name}
+
+  echo "$dut" "$duts"
+
+  if [ -n "$sonic_vm_dir" ]; then
+      ansible_options="-e sonic_vm_storage_location=$sonic_vm_dir"
+  fi
+
+  if [[ $vm_type == vcisco ]]; then
+      ansible_options+=" -e eos_batch_size=1"
+  fi
+
   if [[ "$ptf_imagename" != "docker-keysight-api-server" ]]; then
     ansible-playbook fanout.yml -i ${inv_name}  --vault-password-file="${passwd}"
   fi
-
-  # Delete the obsoleted arp entry for the PTF IP
-  ip neighbor flush $ptf_ip || true
 
   cache_files_path_value=$(is_cache_exist)
   if [[ -n $cache_files_path_value ]]; then
@@ -287,6 +317,20 @@ function add_topo
   fi
 
   echo Done
+}
+
+function add_topo
+{
+  testbed_name=$1
+  passwd=$2
+  shift
+  shift
+  echo "Deploying topology for testbed '${testbed_name}'"
+
+  add_topo_ptf $testbed_name $passwd $@
+  add_topo_fanout $testbed_name $passwd $@
+
+  echo "Full $testbed_name topology deployment done"
 }
 
 function remove_topo
@@ -321,6 +365,16 @@ function remove_topo
       $ansible_options $@
 
   echo Done
+}
+
+function remove_topo_ptf()
+{
+   remove_topo $@ || true
+}
+
+function remove_topo_fanout()
+{
+   echo "remove_topo_fanout is an empty function..."
 }
 
 function redeploy_topo()
@@ -836,6 +890,14 @@ case "${subcmd}" in
   install-image) install_image $@
                ;;
   collect-show-tech) collect_show_tech $@
+               ;;
+  add-topo-ptf) add_topo_ptf $@
+               ;;
+  add-topo-fanout) add_topo_fanout $@
+               ;;
+  remove-topo-ptf) remove_topo_ptf $@
+               ;;
+  remove-topo-fanout) remove_topo_fanout $@
                ;;
   *)           usage
                ;;
