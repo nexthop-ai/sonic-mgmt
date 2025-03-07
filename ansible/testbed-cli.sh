@@ -281,6 +281,9 @@ function add_topo_ptf
         -e ptf_extra_mgmt_ip="$ptf_extra_mgmt_ip" -e netns_mgmt_ip="$netns_mgmt_ip" \
         $ansible_options $@
 
+  # Delete the obsoleted arp entry for the PTF IP
+  ip neighbor flush $ptf_ip || true
+
   cache_files_path_value=$(is_cache_exist)
   if [[ -n $cache_files_path_value ]]; then
     echo "$testbed_name" > $cache_files_path_value/$dut
