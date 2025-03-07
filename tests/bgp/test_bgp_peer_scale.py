@@ -1,5 +1,5 @@
 """
-Test BGP peer scaling by adding multiple BGP peers on SONiC DUTs.
+Test BGP peer scaling by adding multiple BGP peers using loopback interfaces on SONiC DUTs.
 """
 import logging
 import pytest
@@ -12,58 +12,44 @@ from tests.common.config_reload import config_reload
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.topology("t1"),
+    pytest.mark.topology("t0", "t1"),
 ]
 
 # Constants for BGP peer scaling
-BASE_VLAN_ID = 2000  # Starting VLAN ID for new peers
+BASE_LOOPBACK_ID = 1  # Starting Loopback ID
 BASE_BGP_ASN = 65100  # Starting ASN for new peers
 PEERS_PER_DUT = 2  # Number of additional peers to configure per DUT
 
 
-def verify_vlan_interface_status(duthost, vlan_id):
-    """Verify VLAN interface status using show ip interfaces command."""
-    vlan_intf = "Vlan{}".format(vlan_id)
+def get_neighbor_ip(duthost, nbrhost, tbinfo):
+    """Get the IP address of the connected interface on the neighbor."""
+    # Get minigraph facts using get_extended_minigraph_facts
+    neighbor_facts = duthost.get_extended_minigraph_facts(tbinfo)
 
-    # Use show ip interfaces to check status
-    output = duthost.shell("show ip interfaces")["stdout"]
-    logger.debug("show ip interfaces output:\n%s", output)
+    # Get neighbor name from minigraph
+    nbr_name = nbrhost.hostname
 
-    # Parse the output to check if interface exists and is up
-    for line in output.splitlines():
-        if vlan_intf in line:
-            if "up/up" in line:
-                logger.info("Interface %s is up: %s", vlan_intf, line.strip())
-                return True
-            else:
-                logger.error("Interface %s is not up: %s", vlan_intf, line.strip())
-                # Get additional interface details for debugging
-                try:
-                    config = duthost.shell(f"show runningconfiguration interface {vlan_intf}")["stdout"]
-                    logger.error("Interface configuration:\n%s", config)
-                except Exception as e:
-                    logger.error("Failed to get interface configuration: %s", str(e))
-                return False
+    # Look through DUT's neighbors to find the matching neighbor
+    for port, neighbor in neighbor_facts['minigraph_neighbors'].items():
+        if neighbor['name'].lower() == nbr_name.lower():
+            # Find the corresponding BGP peer info
+            for peer in neighbor_facts['minigraph_bgp']:
+                if peer['name'] == nbr_name:
+                    return peer['addr']
 
-    logger.error("Interface %s not found in show ip interfaces output", vlan_intf)
-    # Check if VLAN exists
-    vlan_output = duthost.shell("show vlan")["stdout"]
-    if str(vlan_id) not in vlan_output:
-        logger.error("VLAN %s does not exist in show vlan output", vlan_id)
-    return False
+    return None
 
 
 def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family="ipv4"):
-    """Configure a BGP peer with proper peer group and timers."""
+    """Configure a BGP peer with proper timers."""
     try:
-        peer_group = "PEER_V4" if ":" not in neighbor_ip else "PEER_V6"
         commands = [
             "vtysh -c 'configure terminal' "
             f"-c 'router bgp {local_asn}' "
             f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' "
-            f"-c 'neighbor {neighbor_ip} peer-group {peer_group}' "
             f"-c 'neighbor {neighbor_ip} timers 3 10' "
             f"-c 'neighbor {neighbor_ip} timers connect 10' "
+            f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
             f"-c 'address-family {addr_family} unicast' "
             f"-c 'neighbor {neighbor_ip} activate'"
         ]
@@ -79,183 +65,125 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=
         return False
 
 
-def get_free_ip_pair(vlan_id):
-    """Get a pair of non-overlapping IP addresses for local and neighbor use based on VLAN ID."""
-    # Use VLAN ID to create unique subnet for each VLAN
+def get_loopback_ip_pair(loopback_id):
+    """Get a pair of non-overlapping IP addresses for local and neighbor loopback use."""
+    # Use loopback ID to create unique addresses
     # For example:
-    # VLAN 2000 -> 192.168.200.0/24
-    # VLAN 2001 -> 192.168.201.0/24
-    third_octet = vlan_id % 256  # Ensure we stay within valid range
-    network = f"192.168.{third_octet}.0/24"
-
+    # Loopback 1 -> 172.16.1.1/32 and 172.16.1.2/32
+    network = f"172.16.{loopback_id}.0/24"
     net = ipaddress.ip_network(network)
-    # Use .1 for local IP and .2 for neighbor IP
     return str(net[1]), str(net[2])
 
 
-def get_free_ipv6_pair(vlan_id):
-    """Get a pair of non-overlapping IPv6 addresses for local and neighbor use based on VLAN ID."""
-    # Use VLAN ID to create unique IPv6 subnet for each VLAN
+def get_loopback_ipv6_pair(loopback_id):
+    """Get a pair of non-overlapping IPv6 addresses for local and neighbor loopback use."""
+    # Use loopback ID to create unique IPv6 addresses
     # For example:
-    # VLAN 2000 -> 2001:db8:2000::/64
-    # VLAN 2001 -> 2001:db8:2001::/64
-    network = f"2001:db8:{vlan_id:x}::/64"
-
+    # Loopback 1 -> fc00:1::1/128 and fc00:1::2/128
+    network = f"fc00:{loopback_id:x}::/64"
     net = ipaddress.ip_network(network)
-    # Use ::1 for local IP and ::2 for neighbor IP
     return str(net[1]), str(net[2])
 
 
-def ensure_port_is_up(duthost, port):
-    """Ensure the port is up and operational."""
+def configure_loopback(duthost, loopback_id, ip_addr):
+    """Configure a loopback interface with the given IP.
+
+    Args:
+        duthost: DUT host object
+        loopback_id: Loopback interface ID
+        ip_addr: IP address (IPv4 or IPv6) to configure
+    """
     try:
-        def _check_port_state():
-            output = duthost.shell("show interface status")["stdout"]
-            for line in output.splitlines():
-                if port in line:
-                    fields = line.split()
-                    # Ensure we have enough fields (Oper is 8th field, index 7)
-                    if len(fields) >= 9:
-                        oper_status = fields[7]
-                        return oper_status.lower() == "up"
+        loopback_name = f"Loopback{loopback_id}"
+        is_ipv6 = ':' in ip_addr
+        prefix_len = '128' if is_ipv6 else '32'
+
+        # Check if loopback exists
+        check_cmd = duthost.shell(f"show ip interface {loopback_name}")
+        loopback_exists = check_cmd['rc'] == 0
+
+        if not loopback_exists:
+            result = duthost.shell(f"config loopback add {loopback_name}")
+            if result['rc'] != 0 and "already exists" not in result['stderr']:
+                logger.error(f"Failed to add loopback: {result['stderr']}")
+                return False
+
+        # Configure IP address based on IP version
+        if is_ipv6:
+            cmd = f"config interface ipv6 add {loopback_name} {ip_addr}/{prefix_len}"
+        else:
+            cmd = f"config interface ip add {loopback_name} {ip_addr}/{prefix_len}"
+
+        result = duthost.shell(cmd)
+        if result['rc'] != 0:
+            logger.error(f"Failed to configure IP: {result['stderr']}")
             return False
 
-        if not wait_until(30, 2, 0, _check_port_state):
-            logger.error(f"Port {port} failed to come up after 30 seconds")
+        # Verify interface is up and has correct IP
+        if is_ipv6:
+            verify_cmd = duthost.shell(f"show ipv6 interface {loopback_name}")
+        else:
+            verify_cmd = duthost.shell(f"show ip interface {loopback_name}")
+
+        if verify_cmd['rc'] != 0:
+            logger.error(f"Failed to verify {loopback_name} configuration")
+            return False
+
+        if "up/up" not in verify_cmd['stdout'] or ip_addr not in verify_cmd['stdout']:
+            logger.error(f"Failed to verify {loopback_name} status or IP configuration")
+            return False
+
+        return True
+    except Exception as e:
+        logger.error(f"Error configuring loopback: {str(e)}")
+        return False
+
+
+def configure_default_route(duthost, next_hop, addr_family="ipv4"):
+    """Configure a default route to reach loopback IPs.
+
+    Args:
+        duthost: DUT host object
+        next_hop: Next hop IP address
+        addr_family: Address family ("ipv4" or "ipv6")
+    """
+    try:
+        if addr_family == "ipv4":
+            command = f"ip route add 0.0.0.0/0 via {next_hop}"
+        else:
+            command = f"ip -6 route add ::/0 via {next_hop}"
+
+        result = duthost.shell(command)
+        if result['rc'] != 0:
+            logger.error(f"Failed to configure default route. Error: {result['stderr']}")
             return False
         return True
     except Exception as e:
-        logger.error(f"Error checking port status for {port} on {duthost.hostname}: {str(e)}")
+        logger.error(f"Error configuring default route: {str(e)}")
         return False
 
 
-def is_trunk_port(duthost, port):
-    """Check if port is already configured as trunk."""
-    try:
-        output = duthost.shell("show interfaces switchport status")["stdout"]
-        for line in output.splitlines():
-            if port in line:
-                # Port is trunk if mode is not 'routed'
-                return 'routed' not in line
-        logger.error(f"Port {port} not found in switchport status output")
-        return False
-    except Exception as e:
-        logger.error(f"Error checking port mode for {port}: {str(e)}")
-        return False
-
-
-def convert_to_trunk_port(duthost, port, vlan_id=None):
-    """
-    Convert a routed port to trunk port while preserving its IP configuration.
+def unconfigure_default_route(duthost, addr_family="ipv4"):
+    """Remove the default route for the specified address family.
 
     Args:
         duthost: DUT host object
-        port: Port name to convert
-        vlan_id: VLAN ID to move the IP address to
-
-    Returns:
-        bool: True if successful, False otherwise
+        addr_family: Address family ("ipv4" or "ipv6")
     """
     try:
-        # Check if port is already a trunk
-        if is_trunk_port(duthost, port):
-            logger.info(f"Port {port} is already a trunk port")
-            return True
-
-        # Get current IP configurations
-        existing_ip = get_interface_ip(duthost, port)
-        existing_ipv6 = get_interface_ip(duthost, port, ip_version=6)
-        logger.info(f"Detected IPs on {port} - IPv4: {existing_ip}, IPv6: {existing_ipv6}")
-
-        # Remove IPv4 if it exists
-        if existing_ip:
-            try:
-                duthost.shell(f"sudo config interface ip remove {port} {existing_ip}")
-
-                def check_ipv4_removed():
-                    return not get_interface_ip(duthost, port)
-
-                if not wait_until(30, 2, 0, check_ipv4_removed):
-                    logger.error(f"Timeout waiting for IPv4 {existing_ip} to be removed from {port}")
-                    return False
-            except Exception as e:
-                logger.warning(f"Error while removing IPv4 {existing_ip} from {port}: {str(e)}")
-
-        # Remove IPv6 if it exists
-        if existing_ipv6:
-            try:
-                duthost.shell(f"sudo config interface ip remove {port} {existing_ipv6}")
-
-                def check_ipv6_removed():
-                    return not get_interface_ip(duthost, port, ip_version=6)
-
-                if not wait_until(30, 2, 0, check_ipv6_removed):
-                    logger.error(f"Timeout waiting for IPv6 {existing_ipv6} to be removed from {port}")
-                    return False
-            except Exception as e:
-                logger.warning(f"Error while removing IPv6 {existing_ipv6} from {port}: {str(e)}")
-
-        # Disable IPv6 link-local address
-        try:
-            duthost.shell(f"sudo config interface ipv6 disable use-link-local-only {port}")
-            time.sleep(2)  # Wait for IPv6 link-local to be disabled
-        except Exception as e:
-            logger.warning(f"Error while disabling IPv6 link-local on {port}: {str(e)}")
-
-        # Now configure interface as trunk
-        result = duthost.shell(f"sudo config switchport mode trunk {port}")
-        if result['rc'] != 0:
-            logger.error(f"Failed to convert port to trunk: {result['stderr']}")
-            return False
-
-        # If we need to preserve IP configurations on a VLAN
-        if vlan_id:
-            # Configure VLAN and add port as member
-            duthost.shell(f"sudo config vlan add {vlan_id}")
-            duthost.shell(f"sudo config vlan member add {vlan_id} {port}")
-
-            # Add IPs to VLAN interface if they existed
-            vlan_intf = f"Vlan{vlan_id}"
-            if existing_ip:
-                duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ip}")
-            if existing_ipv6:
-                duthost.shell(f"sudo config interface ip add {vlan_intf} {existing_ipv6}")
-
-        return ensure_port_is_up(duthost, port)
-
-    except Exception as e:
-        logger.error(f"Error converting port {port} to trunk on {duthost.hostname}: {str(e)}")
-        return False
-
-
-def get_interface_ip(duthost, interface, ip_version=4):
-    """Get IP address configured on an interface.
-
-    Args:
-        duthost: DUT host object
-        interface: Interface name to check
-        ip_version: IP version (4 or 6)
-
-    Returns:
-        str: IP address with prefix or None if not found
-    """
-    try:
-        if ip_version == 4:
-            ip_intf_facts = duthost.show_ip_interface()['ansible_facts']['ip_interfaces']
-            if interface in ip_intf_facts:
-                intf_info = ip_intf_facts[interface]
-                if 'ipv4' in intf_info and 'prefix_len' in intf_info:
-                    return f"{intf_info['ipv4']}/{intf_info['prefix_len']}"
+        if addr_family == "ipv4":
+            command = "ip route del 0.0.0.0/0"
         else:
-            ipv6_interfaces = duthost.show_ipv6_interfaces()
-            if interface in ipv6_interfaces:
-                ipv6_addr = ipv6_interfaces[interface].get('ipv6 address/mask')
-                # Skip link-local addresses
-                if ipv6_addr and not ipv6_addr.startswith('fe80:'):
-                    return ipv6_addr
+            command = "ip -6 route del ::/0"
+
+        result = duthost.shell(command)
+        if result['rc'] != 0:
+            logger.error(f"Failed to remove default route. Error: {result['stderr']}")
+            return False
+        return True
     except Exception as e:
-        logger.error(f"Error getting IPv{ip_version} for interface {interface}: {str(e)}")
-    return None
+        logger.error(f"Error removing default route: {str(e)}")
+        return False
 
 
 def get_remote_asn(duthost):
@@ -280,118 +208,96 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
         addr_family: Address family ("ipv4" or "ipv6")
     """
     configs = []
+    try:
+        for dut_index, duthost in enumerate(duthosts):
+            # Get DUT configuration
+            config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+            local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
+            remote_asn = get_remote_asn(duthost)
 
-    for dut_index, duthost in enumerate(duthosts):
-        # Get DUT configuration
-        config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-        local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
-        remote_asn = get_remote_asn(duthost)
+            # Get all current BGP neighbors for this DUT
+            current_neighbors = [nbr["host"] for nbr in nbrhosts.values()]
 
-        # Get all current BGP neighbors for this DUT
-        current_neighbors = [nbr["host"] for nbr in nbrhosts.values()]
+            if not current_neighbors:
+                logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
+                continue
 
-        if not current_neighbors:
-            logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
-            continue
+            # Get port connections between DUT and neighbors
+            for neighbor_index, nbrhost in enumerate(current_neighbors):
+                # Get neighbor IPs for default routes
+                dut_nbr_ip = get_neighbor_ip(duthost, nbrhost, tbinfo)
+                nbr_dut_ip = get_neighbor_ip(nbrhost, duthost, tbinfo)
 
-        # Create mapping between VM hostnames and DUT neighbor names
-        vm_to_dut = {v["host"].hostname: k for k, v in nbrhosts.items()}
+                if not dut_nbr_ip or not nbr_dut_ip:
+                    pytest.fail(f"Failed to get neighbor IP addresses for {duthost.hostname} and {nbrhost.hostname}")
 
-        # Get port connections between DUT and neighbors
-        for neighbor_index, nbrhost in enumerate(current_neighbors):
-            # Get the port connecting DUT to this neighbor
-            neighbor_facts = duthost.get_extended_minigraph_facts(tbinfo)['minigraph_neighbors']
-            dut_nbr_ports = {k: v['name'] for k, v in neighbor_facts.items()
-                             if v['name'] == vm_to_dut[nbrhost.hostname]}
+                # Configure default routes on both DUT and neighbor
+                success = configure_default_route(duthost, dut_nbr_ip, addr_family)
+                if not success:
+                    pytest.fail(f"Failed to configure default route on {duthost.hostname}")
 
-            if not dut_nbr_ports:
-                pytest.fail(f"No connection found between {duthost.hostname} and {nbrhost.hostname}")
+                success = configure_default_route(nbrhost, nbr_dut_ip, addr_family)
+                if not success:
+                    pytest.fail(f"Failed to configure default route on {nbrhost.hostname}")
 
-            # Get the first connected port pair
-            dut_port = next(iter(dut_nbr_ports.keys()))
-            nbr_port = neighbor_facts[dut_port]['port']
+                # Configure additional peers for this neighbor
+                for peer_index in range(PEERS_PER_DUT):
+                    loopback_id = BASE_LOOPBACK_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
 
-            # Get existing IP addresses before converting to trunk
-            ip_version = 6 if addr_family == "ipv6" else 4
-            dut_ip = get_interface_ip(duthost, dut_port, ip_version=ip_version)
-            nbr_ip = get_interface_ip(nbrhost, nbr_port, ip_version=ip_version)
+                    if addr_family == "ipv4":
+                        local_ip, neighbor_ip = get_loopback_ip_pair(loopback_id)
+                        ip_config = [(local_ip, neighbor_ip, "32")]
+                    else:
+                        local_ip, neighbor_ip = get_loopback_ipv6_pair(loopback_id)
+                        ip_config = [(local_ip, neighbor_ip, "128")]
 
-            if not dut_ip or not nbr_ip:
-                pytest.fail(f"Could not get existing IPs for ports {dut_port}/{nbr_port}")
+                    # Configure loopback interfaces on DUT and neighbor
+                    if not configure_loopback(duthost, loopback_id, local_ip):
+                        pytest.fail(f"Failed to configure loopback {loopback_id} on {duthost.hostname}")
+                    if not configure_loopback(nbrhost, loopback_id, neighbor_ip):
+                        pytest.fail(f"Failed to configure loopback {loopback_id} on {nbrhost.hostname}")
 
-            # Use BASE_VLAN_ID for the first VLAN to preserve existing BGP session
-            first_vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10)
+                    # Configure BGP peers
+                    for lip, nip, prefix in ip_config:
+                        if not configure_bgp_peer(duthost, nip, local_asn, remote_asn, addr_family=addr_family):
+                            pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
+                        if not configure_bgp_peer(nbrhost, lip, remote_asn, local_asn, addr_family=addr_family):
+                            pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
-            # Convert ports to trunk while preserving IPs on first VLAN
-            if not convert_to_trunk_port(duthost, dut_port, first_vlan_id):
-                pytest.fail(f"Failed to convert {dut_port} to trunk on {duthost.hostname}")
+                    configs.append({
+                        'duthost': duthost,
+                        'nbrhost': nbrhost,
+                        'loopback_id': loopback_id,
+                        'local_ip': local_ip,
+                        'neighbor_ip': neighbor_ip,
+                        'local_asn': local_asn,
+                        'remote_asn': remote_asn,
+                        'addr_family': addr_family,
+                    })
 
-            if not convert_to_trunk_port(nbrhost, nbr_port, first_vlan_id):
-                pytest.fail(f"Failed to convert {nbr_port} to trunk on {nbrhost.hostname}")
+        # Verify BGP peer configuration and status
+        verify_bgp_peer_scale(configs)
+    finally:
+        # Clean up default routes first
+        for duthost in duthosts:
+            unconfigure_default_route(duthost, addr_family)
 
-            # Wait for original BGP session to recover
-            neighbor_ip = nbr_ip.split('/')[0]  # Get IP without subnet mask
-            if not wait_until(60, 5, 0, duthost.check_bgp_session_state, [neighbor_ip]):
-                pytest.fail(f"Original BGP session failed to recover on {duthost.hostname}")
+        for nbrhost in [nbr["host"] for nbr in nbrhosts.values()]:
+            unconfigure_default_route(nbrhost, addr_family)
 
-            # Configure additional peers for this neighbor
-            for peer_index in range(PEERS_PER_DUT):
-                vlan_id = BASE_VLAN_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
-                vlan_intf = f"Vlan{vlan_id}"
+        # Clean up configurations
+        for config in configs:
+            duthost = config['duthost']
+            nbrhost = config['nbrhost']
+            loopback_id = config['loopback_id']
 
-                if addr_family == "ipv4":
-                    local_ip, neighbor_ip = get_free_ip_pair(vlan_id)
-                    ip_config = [(local_ip, neighbor_ip, "24")]
-                else:
-                    local_ip, neighbor_ip = get_free_ipv6_pair(vlan_id)
-                    ip_config = [(local_ip, neighbor_ip, "64")]
+            # Remove loopback interfaces
+            duthost.shell(f"config interface loopback remove Loopback{loopback_id}", module_ignore_errors=True)
+            nbrhost.shell(f"config interface loopback remove Loopback{loopback_id}", module_ignore_errors=True)
 
-                # Configure VLANs and add trunk ports as members
-                duthost.shell(f"config vlan add {vlan_id}")
-                duthost.shell(f"config vlan member add {vlan_id} {dut_port} --tagged")
-                nbrhost.shell(f"config vlan add {vlan_id}")
-                nbrhost.shell(f"config vlan member add {vlan_id} {nbr_port} --tagged")
-
-                for lip, nip, prefix in ip_config:
-                    duthost.add_ip_addr_to_vlan(vlan_intf, f"{lip}/{prefix}")
-                    if not configure_bgp_peer(duthost, nip, local_asn, remote_asn, addr_family=addr_family):
-                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-
-                # Configure neighbor host side
-                logger.info(f"Configuring BGP on neighbor host {nbrhost.hostname}")
-
-                # Create VLAN and VLAN interface on neighbor
-                nbrhost.shell(f"config vlan add {vlan_id}")
-                nbrhost.shell(f"config vlan member add {vlan_id} \"Ethernet2\" --tagged")
-
-                # Add IP address to VLAN interface on neighbor
-                for lip, nip, prefix in ip_config:
-                    nbrhost.add_ip_addr_to_vlan(vlan_intf, f"{nip}/{prefix}")
-                    if not configure_bgp_peer(nbrhost, lip, remote_asn, local_asn, addr_family=addr_family):
-                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
-
-                configs.append({
-                    'duthost': duthost,
-                    'nbrhost': nbrhost,
-                    'vlan_id': vlan_id,
-                    'local_ip': local_ip,
-                    'neighbor_ip': neighbor_ip,
-                    'local_asn': local_asn,
-                    'remote_asn': remote_asn,
-                    'addr_family': addr_family,
-                    'trunk_port': dut_port,
-                    'nbr_trunk_port': nbr_port
-                })
-
-    # Verify BGP peer configuration and status
-    verify_bgp_peer_scale(configs)
-
-    # Cleanup
-    for config in configs:
-        cleanup_host_config(config['duthost'], [config], is_dut=True)
-        cleanup_host_config(config['nbrhost'], [config], is_dut=False)
-        config['duthost'].shell(f"config interface no trunk {config['trunk_port']}")
-        config['nbrhost'].shell(f"config interface no trunk {config['nbr_trunk_port']}")
+            # Remove BGP configuration
+            duthost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
+            nbrhost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
 
 
 def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
@@ -442,16 +348,16 @@ def verify_bgp_peer_scale(configs):
     """
     for config in configs:
         duthost = config['duthost']
-        vlan_name = f"Vlan{config['vlan_id']}"
+        loopback_name = f"Loopback{config['loopback_id']}"
 
-        # Verify VLAN interface configuration
+        # Verify loopback interface configuration
         output = duthost.shell("show ip interfaces")["stdout"]
         interface_found = False
         ip_configured = False
         status_up = False
 
         for line in output.split('\n'):
-            if vlan_name in line:
+            if loopback_name in line:
                 interface_found = True
                 ip_configured = config['local_ip'] in line
                 status_up = 'up' in line.lower()
@@ -459,17 +365,17 @@ def verify_bgp_peer_scale(configs):
 
         pytest_assert(
             interface_found,
-            f"VLAN interface {vlan_name} not found in show ip interfaces output on {duthost.hostname}"
+            f"Loopback interface {loopback_name} not found in show ip interfaces output on {duthost.hostname}"
         )
 
         pytest_assert(
             ip_configured,
-            f"Incorrect IP address configured on {vlan_name}. Expected {config['local_ip']}"
+            f"Incorrect IP address configured on {loopback_name}. Expected {config['local_ip']}"
         )
 
         pytest_assert(
             status_up,
-            f"Interface {vlan_name} is not up on {duthost.hostname}"
+            f"Interface {loopback_name} is not up on {duthost.hostname}"
         )
 
         # Verify BGP peer configuration and status
@@ -480,95 +386,3 @@ def verify_bgp_peer_scale(configs):
         )
 
         wait_bgp_sessions(duthost)
-
-
-def cleanup_host_config(host, host_configs, is_dut=True):
-    """
-    Clean up BGP and VLAN configurations from a host.
-
-    Args:
-        host: The host object (duthost or nbrhost)
-        host_configs: List of configurations for this specific host
-        is_dut: Boolean indicating if the host is a DUT (True) or neighbor (False)
-    """
-    try:
-        # Remove BGP neighbors
-        for config in host_configs:
-            if is_dut:
-                peer_ip = config['neighbor_ip']
-                peer_ipv6 = config['neighbor_ipv6']
-                asn = config['local_asn']
-            else:
-                peer_ip = config['local_ip']
-                peer_ipv6 = config['local_ipv6']
-                asn = config['remote_asn']
-
-            commands = [
-                "vtysh -c 'configure terminal'",
-                f"-c 'router bgp {asn}'",
-                f"-c 'no neighbor {peer_ip}'",
-                f"-c 'no neighbor {peer_ipv6}'"
-            ]
-            host.shell(" ".join(commands))
-
-        # Clean up VLAN interfaces
-        for config in host_configs:
-            vlan_intf = f"Vlan{config['vlan_id']}"
-            if is_dut:
-                ip = config['local_ip']
-                ipv6 = config['local_ipv6']
-            else:
-                ip = config['neighbor_ip']
-                ipv6 = config['neighbor_ipv6']
-
-            # Remove IPv4 and IPv6 addresses
-            host.remove_ip_addr_from_vlan(vlan_intf, f"{ip}/24")
-            host.remove_ip_addr_from_vlan(vlan_intf, f"{ipv6}/64")
-            # Remove VLAN only after both addresses are removed
-            host.remove_vlan(config['vlan_id'])
-
-    except Exception as e:
-        host_type = "DUT" if is_dut else "Neighbor"
-        logger.error(f"{host_type} cleanup failed: {str(e)}")
-
-
-@pytest.fixture(scope="module", autouse=True)
-def restore_topology(duthosts, nbrhosts, tbinfo):
-    """
-    Fixture to restore original topology configuration after tests complete.
-    Automatically applied to all tests in the module.
-    """
-    yield  # Run the test
-
-    logger.info("Restoring original topology configuration...")
-
-    # Restore DUT hosts
-    for duthost in duthosts:
-        try:
-            # Reload original config
-            config_reload(duthost, config_source='config_db', safe_reload=True)
-
-            # Wait for critical services to be fully started
-            if not wait_until(300, 10, 0, duthost.critical_services_fully_started):
-                logger.error(f"Not all critical services are fully started on {duthost.hostname}")
-
-        except Exception as e:
-            logger.error(f"Error restoring configuration on {duthost.hostname}: {str(e)}")
-
-    # Restore neighbor hosts
-    for nbrhost in nbrhosts.values():
-        try:
-            host = nbrhost["host"]
-            logger.info(f"Restoring configuration on neighbor {host.hostname}")
-            host.shell("config reload -y")
-        except Exception as e:
-            logger.error(f"Error restoring configuration on neighbor {host.hostname}: {str(e)}")
-
-    # Wait for BGP sessions to establish on all DUTs
-    for duthost in duthosts:
-        try:
-            wait_bgp_sessions(duthost)
-        except Exception as e:
-            logger.error(f"Error waiting for BGP sessions on {duthost.hostname}: {str(e)}")
-
-    logger.info("Topology restoration completed")
