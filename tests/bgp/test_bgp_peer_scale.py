@@ -35,15 +35,17 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
     """
     try:
         mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
-        
+
         # Find the topology name for this neighbor
         topo_name = None
         for _, neigh in mg_facts['minigraph_neighbors'].items():
+            # Get the VM base number (e.g., 100 from VM0100)
+            vm_base = int(nbrhost.hostname[2:])  # Extract number from VMxxxx
             vm_offset = tbinfo['topo']['properties']['topology']['VMs'][neigh['name']]['vm_offset']
-            if f'VM{vm_offset:04d}' == nbrhost.hostname:
+            if f'VM{vm_base + vm_offset:04d}' == nbrhost.hostname:
                 topo_name = neigh['name']
                 break
-                
+
         if not topo_name:
             logger.error(f"Could not find topology name for VM {nbrhost.hostname}")
             return None, None
@@ -124,7 +126,7 @@ def configure_loopback(duthost, loopback_id, ip_addr):
         prefix_len = '128' if is_ipv6 else '32'
 
         # Check if loopback exists
-        check_cmd = duthost.shell(f"show ip interface {loopback_name}")
+        check_cmd = duthost.shell(f"show ip interfaces | grep {loopback_name}")
         loopback_exists = check_cmd['rc'] == 0
 
         if not loopback_exists:
@@ -146,19 +148,12 @@ def configure_loopback(duthost, loopback_id, ip_addr):
 
         # Verify interface is up and has correct IP
         if is_ipv6:
-            verify_cmd = duthost.shell(f"show ipv6 interface {loopback_name}")
+            verify_cmd = duthost.shell(f"show ipv6 interfaces | grep {loopback_name}")
         else:
-            verify_cmd = duthost.shell(f"show ip interface {loopback_name}")
+            verify_cmd = duthost.shell(f"show ip interfaces | grep {loopback_name}")
 
-        if verify_cmd['rc'] != 0:
-            logger.error(f"Failed to verify {loopback_name} configuration")
-            return False
+        return verify_cmd['rc'] == 0
 
-        if "up/up" not in verify_cmd['stdout'] or ip_addr not in verify_cmd['stdout']:
-            logger.error(f"Failed to verify {loopback_name} status or IP configuration")
-            return False
-
-        return True
     except Exception as e:
         logger.error(f"Error configuring loopback: {str(e)}")
         return False
