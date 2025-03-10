@@ -746,8 +746,20 @@ def cacl_protocol(request):       # noqa F811
     return request.param
 
 
-def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_dut):
+def cacl_ignore_regex(duthost, loganalyzer):
+    # Currently the Broadcom SAI API for sai_query_attribute_enum_values_capability returns an invalid value
+    # for the SAI_NEXT_HOP_GROUP_ATTR_TYPE enum. This causes this particular error message to be printed in
+    # the test logs, causing the test to fail. This error is irrelevant to the outcome of test_cacl, so the
+    # error is ignored.
+    if duthost.sonichost.facts['platform_asic'] == 'broadcom':
+        ignore_regex = r".* ERR swss#orchagent:\s*.*\s*queryAttributeEnumValuesCapability:\s*returned value " \
+            r"\d+ is not allowed on SAI_NEXT_HOP_GROUP_ATTR_TYPE.*"
+        loganalyzer[duthost.hostname].ignore_regex.extend([ignore_regex])
+
+
+def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_dut, loganalyzer):
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
+    cacl_ignore_regex(rand_selected_dut, loganalyzer)
     cacl_tc1_add_new_table(rand_selected_dut, cacl_protocol)
     cacl_tc1_add_duplicate_table(rand_selected_dut, cacl_protocol)
     cacl_tc1_replace_table_variable(rand_selected_dut, cacl_protocol)
@@ -757,8 +769,9 @@ def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_dut):
 
 
 # ACL_RULE tests are related. So group them into one test.
-def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_dut):
+def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_dut, loganalyzer):
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
+    cacl_ignore_regex(rand_selected_dut, loganalyzer)
     if cacl_protocol == 'EXTERNAL_CLIENT':
         cacl_external_client_add_new_table(rand_selected_dut)
     cacl_tc2_add_init_rule(rand_selected_dut, cacl_protocol)
@@ -770,5 +783,6 @@ def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_dut):
     cacl_tc2_remove_rule(rand_selected_dut)
 
 
-def test_cacl_tc3_acl_all(rand_selected_dut):
+def test_cacl_tc3_acl_all(rand_selected_dut, loganalyzer):
+    cacl_ignore_regex(rand_selected_dut, loganalyzer)
     cacl_tc3_acl_table_and_acl_rule(rand_selected_dut)
