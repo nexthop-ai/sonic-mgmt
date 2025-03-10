@@ -36,13 +36,16 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
     try:
         mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
 
+        # Get the VM base number (e.g., 100 from VM0100)
+        current_vm = int(nbrhost.hostname[2:])  # Extract number from VMxxxx
+
         # Find the topology name for this neighbor
         topo_name = None
         for _, neigh in mg_facts['minigraph_neighbors'].items():
-            # Get the VM base number (e.g., 100 from VM0100)
-            vm_base = int(nbrhost.hostname[2:])  # Extract number from VMxxxx
             vm_offset = tbinfo['topo']['properties']['topology']['VMs'][neigh['name']]['vm_offset']
-            if f'VM{vm_base + vm_offset:04d}' == nbrhost.hostname:
+            base_vm = current_vm - vm_offset  # Calculate what the base VM should be
+            # Check if this neighbor's base VM matches
+            if base_vm == int(tbinfo['vm_base'][2:]):  # Compare with actual base VM number
                 topo_name = neigh['name']
                 break
 
@@ -304,6 +307,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                 logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
                 continue
 
+            import pdb; pdb.set_trace()
             # Get port connections between DUT and neighbors
             for neighbor_index, nbrhost in enumerate(current_neighbors):
                 # Get neighbor IPs for connectivity
@@ -312,6 +316,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                 if not dut_nbr_ip or not nbr_dut_ip:
                     pytest.fail(f"Failed to get neighbor IP addresses for {duthost.hostname} and {nbrhost.hostname}")
 
+                pdb.set_trace()
                 # Configure additional peers for this neighbor
                 for peer_index in range(PEERS_PER_DUT):
                     loopback_id = BASE_LOOPBACK_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
