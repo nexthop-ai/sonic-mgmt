@@ -112,22 +112,29 @@ def get_loopback_ipv6_pair(loopback_id):
     return str(net[1]), str(net[2])
 
 
-def configure_loopback(duthost, loopback_id, ip_addr):
-    """Configure a loopback interface with the given IP.
+def configure_loopback(duthost, loopback_id, ip_addr, next_hop_ip):
+    """Configure a loopback interface with the given IP and its route.
 
     Args:
         duthost: DUT host object
         loopback_id: Loopback interface ID
         ip_addr: IP address (IPv4 or IPv6) to configure
+        next_hop_ip: Next hop IP for reaching this loopback
     """
     try:
         loopback_name = f"Loopback{loopback_id}"
         is_ipv6 = ':' in ip_addr
+        ipcmd = 'ipv6' if is_ipv6 else 'ip'
+        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
         prefix_len = '128' if is_ipv6 else '32'
 
-        # Check if loopback exists
-        check_cmd = duthost.shell(f"show ip interfaces | grep {loopback_name}")
-        loopback_exists = check_cmd['rc'] == 0
+        # Configure loopback interface
+        try:
+            # Check if loopback exists
+            check_cmd = duthost.shell(f"show {ipcmd} interfaces | grep {loopback_name}", module_ignore_errors=True)
+            loopback_exists = check_cmd['rc'] == 0
+        except Exception:
+            loopback_exists = False
 
         if not loopback_exists:
             result = duthost.shell(f"config loopback add {loopback_name}")
@@ -135,24 +142,27 @@ def configure_loopback(duthost, loopback_id, ip_addr):
                 logger.error(f"Failed to add loopback: {result['stderr']}")
                 return False
 
-        # Configure IP address based on IP version
-        if is_ipv6:
-            cmd = f"config interface ipv6 add {loopback_name} {ip_addr}/{prefix_len}"
-        else:
-            cmd = f"config interface ip add {loopback_name} {ip_addr}/{prefix_len}"
-
+        # Configure IP address
+        cmd = f"config interface ip add {loopback_name} {ip_addr}/{prefix_len}"
         result = duthost.shell(cmd)
         if result['rc'] != 0:
-            logger.error(f"Failed to configure IP: {result['stderr']}")
+            logger.error(f"Failed to configure IP on {loopback_name}. Error: {result['stderr']}")
             return False
 
-        # Verify interface is up and has correct IP
-        if is_ipv6:
-            verify_cmd = duthost.shell(f"show ipv6 interfaces | grep {loopback_name}")
-        else:
-            verify_cmd = duthost.shell(f"show ip interfaces | grep {loopback_name}")
+        # Verify interface is up and has correct IP - use try/except for graceful handling
+        result = duthost.shell(f"show {ipcmd} interfaces | grep {loopback_name}", module_ignore_errors=True)
+        if result['rc'] != 0:
+            logger.error(f"Error verifying loopback configuration: {str(e)}")
+            return False
 
-        return verify_cmd['rc'] == 0
+        # Configure route to reach this loopback
+        route_cmd = f"{ip_route_cmd} add {ip_addr}/{prefix_len} via {next_hop_ip}"
+        result = duthost.shell(route_cmd, module_ignore_errors=True)
+        if result['rc'] != 0 and "File exists" not in result.get('stderr', ''):
+            logger.error(f"Failed to configure route to loopback. Error: {result['stderr']}")
+            return False
+
+        return True
 
     except Exception as e:
         logger.error(f"Error configuring loopback: {str(e)}")
@@ -261,20 +271,11 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
             # Get port connections between DUT and neighbors
             for neighbor_index, nbrhost in enumerate(current_neighbors):
-                # Get neighbor IPs for default routes
+                # Get neighbor IPs for connectivity
                 dut_nbr_ip, nbr_dut_ip = get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family=addr_family)
 
                 if not dut_nbr_ip or not nbr_dut_ip:
                     pytest.fail(f"Failed to get neighbor IP addresses for {duthost.hostname} and {nbrhost.hostname}")
-
-                # Configure default routes on both DUT and neighbor
-                success = configure_default_route(duthost, dut_nbr_ip, addr_family)
-                if not success:
-                    pytest.fail(f"Failed to configure default route on {duthost.hostname}")
-
-                success = configure_default_route(nbrhost, nbr_dut_ip, addr_family)
-                if not success:
-                    pytest.fail(f"Failed to configure default route on {nbrhost.hostname}")
 
                 # Configure additional peers for this neighbor
                 for peer_index in range(PEERS_PER_DUT):
@@ -282,19 +283,19 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
                     if addr_family == "ipv4":
                         local_ip, neighbor_ip = get_loopback_ip_pair(loopback_id)
-                        ip_config = [(local_ip, neighbor_ip, "32")]
+                        ip_config = [(local_ip, neighbor_ip)]
                     else:
                         local_ip, neighbor_ip = get_loopback_ipv6_pair(loopback_id)
-                        ip_config = [(local_ip, neighbor_ip, "128")]
+                        ip_config = [(local_ip, neighbor_ip)]
 
-                    # Configure loopback interfaces on DUT and neighbor
-                    if not configure_loopback(duthost, loopback_id, local_ip):
+                    # Configure loopback interfaces with routes on DUT and neighbor
+                    if not configure_loopback(duthost, loopback_id, local_ip, dut_nbr_ip):
                         pytest.fail(f"Failed to configure loopback {loopback_id} on {duthost.hostname}")
-                    if not configure_loopback(nbrhost, loopback_id, neighbor_ip):
+                    if not configure_loopback(nbrhost, loopback_id, neighbor_ip, nbr_dut_ip):
                         pytest.fail(f"Failed to configure loopback {loopback_id} on {nbrhost.hostname}")
 
                     # Configure BGP peers
-                    for lip, nip, prefix in ip_config:
+                    for lip, nip in ip_config:
                         if not configure_bgp_peer(duthost, nip, local_asn, remote_asn, addr_family=addr_family):
                             pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
                         if not configure_bgp_peer(nbrhost, lip, remote_asn, local_asn, addr_family=addr_family):
