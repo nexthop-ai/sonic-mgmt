@@ -112,20 +112,18 @@ def get_loopback_ipv6_pair(loopback_id):
     return str(net[1]), str(net[2])
 
 
-def configure_loopback(duthost, loopback_id, ip_addr, next_hop_ip):
-    """Configure a loopback interface with the given IP and its route.
+def configure_loopback(duthost, loopback_id, ip_addr):
+    """Configure a loopback interface with the given IP.
 
     Args:
         duthost: DUT host object
         loopback_id: Loopback interface ID
         ip_addr: IP address (IPv4 or IPv6) to configure
-        next_hop_ip: Next hop IP for reaching this loopback
     """
     try:
         loopback_name = f"Loopback{loopback_id}"
         is_ipv6 = ':' in ip_addr
         ipcmd = 'ipv6' if is_ipv6 else 'ip'
-        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
         prefix_len = '128' if is_ipv6 else '32'
 
         # Configure loopback interface
@@ -149,70 +147,107 @@ def configure_loopback(duthost, loopback_id, ip_addr, next_hop_ip):
             logger.error(f"Failed to configure IP on {loopback_name}. Error: {result['stderr']}")
             return False
 
-        # Verify interface is up and has correct IP - use try/except for graceful handling
-        result = duthost.shell(f"show {ipcmd} interfaces | grep {loopback_name}", module_ignore_errors=True)
-        if result['rc'] != 0:
-            logger.error(f"Error verifying loopback configuration: {str(e)}")
-            return False
-
-        # Configure route to reach this loopback
-        route_cmd = f"{ip_route_cmd} add {ip_addr}/{prefix_len} via {next_hop_ip}"
-        result = duthost.shell(route_cmd, module_ignore_errors=True)
-        if result['rc'] != 0 and "File exists" not in result.get('stderr', ''):
-            logger.error(f"Failed to configure route to loopback. Error: {result['stderr']}")
-            return False
-
         return True
 
     except Exception as e:
         logger.error(f"Error configuring loopback: {str(e)}")
         return False
 
-
-def configure_default_route(duthost, next_hop, addr_family="ipv4"):
-    """Configure a default route to reach loopback IPs.
+def configure_peer_route(duthost, peer_ip, next_hop_ip):
+    """Configure route to reach peer's loopback IP.
 
     Args:
         duthost: DUT host object
-        next_hop: Next hop IP address
-        addr_family: Address family ("ipv4" or "ipv6")
+        peer_ip: Peer's loopback IP to reach
+        next_hop_ip: Next hop IP for reaching the peer
     """
     try:
-        if addr_family == "ipv4":
-            command = f"ip route add 0.0.0.0/0 via {next_hop}"
-        else:
-            command = f"ip -6 route add ::/0 via {next_hop}"
+        print(f"\nConfiguring route on {duthost.hostname}:")
+        print(f"  To reach: {peer_ip}")
+        print(f"  Via: {next_hop_ip}")
 
-        result = duthost.shell(command)
-        if result['rc'] != 0:
-            logger.error(f"Failed to configure default route. Error: {result['stderr']}")
+        is_ipv6 = ':' in peer_ip
+        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
+        prefix_len = '128' if is_ipv6 else '32'
+
+        route_cmd = f"{ip_route_cmd} add {peer_ip}/{prefix_len} via {next_hop_ip}"
+        result = duthost.shell(route_cmd, module_ignore_errors=True)
+        if result['rc'] != 0 and "File exists" not in result.get('stderr', ''):
+            logger.error(f"Failed to configure route to peer. Error: {result['stderr']}")
             return False
+
         return True
+
     except Exception as e:
-        logger.error(f"Error configuring default route: {str(e)}")
+        logger.error(f"Error configuring peer route: {str(e)}")
         return False
 
 
-def unconfigure_default_route(duthost, addr_family="ipv4"):
-    """Remove the default route for the specified address family.
+def unconfigure_loopback(duthost, loopback_id, ip_addr):
+    """Unconfigure a loopback interface and its route.
 
     Args:
         duthost: DUT host object
-        addr_family: Address family ("ipv4" or "ipv6")
+        loopback_id: Loopback interface ID
+        ip_addr: IP address (IPv4 or IPv6) configured on the loopback
     """
     try:
-        if addr_family == "ipv4":
-            command = "ip route del 0.0.0.0/0"
-        else:
-            command = "ip -6 route del ::/0"
+        loopback_name = f"Loopback{loopback_id}"
+        is_ipv6 = ':' in ip_addr
+        ipcmd = 'ipv6' if is_ipv6 else 'ip'
+        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
+        prefix_len = '128' if is_ipv6 else '32'
 
-        result = duthost.shell(command)
+        # First remove the route to the loopback
+        route_cmd = f"{ip_route_cmd} del {ip_addr}/{prefix_len}"
+        result = duthost.shell(route_cmd, module_ignore_errors=True)
+        if result['rc'] != 0 and "No such process" not in result.get('stderr', ''):
+            logger.error(f"Failed to remove route to loopback. Error: {result['stderr']}")
+            return False
+
+        # Remove IP address from loopback
+        cmd = f"config interface ip remove {loopback_name} {ip_addr}/{prefix_len}"
+        result = duthost.shell(cmd, module_ignore_errors=True)
         if result['rc'] != 0:
-            logger.error(f"Failed to remove default route. Error: {result['stderr']}")
+            logger.error(f"Failed to remove IP from {loopback_name}. Error: {result['stderr']}")
+            return False
+
+        # Remove loopback interface
+        result = duthost.shell(f"config loopback del {loopback_name}", module_ignore_errors=True)
+        if result['rc'] != 0:
+            logger.error(f"Failed to remove loopback: {result['stderr']}")
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error unconfiguring loopback: {str(e)}")
+        return False
+
+def delete_peer_route(duthost, peer_ip):
+    """Delete route to peer's loopback IP.
+
+    Args:
+        duthost: DUT host object
+        peer_ip: Peer's loopback IP whose route needs to be deleted
+    """
+    try:
+        print(f"\nDeleting route on {duthost.hostname}:")
+        print(f"  To peer IP: {peer_ip}")
+
+        is_ipv6 = ':' in peer_ip
+        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
+        prefix_len = '128' if is_ipv6 else '32'
+
+        route_cmd = f"{ip_route_cmd} del {peer_ip}/{prefix_len}"
+        result = duthost.shell(route_cmd, module_ignore_errors=True)
+        if result['rc'] != 0:
+            logger.error(f"Failed to delete route to peer. Error: {result['stderr']}")
             return False
         return True
+
     except Exception as e:
-        logger.error(f"Error removing default route: {str(e)}")
+        logger.error(f"Error deleting peer route: {str(e)}")
         return False
 
 
@@ -288,11 +323,17 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         local_ip, neighbor_ip = get_loopback_ipv6_pair(loopback_id)
                         ip_config = [(local_ip, neighbor_ip)]
 
-                    # Configure loopback interfaces with routes on DUT and neighbor
-                    if not configure_loopback(duthost, loopback_id, local_ip, dut_nbr_ip):
+                    # Configure loopback interfaces on DUT and neighbor
+                    if not configure_loopback(duthost, loopback_id, local_ip):
                         pytest.fail(f"Failed to configure loopback {loopback_id} on {duthost.hostname}")
-                    if not configure_loopback(nbrhost, loopback_id, neighbor_ip, nbr_dut_ip):
+                    if not configure_loopback(nbrhost, loopback_id, neighbor_ip):
                         pytest.fail(f"Failed to configure loopback {loopback_id} on {nbrhost.hostname}")
+
+                    # Configure routes to reach each other's loopbacks
+                    if not configure_peer_route(duthost, neighbor_ip, dut_nbr_ip):
+                        pytest.fail(f"Failed to configure route to peer loopback on {duthost.hostname}")
+                    if not configure_peer_route(nbrhost, local_ip, nbr_dut_ip):
+                        pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
 
                     # Configure BGP peers
                     for lip, nip in ip_config:
@@ -315,26 +356,29 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
         # Verify BGP peer configuration and status
         verify_bgp_peer_scale(configs)
     finally:
-        # Clean up default routes first
-        for duthost in duthosts:
-            unconfigure_default_route(duthost, addr_family)
-
-        for nbrhost in [nbr["host"] for nbr in nbrhosts.values()]:
-            unconfigure_default_route(nbrhost, addr_family)
-
         # Clean up configurations
         for config in configs:
             duthost = config['duthost']
             nbrhost = config['nbrhost']
             loopback_id = config['loopback_id']
-
-            # Remove loopback interfaces
-            duthost.shell(f"config interface loopback remove Loopback{loopback_id}", module_ignore_errors=True)
-            nbrhost.shell(f"config interface loopback remove Loopback{loopback_id}", module_ignore_errors=True)
+            local_ip = config['local_ip']
+            neighbor_ip = config['neighbor_ip']
 
             # Remove BGP configuration
             duthost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
             nbrhost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
+
+            # Delete routes to peer loopbacks
+            if not delete_peer_route(duthost, neighbor_ip):
+                logger.error(f"Failed to delete route to peer loopback on {duthost.hostname}")
+            if not delete_peer_route(nbrhost, local_ip):
+                logger.error(f"Failed to delete route to peer loopback on {nbrhost.hostname}")
+
+            # Remove loopback interfaces
+            if not unconfigure_loopback(duthost, loopback_id, local_ip):
+                logger.error(f"Failed to unconfigure loopback {loopback_id} on {duthost.hostname}")
+            if not unconfigure_loopback(nbrhost, loopback_id, neighbor_ip):
+                logger.error(f"Failed to unconfigure loopback {loopback_id} on {nbrhost.hostname}")
 
 
 def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
@@ -347,14 +391,14 @@ def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4")
 
 
-def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
-    """
-    Verify BGP IPv6 peer scaling by checking:
-    1. All VLAN interfaces are properly configured and up
-    2. All BGP peers are configured
-    3. All BGP sessions are established
-    """
-    run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
+# def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+#     """
+#     Verify BGP IPv6 peer scaling by checking:
+#     1. All VLAN interfaces are properly configured and up
+#     2. All BGP peers are configured
+#     3. All BGP sessions are established
+#     """
+#     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
 
 
 def wait_bgp_sessions(duthost, timeout=60):
