@@ -79,9 +79,10 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=
             f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' "
             f"-c 'neighbor {neighbor_ip} timers 3 10' "
             f"-c 'neighbor {neighbor_ip} timers connect 10' "
-            f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
+            #f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
             f"-c 'address-family {addr_family} unicast' "
-            f"-c 'neighbor {neighbor_ip} activate'"
+            f"-c 'neighbor {neighbor_ip} activate' "
+            f"-c 'exit-address-family'"
         ]
 
         result = duthost.shell("\n".join(commands))
@@ -211,13 +212,13 @@ def unconfigure_loopback(duthost, loopback_id, ip_addr):
         # Remove IP address from loopback
         cmd = f"config interface ip remove {loopback_name} {ip_addr}/{prefix_len}"
         result = duthost.shell(cmd, module_ignore_errors=True)
-        if result['rc'] != 0:
+        if result['rc'] != 0 and "does not exist" not in result.get('stderr', ''):
             logger.error(f"Failed to remove IP from {loopback_name}. Error: {result['stderr']}")
             return False
 
         # Remove loopback interface
         result = duthost.shell(f"config loopback del {loopback_name}", module_ignore_errors=True)
-        if result['rc'] != 0:
+        if result['rc'] != 0 and "does not exist" not in result.get('stderr', ''):
             logger.error(f"Failed to remove loopback: {result['stderr']}")
             return False
 
@@ -307,7 +308,6 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                 logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
                 continue
 
-            import pdb; pdb.set_trace()
             # Get port connections between DUT and neighbors
             for neighbor_index, nbrhost in enumerate(current_neighbors):
                 # Get neighbor IPs for connectivity
@@ -316,17 +316,14 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                 if not dut_nbr_ip or not nbr_dut_ip:
                     pytest.fail(f"Failed to get neighbor IP addresses for {duthost.hostname} and {nbrhost.hostname}")
 
-                pdb.set_trace()
                 # Configure additional peers for this neighbor
                 for peer_index in range(PEERS_PER_DUT):
                     loopback_id = BASE_LOOPBACK_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
 
                     if addr_family == "ipv4":
                         local_ip, neighbor_ip = get_loopback_ip_pair(loopback_id)
-                        ip_config = [(local_ip, neighbor_ip)]
                     else:
                         local_ip, neighbor_ip = get_loopback_ipv6_pair(loopback_id)
-                        ip_config = [(local_ip, neighbor_ip)]
 
                     # Configure loopback interfaces on DUT and neighbor
                     if not configure_loopback(duthost, loopback_id, local_ip):
@@ -341,11 +338,10 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
 
                     # Configure BGP peers
-                    for lip, nip in ip_config:
-                        if not configure_bgp_peer(duthost, nip, local_asn, remote_asn, addr_family=addr_family):
-                            pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-                        if not configure_bgp_peer(nbrhost, lip, remote_asn, local_asn, addr_family=addr_family):
-                            pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
+                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=addr_family):
+                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
+                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn, local_asn, addr_family=addr_family):
+                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
                     configs.append({
                         'duthost': duthost,
@@ -355,7 +351,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         'neighbor_ip': neighbor_ip,
                         'local_asn': local_asn,
                         'remote_asn': remote_asn,
-                        'addr_family': addr_family,
+                        'addr_family': addr_family
                     })
 
         # Verify BGP peer configuration and status
@@ -369,9 +365,19 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             local_ip = config['local_ip']
             neighbor_ip = config['neighbor_ip']
 
-            # Remove BGP configuration
-            duthost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
-            nbrhost.shell("vtysh -c 'configure terminal' -c 'no router bgp'", module_ignore_errors=True)
+            # Remove BGP neighbors added by this test
+            duthost.shell(
+                f"vtysh -c 'configure terminal' "
+                f"-c 'router bgp {config['local_asn']}' "
+                f"-c 'no neighbor {neighbor_ip}'",
+                module_ignore_errors=True
+            )
+            nbrhost.shell(
+                f"vtysh -c 'configure terminal' "
+                f"-c 'router bgp {config['remote_asn']}' "
+                f"-c 'no neighbor {local_ip}'",
+                module_ignore_errors=True
+            )
 
             # Delete routes to peer loopbacks
             if not delete_peer_route(duthost, neighbor_ip):
@@ -417,7 +423,7 @@ def wait_bgp_sessions(duthost, timeout=60):
     Returns:
         None. Raises assertion error if sessions don't establish.
     """
-    bgp_neighbors = duthost.get_bgp_neighbors_per_asic(state="all")
+    bgp_neighbors = duthost.get_bgp_neighbors()
     neighbor_ips = [ip for ip in bgp_neighbors.keys() if ip is not None]
     if not neighbor_ips:
         pytest.fail(f"No valid BGP neighbor IPs found on {duthost.hostname}")
