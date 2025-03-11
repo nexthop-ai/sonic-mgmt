@@ -68,8 +68,17 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
         return None, None
 
 
-def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family="ipv4"):
-    """Configure a BGP peer with proper timers."""
+def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, loopback_id, addr_family="ipv4"):
+    """Configure a BGP peer with proper timers.
+
+    Args:
+        duthost: DUT host object
+        neighbor_ip: IP address of the BGP neighbor
+        local_asn: Local AS number
+        remote_asn: Remote AS number
+        loopback_id: Loopback interface ID to use as update-source
+        addr_family: Address family ("ipv4" or "ipv6")
+    """
     try:
         commands = [
             "vtysh -c 'configure terminal' "
@@ -78,7 +87,7 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=
             f"-c 'neighbor {neighbor_ip} ebgp-multihop 10' "
             f"-c 'neighbor {neighbor_ip} timers 3 10' "
             f"-c 'neighbor {neighbor_ip} timers connect 10' "
-            f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
+            f"-c 'neighbor {neighbor_ip} update-source lo{loopback_id}' "
             f"-c 'address-family {addr_family} unicast' "
             f"-c 'neighbor {neighbor_ip} activate' "
             f"-c 'exit-address-family'"
@@ -328,9 +337,9 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
 
                     # Configure BGP peers
-                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=addr_family):
+                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, loopback_id, addr_family=addr_family):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn, local_asn, addr_family=addr_family):
+                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn, local_asn, loopback_id, addr_family=addr_family):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
                     configs.append({
@@ -392,14 +401,14 @@ def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4")
 
 
-# def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
-#     """
-#     Verify BGP IPv6 peer scaling by checking:
-#     1. All VLAN interfaces are properly configured and up
-#     2. All BGP peers are configured
-#     3. All BGP sessions are established
-#     """
-#     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
+def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+    """
+    Verify BGP IPv6 peer scaling by checking:
+    1. All VLAN interfaces are properly configured and up
+    2. All BGP peers are configured
+    3. All BGP sessions are established
+    """
+    run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
 
 
 def wait_bgp_sessions(duthost, timeout=60):
