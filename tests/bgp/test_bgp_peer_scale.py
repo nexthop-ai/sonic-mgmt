@@ -87,7 +87,7 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, loopback_id,
             f"-c 'neighbor {neighbor_ip} ebgp-multihop 10' "
             f"-c 'neighbor {neighbor_ip} timers 3 10' "
             f"-c 'neighbor {neighbor_ip} timers connect 10' "
-            f"-c 'neighbor {neighbor_ip} update-source lo{loopback_id}' "
+            f"-c 'neighbor {neighbor_ip} update-source Loopback{loopback_id}' "
             f"-c 'address-family {addr_family} unicast' "
             f"-c 'neighbor {neighbor_ip} activate' "
             f"-c 'exit-address-family'"
@@ -337,9 +337,11 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
 
                     # Configure BGP peers
-                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, loopback_id, addr_family=addr_family):
+                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn,
+                                              remote_asn, loopback_id, addr_family=addr_family):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn, local_asn, loopback_id, addr_family=addr_family):
+                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn,
+                                              local_asn, loopback_id, addr_family=addr_family):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
                     configs.append({
