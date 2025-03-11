@@ -4,10 +4,8 @@ Test BGP peer scaling by adding multiple BGP peers using loopback interfaces on 
 import logging
 import pytest
 import ipaddress
-import time
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
-from tests.common.config_reload import config_reload
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +75,10 @@ def configure_bgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family=
             "vtysh -c 'configure terminal' "
             f"-c 'router bgp {local_asn}' "
             f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' "
+            f"-c 'neighbor {neighbor_ip} ebgp-multihop 10' "
             f"-c 'neighbor {neighbor_ip} timers 3 10' "
             f"-c 'neighbor {neighbor_ip} timers connect 10' "
-            #f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
+            f"-c 'neighbor {neighbor_ip} update-source lo{BASE_LOOPBACK_ID}' "
             f"-c 'address-family {addr_family} unicast' "
             f"-c 'neighbor {neighbor_ip} activate' "
             f"-c 'exit-address-family'"
@@ -157,6 +156,7 @@ def configure_loopback(duthost, loopback_id, ip_addr):
         logger.error(f"Error configuring loopback: {str(e)}")
         return False
 
+
 def configure_peer_route(duthost, peer_ip, next_hop_ip):
     """Configure route to reach peer's loopback IP.
 
@@ -166,10 +166,6 @@ def configure_peer_route(duthost, peer_ip, next_hop_ip):
         next_hop_ip: Next hop IP for reaching the peer
     """
     try:
-        print(f"\nConfiguring route on {duthost.hostname}:")
-        print(f"  To reach: {peer_ip}")
-        print(f"  Via: {next_hop_ip}")
-
         is_ipv6 = ':' in peer_ip
         ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
         prefix_len = '128' if is_ipv6 else '32'
@@ -198,16 +194,7 @@ def unconfigure_loopback(duthost, loopback_id, ip_addr):
     try:
         loopback_name = f"Loopback{loopback_id}"
         is_ipv6 = ':' in ip_addr
-        ipcmd = 'ipv6' if is_ipv6 else 'ip'
-        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
         prefix_len = '128' if is_ipv6 else '32'
-
-        # First remove the route to the loopback
-        route_cmd = f"{ip_route_cmd} del {ip_addr}/{prefix_len}"
-        result = duthost.shell(route_cmd, module_ignore_errors=True)
-        if result['rc'] != 0 and "No such process" not in result.get('stderr', ''):
-            logger.error(f"Failed to remove route to loopback. Error: {result['stderr']}")
-            return False
 
         # Remove IP address from loopback
         cmd = f"config interface ip remove {loopback_name} {ip_addr}/{prefix_len}"
@@ -228,6 +215,7 @@ def unconfigure_loopback(duthost, loopback_id, ip_addr):
         logger.error(f"Error unconfiguring loopback: {str(e)}")
         return False
 
+
 def delete_peer_route(duthost, peer_ip):
     """Delete route to peer's loopback IP.
 
@@ -245,7 +233,7 @@ def delete_peer_route(duthost, peer_ip):
 
         route_cmd = f"{ip_route_cmd} del {peer_ip}/{prefix_len}"
         result = duthost.shell(route_cmd, module_ignore_errors=True)
-        if result['rc'] != 0:
+        if result['rc'] != 0 and "No such process" not in result.get('stderr', ''):
             logger.error(f"Failed to delete route to peer. Error: {result['stderr']}")
             return False
         return True
@@ -297,8 +285,10 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
     try:
         for dut_index, duthost in enumerate(duthosts):
             # Get DUT configuration
-            config_facts = duthost.config_facts(host=duthost.hostname, source="running", module_ignore_errors=True)['ansible_facts']
-            local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn', 65501)  # Default ASN if not found
+            config_facts = duthost.config_facts(host=duthost.hostname, source="running",
+                                                module_ignore_errors=True)['ansible_facts']
+            local_asn = config_facts.get('DEVICE_METADATA',
+                                         {}).get('localhost', {}).get('bgp_asn', 65100)  # Default ASN if not found
             remote_asn = get_remote_asn(duthost)
 
             # Get all current BGP neighbors for this DUT
