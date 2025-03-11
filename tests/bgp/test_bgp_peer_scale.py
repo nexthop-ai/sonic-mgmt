@@ -71,7 +71,15 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
         return None, None
 
 
-def configure_ebgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family="ipv4", update_source_intf=None, max_hop_count=10):
+def configure_ebgp_peer(
+    duthost,
+    neighbor_ip,
+    local_asn,
+    remote_asn,
+    addr_family="ipv4",
+    update_source_intf=None,
+    max_hop_count=10,
+):
     """Configure an eBGP peer with proper timers.
 
     Args:
@@ -95,8 +103,8 @@ def configure_ebgp_peer(duthost, neighbor_ip, local_asn, remote_asn, addr_family
             command += f"-c 'neighbor {neighbor_ip} update-source {update_source_intf}' "
 
         command += f"-c 'address-family {addr_family} unicast' " \
-                  f"-c 'neighbor {neighbor_ip} activate' " \
-                  f"-c 'exit-address-family'"
+                   f"-c 'neighbor {neighbor_ip} activate' " \
+                   "-c 'exit-address-family'"
 
         result = duthost.shell(command)
         if result['rc'] != 0:
