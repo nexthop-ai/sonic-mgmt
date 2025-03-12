@@ -4,6 +4,7 @@ Test BGP peer scaling by adding multiple BGP peers using loopback interfaces on 
 import ipaddress
 import logging
 import pytest
+from tests.bgp.bgp_helpers import configure_ebgp_peer
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -69,52 +70,6 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
     except Exception as e:
         logger.warning(f"Failed to get neighbor IP pairs: {str(e)}")
         return None, None
-
-
-def configure_ebgp_peer(
-    duthost,
-    neighbor_ip,
-    local_asn,
-    remote_asn,
-    addr_family="ipv4",
-    update_source_intf=None,
-    max_hop_count=10,
-):
-    """Configure an eBGP peer with proper timers.
-
-    Args:
-        duthost: DUT host object
-        neighbor_ip: IP address of the BGP neighbor
-        local_asn: Local AS number
-        remote_asn: Remote AS number
-        addr_family: Address family ("ipv4" or "ipv6")
-        update_source_intf: (Optional) Interface name to use as update-source (e.g. 'Loopback0')
-        max_hop_count: (Optional) Maximum number of hops allowed for eBGP peers (default: 10)
-    """
-    try:
-        command = "vtysh -c 'configure terminal' " \
-                 f"-c 'router bgp {local_asn}' " \
-                 f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' " \
-                 f"-c 'neighbor {neighbor_ip} ebgp-multihop {max_hop_count}' " \
-                 f"-c 'neighbor {neighbor_ip} timers 3 10' " \
-                 f"-c 'neighbor {neighbor_ip} timers connect 10' "
-
-        if update_source_intf:
-            command += f"-c 'neighbor {neighbor_ip} update-source {update_source_intf}' "
-
-        command += f"-c 'address-family {addr_family} unicast' " \
-                   f"-c 'neighbor {neighbor_ip} activate' " \
-                   "-c 'exit-address-family'"
-
-        result = duthost.shell(command)
-        if result['rc'] != 0:
-            logger.error("Failed to configure BGP peer. Error: %s", result['stderr'])
-            return False
-        return True
-
-    except Exception as e:
-        logger.error("Failed to configure BGP peer: %s", str(e))
-        return False
 
 
 def get_loopback_ip_pair(loopback_id):
@@ -420,32 +375,6 @@ def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv6")
 
 
-def wait_bgp_sessions(duthost, neighbor_ips, timeout=60):
-    """
-    Wait for BGP sessions configured by this test to establish.
-
-    Args:
-        duthost: DUT host object
-        neighbor_ips: List of neighbor IP addresses to check
-        timeout: Maximum time to wait in seconds (default: 60)
-
-    Returns:
-        None. Raises assertion error if sessions don't establish.
-    """
-    bgp_neighbors = duthost.get_bgp_neighbors()
-
-    # Filter only the neighbors that exist in BGP neighbors
-    valid_neighbors = [ip for ip in neighbor_ips if ip in bgp_neighbors]
-
-    if not valid_neighbors:
-        pytest.fail(f"No valid BGP neighbor IPs found for test configuration on {duthost.hostname}")
-
-    pytest_assert(
-        wait_until(timeout, 5, 0, duthost.check_bgp_session_state, valid_neighbors),
-        f"Not all BGP sessions are established after {timeout} seconds on {duthost.hostname}"
-    )
-
-
 def verify_bgp_peer_scale(duthosts, configs, addr_family="ipv4"):
     """
     Verify BGP peer scale configuration and status for all DUTs
@@ -511,5 +440,9 @@ def verify_bgp_peer_scale(duthosts, configs, addr_family="ipv4"):
 
             neighbor_ips.append(config['neighbor_ip'])
 
-        # Check all BGP sessions once per DUT
-        wait_bgp_sessions(duthost, neighbor_ips)
+        # Check all BGP sessions
+        timeout = 120
+        pytest_assert(
+            wait_until(timeout, 5, 0, duthost.check_bgp_session_state, neighbor_ips),
+            f"Not all BGP sessions are established after {timeout} seconds on {duthost.hostname}"
+        )
