@@ -917,22 +917,36 @@ def configure_bgp_peer(
     neighbor_ip,
     local_asn,
     remote_asn,
-    addr_family="ipv4",
+    afi="ipv4",
+    safi="unicast",
     update_source_intf=None,
     max_hop_count=10,
 ):
-    """Configure an eBGP peer with proper timers.
+    """Configure a BGP peer with proper timers.
 
     Args:
         duthost: DUT host object
         neighbor_ip: IP address of the BGP neighbor
         local_asn: Local AS number
         remote_asn: Remote AS number
-        addr_family: Address family ("ipv4" or "ipv6")
+        afi: Address Family Identifier ("ipv4", "ipv6", or "l2vpn")
+        safi: Subsequent Address Family Identifier ("unicast", "multicast", "vpn", "evpn",
+              "flowspec", "labeled-unicast")
         update_source_intf: (Optional) Interface name to use as update-source (e.g. 'Loopback0')
-        max_hop_count: (Optional) Maximum number of hops allowed for eBGP peers (default: 10)
+        max_hop_count: (Optional) Maximum number of hops allowed for BGP peers (default: 10)
     """
     try:
+        # Validate AFI-SAFI combination
+        valid_combinations = {
+            "ipv4": ["unicast", "multicast", "vpn", "flowspec", "labeled-unicast"],
+            "ipv6": ["unicast", "multicast", "vpn", "flowspec", "labeled-unicast"],
+            "l2vpn": ["evpn"]
+        }
+
+        if afi not in valid_combinations or safi not in valid_combinations[afi]:
+            logging.error(f"Invalid AFI-SAFI combination: {afi}-{safi}")
+            return False
+
         command = "vtysh -c 'configure terminal' " \
                  f"-c 'router bgp {local_asn}' " \
                  f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' " \
@@ -943,7 +957,7 @@ def configure_bgp_peer(
         if update_source_intf:
             command += f"-c 'neighbor {neighbor_ip} update-source {update_source_intf}' "
 
-        command += f"-c 'address-family {addr_family} unicast' " \
+        command += f"-c 'address-family {afi} {safi}' " \
                    f"-c 'neighbor {neighbor_ip} activate' " \
                    "-c 'exit-address-family'"
 

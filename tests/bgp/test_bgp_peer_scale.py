@@ -5,6 +5,12 @@ import ipaddress
 import logging
 import pytest
 from tests.bgp.bgp_helpers import configure_bgp_peer
+from tests.ip.ip_helpers import (
+    configure_loopback,
+    unconfigure_loopback,
+    configure_static_route,
+    unconfigure_static_route,
+)
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -92,121 +98,6 @@ def get_loopback_ipv6_pair(loopback_id):
     return str(net[1]), str(net[2])
 
 
-def configure_loopback(duthost, loopback_id, ip_addr):
-    """Configure a loopback interface with the given IP.
-
-    Args:
-        duthost: DUT host object
-        loopback_id: Loopback interface ID
-        ip_addr: IP address (IPv4 or IPv6) to configure
-    """
-    try:
-        loopback_name = f"Loopback{loopback_id}"
-        is_ipv6 = ':' in ip_addr
-        ipcmd = 'ipv6' if is_ipv6 else 'ip'
-        prefix_len = '128' if is_ipv6 else '32'
-
-        # Configure loopback interface
-        try:
-            # Check if loopback exists
-            check_cmd = duthost.shell(f"show {ipcmd} interfaces | grep {loopback_name}", module_ignore_errors=True)
-            loopback_exists = check_cmd['rc'] == 0
-        except Exception:
-            loopback_exists = False
-
-        if not loopback_exists:
-            result = duthost.shell(f"config loopback add {loopback_name}")
-            if result['rc'] != 0 and "already exists" not in result['stderr']:
-                logger.error(f"Failed to add loopback: {result['stderr']}")
-                return False
-
-        # Configure IP address
-        duthost.add_ip_addr_to_port(loopback_name, f"{ip_addr}/{prefix_len}")
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error configuring loopback: {str(e)}")
-        return False
-
-
-def configure_peer_route(duthost, peer_ip, next_hop_ip):
-    """Configure route to reach peer's loopback IP.
-
-    Args:
-        duthost: DUT host object
-        peer_ip: Peer's loopback IP to reach
-        next_hop_ip: Next hop IP for reaching the peer
-    """
-    try:
-        is_ipv6 = ':' in peer_ip
-        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
-        prefix_len = '128' if is_ipv6 else '32'
-
-        route_cmd = f"{ip_route_cmd} add {peer_ip}/{prefix_len} via {next_hop_ip}"
-        result = duthost.shell(route_cmd, module_ignore_errors=True)
-        if result['rc'] != 0 and "File exists" not in result.get('stderr', ''):
-            logger.error(f"Failed to configure route to peer. Error: {result['stderr']}")
-            return False
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error configuring peer route: {str(e)}")
-        return False
-
-
-def unconfigure_loopback(duthost, loopback_id):
-    """Unconfigure a loopback interface and its route.
-
-    Args:
-        duthost: DUT host object
-        loopback_id: Loopback interface ID
-        ip_addr: IP address (IPv4 or IPv6) configured on the loopback
-    """
-    try:
-        loopback_name = f"Loopback{loopback_id}"
-
-        # Remove loopback interface
-        result = duthost.shell(f"config loopback del {loopback_name}", module_ignore_errors=True)
-        if result['rc'] != 0 and "does not exist" not in result.get('stderr', ''):
-            logger.error(f"Failed to remove loopback: {result['stderr']}")
-            return False
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error unconfiguring loopback: {str(e)}")
-        return False
-
-
-def delete_peer_route(duthost, peer_ip):
-    """Delete route to peer's loopback IP.
-
-    Args:
-        duthost: DUT host object
-        peer_ip: Peer's loopback IP whose route needs to be deleted
-    """
-    try:
-        print(f"\nDeleting route on {duthost.hostname}:")
-        print(f"  To peer IP: {peer_ip}")
-
-        is_ipv6 = ':' in peer_ip
-        ip_route_cmd = 'ip -6 route' if is_ipv6 else 'ip route'
-        prefix_len = '128' if is_ipv6 else '32'
-
-        route_cmd = f"{ip_route_cmd} del {peer_ip}/{prefix_len}"
-        result = duthost.shell(route_cmd, module_ignore_errors=True)
-        if result['rc'] != 0 and "No such process" not in result.get('stderr', ''):
-            logger.error(f"Failed to delete route to peer. Error: {result['stderr']}")
-            return False
-        return True
-
-    except Exception as e:
-        logger.error(f"Error deleting peer route: {str(e)}")
-        return False
-
-
 def get_asn_values(duthost):
     """Get the local and remote ASN values from existing BGP neighbors or config.
     Returns tuple of (local_asn, remote_asn)
@@ -277,20 +168,21 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         pytest.fail(f"Failed to configure loopback {loopback_id} on {nbrhost.hostname}")
 
                     # Configure routes to reach each other's loopbacks
-                    if not configure_peer_route(duthost, neighbor_ip, dut_nbr_ip):
+                    prefix_len = '128' if addr_family == "ipv6" else '32'
+                    if not configure_static_route(duthost, f"{neighbor_ip}/{prefix_len}", dut_nbr_ip):
                         pytest.fail(f"Failed to configure route to peer loopback on {duthost.hostname}")
-                    if not configure_peer_route(nbrhost, local_ip, nbr_dut_ip):
+                    if not configure_static_route(nbrhost, f"{local_ip}/{prefix_len}", nbr_dut_ip):
                         pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
 
                     # Configure eBGP peers
                     loopback_name = f"Loopback{loopback_id}"
                     if not configure_bgp_peer(duthost, neighbor_ip, local_asn,
-                                               remote_asn, addr_family=addr_family,
-                                               update_source_intf=loopback_name):
+                                              remote_asn, afi=addr_family,
+                                              update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
                     if not configure_bgp_peer(nbrhost, local_ip, remote_asn,
-                                               local_asn, addr_family=addr_family,
-                                               update_source_intf=loopback_name):
+                                              local_asn, afi=addr_family,
+                                              update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
                     configs.append({
@@ -314,6 +206,7 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             loopback_id = config['loopback_id']
             local_ip = config['local_ip']
             neighbor_ip = config['neighbor_ip']
+            addr_family = config['addr_family']
 
             # Remove BGP neighbors added by this test
             duthost.shell(
@@ -330,9 +223,10 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             )
 
             # Delete routes to peer loopbacks
-            if not delete_peer_route(duthost, neighbor_ip):
+            prefix_len = '128' if addr_family == "ipv6" else '32'
+            if not unconfigure_static_route(duthost, f"{neighbor_ip}/{prefix_len}"):
                 logger.error(f"Failed to delete route to peer loopback on {duthost.hostname}")
-            if not delete_peer_route(nbrhost, local_ip):
+            if not unconfigure_static_route(nbrhost, f"{local_ip}/{prefix_len}"):
                 logger.error(f"Failed to delete route to peer loopback on {nbrhost.hostname}")
 
             # Remove loopback interfaces
