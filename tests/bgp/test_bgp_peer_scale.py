@@ -4,7 +4,7 @@ Test BGP peer scaling by adding multiple BGP peers using loopback interfaces on 
 import ipaddress
 import logging
 import pytest
-from tests.bgp.bgp_helpers import configure_ebgp_peer
+from tests.bgp.bgp_helpers import configure_bgp_peer
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -121,11 +121,7 @@ def configure_loopback(duthost, loopback_id, ip_addr):
                 return False
 
         # Configure IP address
-        cmd = f"config interface ip add {loopback_name} {ip_addr}/{prefix_len}"
-        result = duthost.shell(cmd)
-        if result['rc'] != 0:
-            logger.error(f"Failed to configure IP on {loopback_name}. Error: {result['stderr']}")
-            return False
+        duthost.add_ip_addr_to_port(loopback_name, f"{ip_addr}/{prefix_len}")
 
         return True
 
@@ -160,7 +156,7 @@ def configure_peer_route(duthost, peer_ip, next_hop_ip):
         return False
 
 
-def unconfigure_loopback(duthost, loopback_id, ip_addr):
+def unconfigure_loopback(duthost, loopback_id):
     """Unconfigure a loopback interface and its route.
 
     Args:
@@ -170,15 +166,6 @@ def unconfigure_loopback(duthost, loopback_id, ip_addr):
     """
     try:
         loopback_name = f"Loopback{loopback_id}"
-        is_ipv6 = ':' in ip_addr
-        prefix_len = '128' if is_ipv6 else '32'
-
-        # Remove IP address from loopback
-        cmd = f"config interface ip remove {loopback_name} {ip_addr}/{prefix_len}"
-        result = duthost.shell(cmd, module_ignore_errors=True)
-        if result['rc'] != 0 and "does not exist" not in result.get('stderr', ''):
-            logger.error(f"Failed to remove IP from {loopback_name}. Error: {result['stderr']}")
-            return False
 
         # Remove loopback interface
         result = duthost.shell(f"config loopback del {loopback_name}", module_ignore_errors=True)
@@ -297,11 +284,11 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
                     # Configure eBGP peers
                     loopback_name = f"Loopback{loopback_id}"
-                    if not configure_ebgp_peer(duthost, neighbor_ip, local_asn,
+                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn,
                                                remote_asn, addr_family=addr_family,
                                                update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-                    if not configure_ebgp_peer(nbrhost, local_ip, remote_asn,
+                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn,
                                                local_asn, addr_family=addr_family,
                                                update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
@@ -349,9 +336,9 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                 logger.error(f"Failed to delete route to peer loopback on {nbrhost.hostname}")
 
             # Remove loopback interfaces
-            if not unconfigure_loopback(duthost, loopback_id, local_ip):
+            if not unconfigure_loopback(duthost, loopback_id):
                 logger.error(f"Failed to unconfigure loopback {loopback_id} on {duthost.hostname}")
-            if not unconfigure_loopback(nbrhost, loopback_id, neighbor_ip):
+            if not unconfigure_loopback(nbrhost, loopback_id):
                 logger.error(f"Failed to unconfigure loopback {loopback_id} on {nbrhost.hostname}")
 
 

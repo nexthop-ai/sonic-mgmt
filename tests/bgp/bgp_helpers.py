@@ -912,7 +912,7 @@ def initial_tsa_check_before_and_after_test(duthosts):
             executor.submit(run_tsb_on_linecard_and_verify, linecard)
 
 
-def configure_ebgp_peer(
+def configure_bgp_peer(
     duthost,
     neighbor_ip,
     local_asn,
