@@ -948,11 +948,11 @@ def configure_bgp_peer(
             return False
 
         command = "vtysh -c 'configure terminal' " \
-                 f"-c 'router bgp {local_asn}' " \
-                 f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' " \
-                 f"-c 'neighbor {neighbor_ip} ebgp-multihop {max_hop_count}' " \
-                 f"-c 'neighbor {neighbor_ip} timers 3 10' " \
-                 f"-c 'neighbor {neighbor_ip} timers connect 10' "
+                  f"-c 'router bgp {local_asn}' " \
+                  f"-c 'neighbor {neighbor_ip} remote-as {remote_asn}' " \
+                  f"-c 'neighbor {neighbor_ip} ebgp-multihop {max_hop_count}' " \
+                  f"-c 'neighbor {neighbor_ip} timers 3 10' " \
+                  f"-c 'neighbor {neighbor_ip} timers connect 10' "
 
         if update_source_intf:
             command += f"-c 'neighbor {neighbor_ip} update-source {update_source_intf}' "

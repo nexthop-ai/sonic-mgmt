@@ -3,6 +3,7 @@ import logging
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+
 def configure_loopback(duthost, loopback_id, ip_addr):
     """Configure a loopback interface with the given IP.
 
