@@ -31,6 +31,7 @@ tacacs_group: 'testlab'
 # Determine whether enable tacacs authentication during deploy-minigraph. If false, use local authentication.
 # If yes, authenticate using servers configured in `tacacs_servers`
 tacacs_enabled_by_default: false
+use_ptf_tacacs_server: false
 
 # snmp servers
 snmp_servers: ['10.0.0.9']
