@@ -605,7 +605,7 @@ def duthost_clear_console_port(
         ],
         CONSOLE_SSH_RARITAN_CONFIG: [
             (f'connect {console_port}', "Control-]"),
-            (f'\u001d', 'PortCommand'),
+            ('\u001d', 'PortCommand'),
             ('close', 'Client is disconnected')
         ]
     }
