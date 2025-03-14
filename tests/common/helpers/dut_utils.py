@@ -16,6 +16,7 @@ from tests.common.connections.base_console_conn import (
     CONSOLE_SSH_CISCO_CONFIG,
     CONSOLE_SSH_DIGI_CONFIG,
     CONSOLE_SSH_LANTRONIX_CONFIG,
+    CONSOLE_SSH_RARITAN_CONFIG,
     CONSOLE_SSH_SONIC_CONFIG
 )
 import time
@@ -602,6 +603,11 @@ def duthost_clear_console_port(
             ('accept', 'tunnel-accept:'),
             ('kill connection', 'tunnel-accept:')
         ],
+        CONSOLE_SSH_RARITAN_CONFIG: [
+            (f'connect {console_port}', "Control-]"),
+            (f'\u001d', 'PortCommand'),
+            ('close', 'Client is disconnected')
+        ]
     }
 
     for command, wait_for_pattern in command_list[menu_type]:
