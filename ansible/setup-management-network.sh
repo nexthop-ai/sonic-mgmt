@@ -10,14 +10,19 @@ function show_help_and_exit()
     echo "    options with (*) must be provided"
     echo "    -h -?                  : get this help"
     echo "    -d                     : Delete existed bridge"
-
+    echo "    -b <bridge_name>       : Bridge name (default: br1)"
+    echo "    -i <ip_address>        : Bridge IPv4 address with prefix (default: 10.250.0.1/24)"
+    echo "    -i6 <ipv6_address>     : Bridge IPv6 address with prefix (default: fec0::1/64)"
 
     exit $1
 }
 
 DEL_EXISTED_BRIDGE=false
+BRIDGE_NAME="br1"
+BRIDGE_IP="10.250.0.1/24"
+IPV6_PREFIX="fec0::1/64"
 
-while getopts "h?d" opt; do
+while getopts "h?db:i:i6:" opt; do
     case ${opt} in
         h|\? )
             show_help_and_exit 0
@@ -25,9 +30,22 @@ while getopts "h?d" opt; do
         d)
             DEL_EXISTED_BRIDGE=true
             ;;
+        b)
+            BRIDGE_NAME="${OPTARG}"
+            ;;
+        i)
+            BRIDGE_IP="${OPTARG}"
+            ;;
+        i6)
+            IPV6_PREFIX="${OPTARG}"
+            ;;
     esac
 done
 
+echo "Using bridge name: ${BRIDGE_NAME}"
+echo "Using bridge IPv4: ${BRIDGE_IP}"
+echo "Using bridge IPv6: ${IPV6_PREFIX}"
+echo
 
 echo "Refreshing apt package lists..."
 apt-get update
@@ -66,44 +84,45 @@ if ! command -v ethtool; then
 fi
 echo
 
-echo "STEP 5: Delete existed br1..."
-if [ "$DEL_EXISTED_BRIDGE" = true ] && ifconfig br1 >/dev/null 2>&1; then
-    echo "br1 exists, remove it."
-    ifconfig br1 down
-    brctl delbr br1
+echo "STEP 5: Delete existed ${BRIDGE_NAME}..."
+if [ "$DEL_EXISTED_BRIDGE" = true ] && ifconfig ${BRIDGE_NAME} >/dev/null 2>&1; then
+    echo "${BRIDGE_NAME} exists, remove it."
+    ifconfig ${BRIDGE_NAME} down
+    brctl delbr ${BRIDGE_NAME}
 else
-    echo "Not delete existed bridge or br1 not exists, skipping..."
+    echo "Not delete existed bridge or ${BRIDGE_NAME} not exists, skipping..."
 fi
 echo
 
-echo "STEP 6: Checking if bridge br1 already exists..."
-if ! ifconfig br1; then
-    echo "br1 not found, creating bridge network"
-    brctl addbr br1
-    brctl show br1
+echo "STEP 6: Checking if bridge ${BRIDGE_NAME} already exists..."
+if ! ifconfig ${BRIDGE_NAME}; then
+    echo "${BRIDGE_NAME} not found, creating bridge network"
+    brctl addbr ${BRIDGE_NAME}
+    brctl show ${BRIDGE_NAME}
 else
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo
-    echo "  br1 exists, possibly lab server, are you sure you want to continue?"
+    echo "  ${BRIDGE_NAME} exists, possibly lab server, are you sure you want to continue?"
     echo
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo
     echo
-    echo "Please double check and manually configure IP for br1 to avoid breaking lab server connectivity"
+    echo "Please double check and manually configure IP for ${BRIDGE_NAME} to avoid breaking lab server connectivity"
     exit 0
 fi
 echo
 
-echo "STEP 7: Configuring br1 interface..."
-echo "Assigning 10.250.0.1/24 to br1"
-ifconfig br1 10.250.0.1/24
-ifconfig br1 inet6 add fec0::1/64
-echo "Bringing up br1"
-ifconfig br1 up
+echo "STEP 7: Configuring ${BRIDGE_NAME} interface..."
+echo "Assigning ${BRIDGE_IP} to ${BRIDGE_NAME}"
+ifconfig ${BRIDGE_NAME} ${BRIDGE_IP}
+echo "Assigning ${IPV6_PREFIX} to ${BRIDGE_NAME}"
+ifconfig ${BRIDGE_NAME} inet6 add ${IPV6_PREFIX}
+echo "Bringing up ${BRIDGE_NAME}"
+ifconfig ${BRIDGE_NAME} up
 echo
 
 echo "COMPLETE. Bridge info:"
 echo
-brctl show br1
+brctl show ${BRIDGE_NAME}
 echo
-ifconfig br1
+ifconfig ${BRIDGE_NAME}
