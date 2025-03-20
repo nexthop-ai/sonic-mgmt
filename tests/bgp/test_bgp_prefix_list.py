@@ -164,7 +164,7 @@ def get_advertised_prefix(duthost, first_bgp_neighbor, prefix, action):
          Failure if show commands fail
     ''' 
     show_bgp_nei = f"vtysh -c 'show ip bgp neighbor {first_bgp_neighbor} advertised-routes json'"
-    route_info = json.loads(duthost.shell(f"{show_bgp_nei")['stdout'])
+    route_info = json.loads(duthost.shell(f"{show_bgp_nei}")['stdout'])
 
     logger.info(route_info)
     adv_routes = route_info.get('advertisedRoutes')
