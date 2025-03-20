@@ -7,8 +7,6 @@ Note: This script deletes any route-map applied in outbound direction.
 
 import logging
 import pytest
-import time
-import traceback
 import json
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
@@ -22,9 +20,10 @@ pytestmark = [
     pytest.mark.topology('t0', 't1', 't2')
 ]
 
+
 @pytest.fixture(scope='module')
 def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_frontend_asic_index):
-    """
+    '''
     Sets up the test environment and gathers BGP neighbor information.
     Args:
         tbinfo: Testbed information fixture from pytest.
@@ -36,7 +35,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
         A dictionary containing DUT, neighbor information, namespace, and ASN dictionary.
     Raises:
         Assert: If no BGP neighbors are found on in established state on the DUT.
-    """
+    '''
     duthost = duthosts[enum_frontend_dut_hostname]
     asic_index = enum_rand_one_frontend_asic_index
     namespace = duthost.get_namespace_from_asic_id(asic_index)
@@ -75,8 +74,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     }
 
     logger.info("DUT BGP Config: {}".format(duthost.shell("vtysh -n {} -c \"show run bgp\"".format(namespace),
-                                                           module_ignore_errors=True)))
-
+                                            module_ignore_errors=True)))
     logger.info('Setup_info: {}'.format(setup_info))
 
     yield setup_info
@@ -85,6 +83,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     for k, v in bgp_facts['bgp_neighbors'].items():
         if v['description'].lower() not in skip_hosts:
             assert v['state'] == 'established'
+
 
 def delete_existing_outbound(duthost, asn):
     '''
@@ -97,16 +96,17 @@ def delete_existing_outbound(duthost, asn):
     Raises:
          Failure if config commands fail
     '''
-    bgp_config = duthost.shell(f"vtysh -c 'show running-config bgp'")
+    bgp_config = duthost.shell("vtysh -c 'show running-config bgp'")
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
     for line in bgp_config['stdout_lines']:
         if "route-map" in line and "out" in line:
-           config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'address-family ipv4 unicast' -c 'no {line}'"
-           duthost.shell(config_command)
+            config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'no {line}'"
+            duthost.shell(config_command)
 
 
-def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
+def configure_prefix_list(duthost, prefix_list_name, action, prefix, seq):
     '''
-    Configures test prefix-list as per the parameters. 
+    Configures test prefix-list as per the parameters.
     Args:
          duthost: DUT (Device Under Test).
          prefix_list_name: Name of the test prefix-list to be configured
@@ -118,12 +118,14 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     Raises:
          Failure if config commands fail
     '''
-    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
+    conft = "vtysh -c 'configure terminal'"
+    config_command = f"{conft} -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
-def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_prefix,denied_prefix):
+
+def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip, asn, allowed_prefix, denied_prefix):
     '''
-    Advertises prefixes in the ipv4 address-family. 
+    Advertises prefixes in the ipv4 address-family.
     Applies test prefix-list to the BGP neighbor.
     Args:
          duthost: DUT (Device Under Test).
@@ -132,43 +134,51 @@ def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_
          asn: BGP ASN for the configuration
          action: Action either permit or deny
          allowed_prefix: Prefix to be advertised
-         denied_prefix: Prefix to be denied 
-     Returns:
-         None
-    Raises:
-         Failure if config commands fail
-    '''
-
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'address-family ipv4 unicast' -c 'network {allowed_prefix}'"
-    duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'address-family ipv4 unicast' -c 'network {denied_prefix}'"
-    duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
-    duthost.shell(config_command)
-
-def verify_prefix_list(duthost, prefix_list_name,first_bgp_neighbor, allowed_prefix, denied_prefix):
-    '''
-    Verifies test prefix-list applied correclty to the BGP neighbor and filtering the right prefixes.
-    Args:
-         duthost: DUT (Device Under Test).
-         prefix_list_name: Name of the test prefix-list to be configured
-         first_bgp_neighbor: BGP neighbor IP to which the prefix-list is applied
-         allowed_prefix: Prefix to be advertised
          denied_prefix: Prefix to be denied
      Returns:
          None
     Raises:
          Failure if config commands fail
     '''
-    route_info = json.loads(duthost.shell(f"vtysh -c 'show ip bgp neighbor {first_bgp_neighbor} advertised-routes json'")['stdout'])
+
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
+    config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'network {allowed_prefix}'"
+    duthost.shell(config_command)
+    config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'network {denied_prefix}'"
+    duthost.shell(config_command)
+    config_command = f"{conf_bgp} -c 'neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
+    duthost.shell(config_command)
+
+
+def get_advertised_prefix(duthost, first_bgp_neighbor, prefix, action):
+    '''
+    Retrieve advertised prefixes to neighbor and, check BGP is filtering the right prefixes.
+    Args:
+         duthost: DUT (Device Under Test).
+         first_bgp_neighbor: BGP neighbor IP to which the prefix-list is applied
+         prefix: Prefix to be advertised
+         action: permit/deny
+    Returns:
+         True/False
+    Raises:
+         Failure if show commands fail
+    '''
+    show_bgp_nei = f"vtysh -c 'show ip bgp neighbor {first_bgp_neighbor} advertised-routes json'"
+    route_info = json.loads(duthost.shell(f"{show_bgp_nei}")['stdout'])
 
     logger.info(route_info)
     adv_routes = route_info.get('advertisedRoutes')
     adv_routes_list = list(adv_routes.keys())
     logger.info(adv_routes)
     logger.info(adv_routes_list)
-    pytest_assert(wait_until(60, 10, 0, lambda: allowed_prefix in adv_routes_list), "Allowed prefix is not advertised out")
-    pytest_assert(wait_until(60, 10, 0, lambda: denied_prefix not in adv_routes_list), "Denied prefix is advertised out")
+
+    if action == "permit" and prefix not in adv_routes_list:
+        return False
+    elif action == "deny" and prefix in adv_routes_list:
+        return False
+
+    return True
+
 
 def cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, asn, neighbor_ip):
     '''
@@ -188,7 +198,8 @@ def cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, asn, neigh
     duthost.shell(config_command)
     config_command = f"sudo config interface ip remove Loopback101 {denied_prefix}"
     duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'no neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
+    config_command = f"{conf_bgp} -c 'no neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
     duthost.shell(config_command)
 
 
@@ -200,7 +211,6 @@ def test_prefix_list_application(setup):
 
     # Step 1: Define prefix list to permit a specific range and deny others
     prefix_list_name = "test-prefix-list"
-    route_map_name = "test-route-map"
     allowed_prefix = "100.1.1.1/32"
     denied_prefix = "100.2.2.1/32"
 
@@ -212,15 +222,15 @@ def test_prefix_list_application(setup):
 
     # Step 2: Configure the prefix list to permit the allowed prefix and deny the other
     logger.info(f"Configuring prefix list {prefix_list_name} to allow {allowed_prefix} and deny {denied_prefix}")
-    configure_prefix_list(duthost, prefix_list_name, 'permit', allowed_prefix,'10')
-    configure_prefix_list(duthost, prefix_list_name, 'deny', denied_prefix,'20') 
-     
+    configure_prefix_list(duthost, prefix_list_name, 'permit', allowed_prefix, '10')
+    configure_prefix_list(duthost, prefix_list_name, 'deny', denied_prefix, '20')
+
     # Step 2.1 : Fetch BGP facts
     bgp_facts = duthost.bgp_facts()['ansible_facts']
-    
+
     # Step 2.1: Accessing the list of BGP neighbors
     bgp_neighbors = bgp_facts['bgp_neighbors']
-    
+
     # Step 2.3: Get the first BGP neighbor's description (or neighbor's IP)
     first_bgp_neighbor = list(bgp_neighbors.keys())[0]  # Get the first key
     logger.info(first_bgp_neighbor)
@@ -232,11 +242,17 @@ def test_prefix_list_application(setup):
     delete_existing_outbound(duthost, first_bgp_asn)
 
     # Step 3: Apply the prefix-list to bgp neighbor
-    apply_prefix_list_to_bgp(duthost, prefix_list_name,first_bgp_neighbor,first_bgp_asn,allowed_prefix,denied_prefix)
+    apply_prefix_list_to_bgp(duthost, prefix_list_name, first_bgp_neighbor,
+                             first_bgp_asn, allowed_prefix, denied_prefix)
 
-    # Step 4: Verify the prefix-list filters prefixes correctly
-    verify_prefix_list(duthost, prefix_list_name,first_bgp_neighbor, allowed_prefix, denied_prefix)
+    # Step 4: Verify the prefix-list filters the prefixes correctly
+    pytest_assert(wait_until(60, 10, 0, lambda:
+                  get_advertised_prefix(duthost, first_bgp_neighbor,
+                                        allowed_prefix, 'permit')),
+                  "Allowed prefix is not advertised out")
+    pytest_assert(wait_until(60, 10, 0, lambda:
+                  get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')),
+                  "Denied prefix is advertised out")
 
     # Step 5: Cleanup the prefix-list configuration
     cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, first_bgp_asn, first_bgp_neighbor)
-
