@@ -99,8 +99,8 @@ def delete_existing_outbound(duthost, asn):
     bgp_config = duthost.shell("vtysh -c 'show running-config bgp'")
     for line in bgp_config['stdout_lines']:
         if "route-map" in line and "out" in line:
-            config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' 
-                     -c 'address-family ipv4 unicast' -c 'no {line}'"
+            config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' \
+                  -c 'address-family ipv4 unicast' -c 'no {line}'"
             duthost.shell(config_command)
 
 
