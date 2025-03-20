@@ -248,7 +248,7 @@ def test_prefix_list_application(setup):
     # Step 4: Verify the prefix-list filters the prefixes correctly
     pytest_assert(wait_until(60, 10, 0, lambda: 
                   get_advertised_prefix(duthost, first_bgp_neighbor, 
-                  allowed_prefix, 'permit')), 
+                                        allowed_prefix, 'permit')), 
                   "Allowed prefix is not advertised out")
     pytest_assert(wait_until(60, 10, 0, lambda: 
                   get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')), 
