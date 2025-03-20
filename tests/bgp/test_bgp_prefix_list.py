@@ -105,7 +105,7 @@ def delete_existing_outbound(duthost, asn):
 
 
 def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
-    ''' 
+    '''  
     Configures test prefix-list as per the parameters. 
     Args:
          duthost: DUT (Device Under Test).
@@ -117,13 +117,14 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
          None
     Raises:
          Failure if config commands fail
-    ''' 
-    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
+    '''  
+    conft = f"vtysh -c 'configure terminal'"
+    config_command = f"{conft} -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
 
 def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_prefix,denied_prefix):
-    ''' 
+    '''  
     Advertises prefixes in the ipv4 address-family. 
     Applies test prefix-list to the BGP neighbor.
     Args:
@@ -162,8 +163,8 @@ def get_advertised_prefix(duthost, first_bgp_neighbor, prefix, action):
     Raises:
          Failure if show commands fail
     ''' 
-
-    route_info = json.loads(duthost.shell(f"vtysh -c 'show ip bgp neighbor {first_bgp_neighbor} advertised-routes json'")['stdout'])
+    show_bgp_nei = f"vtysh -c 'show ip bgp neighbor {first_bgp_neighbor} advertised-routes json'"
+    route_info = json.loads(duthost.shell(f"{show_bgp_nei")['stdout'])
 
     logger.info(route_info)
     adv_routes = route_info.get('advertisedRoutes')
@@ -245,9 +246,11 @@ def test_prefix_list_application(setup):
            first_bgp_asn,allowed_prefix,denied_prefix)
 
     # Step 4: Verify the prefix-list filters the prefixes correctly
-    pytest_assert(wait_until(60, 10, 0, lambda: get_advertised_prefix(duthost, first_bgp_neighbor, allowed_prefix, 'permit')), 
+    pytest_assert(wait_until(60, 10, 0, lambda: 
+            get_advertised_prefix(duthost, first_bgp_neighbor, allowed_prefix, 'permit')), 
             "Allowed prefix is not advertised out")
-    pytest_assert(wait_until(60, 10, 0, lambda: get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')), 
+    pytest_assert(wait_until(60, 10, 0, lambda: 
+          get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')), 
             "Denied prefix is advertised out")
 
     # Step 5: Cleanup the prefix-list configuration
