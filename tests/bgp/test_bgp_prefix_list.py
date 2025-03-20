@@ -97,10 +97,10 @@ def delete_existing_outbound(duthost, asn):
          Failure if config commands fail
     ''' 
     bgp_config = duthost.shell("vtysh -c 'show running-config bgp'")
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
     for line in bgp_config['stdout_lines']:
         if "route-map" in line and "out" in line:
-            config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' \
-                  -c 'address-family ipv4 unicast' -c 'no {line}'"
+            config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'no {line}'"
             duthost.shell(config_command)
 
 
@@ -118,8 +118,7 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     Raises:
          Failure if config commands fail
     ''' 
-    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list \ 
-                       {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
+    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
 
@@ -141,14 +140,12 @@ def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_
          Failure if config commands fail
     ''' 
 
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' 
-                          -c 'address-family ipv4 unicast' -c 'network {allowed_prefix}'"
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
+    config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'network {allowed_prefix}'"
     duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' 
-                          -c 'address-family ipv4 unicast' -c 'network {denied_prefix}'"
+    config_command = f"{conf_bgp} -c 'address-family ipv4 unicast' -c 'network {denied_prefix}'"
     duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' 
-                          -c 'neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
+    config_command = f"{conf_bgp} -c 'neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
     duthost.shell(config_command)
 
 
@@ -200,7 +197,8 @@ def cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, asn, neigh
     duthost.shell(config_command)
     config_command = f"sudo config interface ip remove Loopback101 {denied_prefix}"
     duthost.shell(config_command)
-    config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'no neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
+    conf_bgp = f"vtysh -c 'configure terminal' -c 'router bgp {asn}'"
+    config_command = f"{conf_bgp} -c 'no neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
     duthost.shell(config_command)
 
 
