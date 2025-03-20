@@ -37,8 +37,11 @@ def test_reboot_pdu_forever(duthost, localhost, conn_graph_facts, get_pdu_contro
     count = 1
     while True:
         logger.warn(f"Rebooting dut for {count}'th time")
-        reboot_and_check(localhost, duthost, conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {}),
-                         check_all_xcvrs, reboot_type=REBOOT_TYPE_POWEROFF,
-                         reboot_helper=_power_off_reboot_helper, reboot_kwargs=reboot_kwargs)
+        try:
+            reboot_and_check(localhost, duthost, conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {}),
+                             check_all_xcvrs, reboot_type=REBOOT_TYPE_POWEROFF,
+                             reboot_helper=_power_off_reboot_helper, reboot_kwargs=reboot_kwargs)
+        except Exception as e:
+            logger.error(f"Reboot failed: {e}")
         logger.warn("Dut came back")
         count += 1
