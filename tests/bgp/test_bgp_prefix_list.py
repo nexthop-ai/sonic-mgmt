@@ -118,7 +118,7 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     Raises:
          Failure if config commands fail
     ''' 
-    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list 
+    config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list \ 
                        {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
