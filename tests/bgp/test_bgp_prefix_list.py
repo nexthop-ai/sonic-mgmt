@@ -256,4 +256,3 @@ def test_prefix_list_application(setup):
 
     # Step 5: Cleanup the prefix-list configuration
     cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, first_bgp_asn, first_bgp_neighbor)
-
