@@ -74,7 +74,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     }
 
     logger.info("DUT BGP Config: {}".format(duthost.shell("vtysh -n {} -c \"show run bgp\"".format(namespace),
-                                                           module_ignore_errors=True)))
+          module_ignore_errors=True)))
     logger.info('Setup_info: {}'.format(setup_info))
 
     yield setup_info
@@ -104,7 +104,7 @@ def delete_existing_outbound(duthost, asn):
             duthost.shell(config_command)
 
 
-def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
+def configure_prefix_list(duthost, prefix_list_name, action, prefix, seq):
     '''  
     Configures test prefix-list as per the parameters. 
     Args:
@@ -118,12 +118,12 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     Raises:
          Failure if config commands fail
     '''  
-    conft = f"vtysh -c 'configure terminal'"
+    conft = "vtysh -c 'configure terminal'"
     config_command = f"{conft} -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
 
-def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_prefix,denied_prefix):
+def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip, asn, allowed_prefix, denied_prefix):
     '''  
     Advertises prefixes in the ipv4 address-family. 
     Applies test prefix-list to the BGP neighbor.
@@ -222,8 +222,8 @@ def test_prefix_list_application(setup):
 
     # Step 2: Configure the prefix list to permit the allowed prefix and deny the other
     logger.info(f"Configuring prefix list {prefix_list_name} to allow {allowed_prefix} and deny {denied_prefix}")
-    configure_prefix_list(duthost, prefix_list_name, 'permit', allowed_prefix,'10')
-    configure_prefix_list(duthost, prefix_list_name, 'deny', denied_prefix,'20') 
+    configure_prefix_list(duthost, prefix_list_name, 'permit', allowed_prefix, '10')
+    configure_prefix_list(duthost, prefix_list_name, 'deny', denied_prefix, '20') 
      
     # Step 2.1 : Fetch BGP facts
     bgp_facts = duthost.bgp_facts()['ansible_facts']
@@ -242,16 +242,16 @@ def test_prefix_list_application(setup):
     delete_existing_outbound(duthost, first_bgp_asn)
 
     # Step 3: Apply the prefix-list to bgp neighbor
-    apply_prefix_list_to_bgp(duthost, prefix_list_name,first_bgp_neighbor, 
-           first_bgp_asn,allowed_prefix,denied_prefix)
+    apply_prefix_list_to_bgp(duthost, prefix_list_name, first_bgp_neighbor, 
+           first_bgp_asn, allowed_prefix,denied_prefix)
 
     # Step 4: Verify the prefix-list filters the prefixes correctly
     pytest_assert(wait_until(60, 10, 0, lambda: 
-            get_advertised_prefix(duthost, first_bgp_neighbor, allowed_prefix, 'permit')), 
-            "Allowed prefix is not advertised out")
+        get_advertised_prefix(duthost, first_bgp_neighbor, allowed_prefix, 'permit')), 
+        "Allowed prefix is not advertised out")
     pytest_assert(wait_until(60, 10, 0, lambda: 
-          get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')), 
-            "Denied prefix is advertised out")
+        get_advertised_prefix(duthost, first_bgp_neighbor, denied_prefix, 'deny')), 
+        "Denied prefix is advertised out")
 
     # Step 5: Cleanup the prefix-list configuration
     cleanup(duthost, prefix_list_name, allowed_prefix, denied_prefix, first_bgp_asn, first_bgp_neighbor)
