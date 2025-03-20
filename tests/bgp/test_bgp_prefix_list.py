@@ -20,7 +20,9 @@ pytestmark = [
     pytest.mark.topology('t0', 't1', 't2')
 ]
 
+
 @pytest.fixture(scope='module')
+
 def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_frontend_asic_index):
     ''' 
     Sets up the test environment and gathers BGP neighbor information.
@@ -118,6 +120,7 @@ def configure_prefix_list(duthost, prefix_list_name, action, prefix,seq):
     config_command = f"vtysh -c 'configure terminal' -c 'ip prefix-list {prefix_list_name} seq {seq} {action} {prefix}' -c 'exit'"
     duthost.shell(config_command)
 
+
 def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_prefix,denied_prefix):
     ''' 
     Advertises prefixes in the ipv4 address-family. 
@@ -142,6 +145,7 @@ def apply_prefix_list_to_bgp(duthost, prefix_list_name, neighbor_ip,asn,allowed_
     duthost.shell(config_command)
     config_command = f"vtysh -c 'configure terminal' -c 'router bgp {asn}' -c 'neighbor {neighbor_ip} prefix-list {prefix_list_name} out'"
     duthost.shell(config_command)
+
 
 def get_advertised_prefix(duthost, first_bgp_neighbor, prefix, action):
     ''' 
