@@ -38,6 +38,10 @@ class snmpPduController(PduControllerBase):
         EMERSON_PORT_NAME_BASE_OID = "1.3.6.1.4.1.476.1.42.3.8.50.20.1.10.1"
         EMERSON_PORT_STATUS_BASE_OID = "1.3.6.1.4.1.476.1.42.3.8.50.20.1.100.1"
         EMERSON_PORT_CONTROL_BASE_OID = "1.3.6.1.4.1.476.1.42.3.8.50.20.1.100.1"
+        # MIB OID for 'Raritan PX-series'
+        RARITAN_PORT_NAME_BASE_OID = "1.3.6.1.4.1.13742.6.3.5.3.1.3.1"
+        RARITAN_PORT_STATUS_BASE_OID = "1.3.6.1.4.1.13742.6.4.1.2.1.3.1"
+        RARITAN_PORT_CONTROL_BASE_OID = "1.3.6.1.4.1.13742.6.4.1.2.1.2.1"
         # MIB OID for 'Sentry Switched PDU'
         SENTRY4_PORT_NAME_BASE_OID = "1.3.6.1.4.1.1718.4.1.8.2.1.3"
         SENTRY4_PORT_STATUS_BASE_OID = "1.3.6.1.4.1.1718.4.1.8.3.1.1"
@@ -76,6 +80,16 @@ class snmpPduController(PduControllerBase):
             self.PORT_STATUS_BASE_OID = EMERSON_PORT_STATUS_BASE_OID
             self.PORT_CONTROL_BASE_OID = EMERSON_PORT_CONTROL_BASE_OID
             self.CONTROL_OFF = "0"
+        elif self.pduType == "Raritan":
+            self.PORT_NAME_BASE_OID = RARITAN_PORT_NAME_BASE_OID
+            self.PORT_STATUS_BASE_OID = RARITAN_PORT_STATUS_BASE_OID
+            self.PORT_CONTROL_BASE_OID = RARITAN_PORT_CONTROL_BASE_OID
+            self.STATUS_ON = "7"
+            self.STATUS_OFF = "8"
+            self.CONTROL_ON = "1"
+            self.CONTROL_OFF = "0"
+            self.has_lanes = False
+            self.max_lanes = 1
         elif self.pduType == "Sentry4":
             self.PORT_NAME_BASE_OID = SENTRY4_PORT_NAME_BASE_OID
             self.PORT_STATUS_BASE_OID = SENTRY4_PORT_STATUS_BASE_OID
