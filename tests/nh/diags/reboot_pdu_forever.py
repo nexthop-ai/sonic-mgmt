@@ -17,6 +17,7 @@ pytestmark = [
     pytest.mark.topology('any')
 ]
 
+
 def test_reboot_pdu_forever(duthost, localhost, conn_graph_facts, get_pdu_controller):
     """
     Reboot the dut forever using the PDU to cut the power.
@@ -34,14 +35,13 @@ def test_reboot_pdu_forever(duthost, localhost, conn_graph_facts, get_pdu_contro
     }
 
     check_all_xcvrs = {duthost.hostname: []}
-    count = 1
-    while True:
-        logger.warn(f"Rebooting dut for {count}'th time")
+    num_failures = 0
+    for count in range(15):
+        logger.warn(f"Rebooting dut for {count + 1}'th time. {num_failures} failures")
         try:
             reboot_and_check(localhost, duthost, conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {}),
                              check_all_xcvrs, reboot_type=REBOOT_TYPE_POWEROFF,
                              reboot_helper=_power_off_reboot_helper, reboot_kwargs=reboot_kwargs)
         except Exception as e:
             logger.error(f"Reboot failed: {e}")
-        logger.warn("Dut came back")
-        count += 1
+            num_failures += 1
