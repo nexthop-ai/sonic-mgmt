@@ -604,9 +604,8 @@ def duthost_clear_console_port(
             ('kill connection', 'tunnel-accept:')
         ],
         CONSOLE_SSH_RARITAN_CONFIG: [
-            (f'connect {console_port}', "Control-]"),
-            ('\u001d', 'PortCommand'),
-            ('close', 'Client is disconnected')
+            ('maintenance', "Maintenance"),
+            ('logoff {console_port}', 'Force log off successful.')
         ]
     }
 
