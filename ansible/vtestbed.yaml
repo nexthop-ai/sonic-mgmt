@@ -415,7 +415,7 @@
 
 - conf-name: vms-kvm-t0-small
   group-name: vms6-1
-  topo: t0
+  topo: t0-small
   ptf_image_name: docker-ptf
   ptf: ptf-01
   ptf_ip: 10.250.0.102/24
@@ -430,7 +430,7 @@
 
 - conf-name: vms-kvm-t1-small
   group-name: vms6-1
-  topo: t1
+  topo: t1-small
   ptf_image_name: docker-ptf
   ptf: ptf-01
   ptf_ip: 10.250.0.102/24
