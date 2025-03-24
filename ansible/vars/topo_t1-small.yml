@@ -6,7 +6,7 @@ topology:
       vm_offset: 0
     ARISTA01T0:
       vlans:
-        - 16
+        - 1
       vm_offset: 1
 
 configuration_properties:
@@ -16,7 +16,7 @@ configuration_properties:
     nhipv4: 10.10.246.254
     nhipv6: FC0A::FF
     podset_number: 200
-    tor_number: 16
+    tor_number: 1
     tor_subnet_number: 2
     max_tor_subnet_number: 16
     tor_subnet_size: 128
