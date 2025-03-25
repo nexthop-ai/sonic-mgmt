@@ -15,10 +15,11 @@ cisco_password: "password"
 
 sonic_login: "admin"
 sonic_default_passwords:
+ - "Nexthop@24"
  - "YourPaSsWoRd"
  - "password"
  - "admin"
-sonic_password: "password"
+sonic_password: "Nexthop@24"
 
 k8s_master_login: "ubuntu"
 k8s_master_password: "use_own_value"
