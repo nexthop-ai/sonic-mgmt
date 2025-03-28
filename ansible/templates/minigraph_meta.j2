@@ -12,6 +12,16 @@
         <a:Name>{{ inventory_hostname }}</a:Name>
         <a:Properties>
           <a:DeviceProperty>
+            <a:Name>DockerRoutingConfigMode</a:Name>
+            <a:Reference i:nil="true"/>
+            <a:Value>{{ docker_routing_config_mode | default('separated') }}</a:Value>
+          </a:DeviceProperty>
+          <a:DeviceProperty>
+            <a:Name>FrrMgmtFrameworkConfig</a:Name>
+            <a:Reference i:nil="true"/>
+            <a:Value>{{ frr_mgmt_framework_config | default('false') }}</a:Value>
+          </a:DeviceProperty>
+          <a:DeviceProperty>
             <a:Name>DeploymentId</a:Name>
             <a:Reference i:nil="true"/>
             <a:Value>1</a:Value>
