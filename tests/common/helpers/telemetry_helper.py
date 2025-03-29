@@ -86,14 +86,6 @@ def setup_streaming_telemetry_context(is_ipv6, duthost, localhost, ptfhost, gnxi
     @summary: Post setting up the streaming telemetry before running the test.
     """
     try:
-        telemetry_status = duthost.shell("show feature status telemetry")["stdout_lines"]
-        telemetry_status = dict(zip(telemetry_status[0].split(), telemetry_status[2].split()))
-        if telemetry_status['State'] == 'disabled':
-            duthost.shell("sudo config feature state telemetry enabled")
-            duthost.shell("systemctl restart telemetry")
-            duthost.service(name="telemetry", state="restarted")
-            wait_until(100, 10, 0, duthost.is_service_fully_started, "telemetry")
-
         has_gnmi_config = check_gnmi_config(duthost)
         if not has_gnmi_config:
             create_gnmi_config(duthost)
