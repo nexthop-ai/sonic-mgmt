@@ -442,7 +442,7 @@
             - name: Verify BGP_NEIGHBOR_AF entries
               fail:
                 msg: "Missing or invalid BGP_NEIGHBOR_AF configuration for {{ item.key }}"
-              loop: "{{ config_db['BGP_NEIGHBOR_AF'] | dict2items }}"
+              loop: "{{ config_db['BGP_NEIGHBOR_AF'] |  default({}) | dict2items }}"
               when: >
                 not item.key.startswith('default|') or
                 item.value.vrf_name != 'default' or
@@ -493,7 +493,8 @@
                 config_db['ROUTE_MAP'][rm_key] is not defined or
                 config_db['ROUTE_MAP'][rm_key].route_operation != 'permit'
 
-          when: config_db['BGP_NEIGHBOR'] is defined
+          when: config_db['BGP_NEIGHBOR'] is defined and
+                (frr_mgmt_config is defined and frr_mgmt_config|string == 'true')
 
       when: >
         config_db['BGP_NEIGHBOR'] is defined and
