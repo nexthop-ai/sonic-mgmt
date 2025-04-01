@@ -167,7 +167,7 @@ def check_hash_seed_value(duthost, asic_name, topo_type):
         seed_cmd_input = seed_cmd
     for cmd in seed_cmd_input:
         if asic_name == "th5":
-            # TH5 output format is slightly different. Expeted patterns comes in a different line
+            # TH5 output format is slightly different. Expected pattern comes in a different line
             output = duthost.command(cmd, module_ignore_errors=True)["stdout_lines"][3].strip()
         else:
             output = duthost.command(cmd, module_ignore_errors=True)["stdout_lines"][2].strip()
