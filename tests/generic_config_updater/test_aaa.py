@@ -47,7 +47,6 @@ RADIUS_SERVER_OPTION = {
 }
 
 
-
 @pytest.fixture(autouse=True)
 def setup_env(duthosts, rand_one_dut_hostname):
     """
@@ -172,19 +171,22 @@ def radius_add_init_config_without_table(duthost):
     output = duthost.shell(cmds)
     pytest_assert(not output['rc'], "RADIUS init config failed")
 
-def get_radius_global_type_value(duthost, radius_global_type):
-    r""" Get radius global config by type
 
-    Sample output:
-    admin@vlab-01:~$ show radius | grep -Po "RADIUS global auth_type \K.*"
-    pap (default)
+def get_radius_global_type_value(duthost, radius_global_type):
+    """ Get radius global config by type
     """
     output = duthost.shell(r'show radius | grep -Po "RADIUS global {} \K.*"'.format(radius_global_type))
     pytest_assert(not output['rc'], "Failed to grep RADIUS {}".format(radius_global_type))
     return output['stdout']
 
+
 def parse_radius_server(duthost):
-    """ Parse radius server configuration """
+    """ Parse radius server configuration using show command
+
+    Sample output in kvm t0:
+    {u'10.0.0.9': {u'priority': u'1', u'auth_port': u'1812'},
+    u'10.0.0.8': {u'priority': u'1', u'auth_port': u'1812'}}
+    """
     output = duthost.shell("show radius")
     pytest_assert(not output['rc'])
     lines = output['stdout']
@@ -208,7 +210,6 @@ def parse_radius_server(duthost):
                 address = ""
             else:
                 fields = line.strip().split(" ")
-                pytest_assert(len(fields) == 2)
                 k, v = fields[0], fields[1]
                 radius_server[k] = v
 
@@ -216,6 +217,7 @@ def parse_radius_server(duthost):
         radius_servers[address] = radius_server
 
     return radius_servers
+
 
 def aaa_tc1_add_config(duthost, auth_method):
     """ Test AAA add initial config for its sub type
@@ -375,10 +377,10 @@ def test_tc1_aaa_suite(rand_selected_dut):
     # Since tc2 it will clean and retest TACPLUS table, we don't care TACPLUS residue after tc1
     tacacs_global_tc2_add_config(rand_selected_dut)
     radius_global_tc4_add_config(rand_selected_dut)
-    
+
     # Call aaa_tc1_add_config for each auth_method explicitly
     for auth_method in ["tacacs+", "radius"]:
-        aaa_tc1_add_config(rand_selected_dut, auth_method)  
+        aaa_tc1_add_config(rand_selected_dut, auth_method)
 
     aaa_tc1_replace(rand_selected_dut)
     aaa_tc1_add_duplicate(rand_selected_dut)
@@ -696,7 +698,7 @@ def radius_global_tc4_add_config(duthost):
             }
         }
     ]
-    json_patch = format_json_patch_for_multiasic(duthost=duthost, json_data=json_patch)
+    json_patch = format_json_patch_for_multiasic(duthost=duthost, json_data=json_patch, is_host_specific=True)
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
@@ -706,9 +708,10 @@ def radius_global_tc4_add_config(duthost):
 
         for radius_global_type, value in list(RADIUS_ADD_CONFIG.items()):
             pytest_assert(get_radius_global_type_value(duthost, radius_global_type) == value,
-                        "RADIUS global {} failed to apply".format(radius_global_type))
+                          "RADIUS global {} failed to apply".format(radius_global_type))
     finally:
         delete_tmpfile(duthost, tmpfile)
+
 
 def radius_server_tc4_add_config(duthost):
     """ Test radius server addition """
@@ -732,13 +735,14 @@ def radius_server_tc4_add_config(duthost):
 
         radius_servers = parse_radius_server(duthost)
         pytest_assert(ip_address in radius_servers,
-                     "radius server failed to add to config.")
+                      "radius server failed to add to config.")
         options = radius_servers[ip_address]
         for opt, value in list(RADIUS_SERVER_OPTION.items()):
             pytest_assert(opt in options and options[opt] == value,
-                        "radius server failed to add to config completely.")
+                          "radius server failed to add to config completely.")
     finally:
         delete_tmpfile(duthost, tmpfile)
+
 
 def test_tc4_radius_suite(rand_selected_dut):
     """ Test suite for RADIUS configuration """

@@ -43,9 +43,10 @@ def do_init(duthost):
         try:
             os.makedirs(i, exist_ok=True)
         except OSError as e:
-            logger.info("Dir/file already exists: {}, skipping mkdir".format(e))
+            logger.error("Unexpected error while creating directory: {}".format(e))
 
-        duthost.copy(src="telemetry/validate_yang_events.py", dest="~/")
+    # Copy validate_yang_events.py from sonic-mgmt to DUT
+    duthost.copy(src="telemetry/validate_yang_events.py", dest="~/")
 
 
 @pytest.fixture(scope="module")
