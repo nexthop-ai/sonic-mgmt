@@ -722,6 +722,10 @@
           - config route add prefix 16.0.0.0/8 nexthop 10.0.0.57
         when: topo == "wan-3link-tg"
 
+      - name: config telemetry
+        become: true
+        shell: sudo config feature state telemetry enabled
+
       - name: execute cli "config bgp startup all" to bring up all bgp sessions for test
         become: true
         shell: config bgp startup all
