@@ -1,5 +1,6 @@
 # Background and Motivation
 
+
 When deploy a testbed with a great number of virtual ceos neighbors, we will create ceos containers on same server, however, the server doesn't have infinite resources such as memory to deploy that.
 
 To help us scale out and support large number of neighbors, we propose this design for deploying testbed with multiple servers.
@@ -79,4 +80,3 @@ We create one ptf container for each server, and every container will has one pt
 
 ![](img/ptf-connection-on-multi-servers-testbed.png)
 Fig 3. PTF Connection Overview
-
