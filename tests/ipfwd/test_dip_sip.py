@@ -4,7 +4,6 @@ import logging
 
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses      # noqa F401
 from tests.common.fixtures.ptfhost_utils import remove_ip_addresses       # noqa F401
-from tests.common.helpers.assertions import pytest_assert
 
 DEFAULT_HLIM_TTL = 64
 WAIT_EXPECTED_PACKET_TIMEOUT = 5
@@ -18,6 +17,7 @@ logger = logging.getLogger(__name__)
 pytestmark = [
     pytest.mark.topology('t0', 't1', 't2', 'm0', 'mx', 'm1', 'm2', 'm3')
 ]
+
 
 @pytest.fixture(scope="module", autouse="True")
 def lldp_setup(duthosts, enum_rand_one_per_hwsku_frontend_hostname, patch_lldpctl, unpatch_lldpctl, localhost):

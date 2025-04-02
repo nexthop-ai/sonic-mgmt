@@ -40,13 +40,14 @@ def restore_config_db(duthost):
     # Reload to restore configuration
     config_reload(duthost, safe_reload=True, check_intf_up_ports=True)
 
-### Nexthop Patch
+
 def add_ptf_static_routes(dut, ptf_mgmt_ip, routes):
     """
+    NEXTHOP PATCH
     Adding static routes to mgmt vrf
     """
     nexthops = routes["{}/32".format(ptf_mgmt_ip)][0]["nexthops"]
-    logger.debug("NEXTHOPS")
+    logger.debug("NEXTHOP")
     logger.debug(nexthops)
     for routes in nexthops:
         dut.command("sudo config route add prefix vrf mgmt {}/32 nexthop vrf mgmt {}".format(ptf_mgmt_ip, routes["ip"]))
@@ -68,7 +69,7 @@ def setup_mvrf(duthosts, rand_one_dut_hostname, localhost, check_ntp_sync, ptfho
     # Backup the original config_db without mgmt vrf config
     duthost.shell("cp /etc/sonic/config_db.json /etc/sonic/config_db.json.bak")
 
-    #grab any static route for ptf management rechability
+    # grab any static route for ptf management rechability
     route_json = json.loads(duthost.command("show ip route {} json".format(ptfhost.mgmt_ip))["stdout"])
 
     try:

@@ -23,7 +23,7 @@ ConsoleTypeMapper = {
     CONSOLE_SSH_SONIC_CONFIG: SSHConsoleConn,
     CONSOLE_SSH_TO_PORT: SSHConsoleConn,
     CONSOLE_SSH_CISCO_CONFIG: SSHConsoleConn,
-    CONSOLE_CONSERVER: ConserverConsoleConn
+    CONSOLE_CONSERVER: ConserverConsoleConn,
     CONSOLE_SSH_LANTRONIX_CONFIG: SSHConsoleConn,
     CONSOLE_SSH_RARITAN_CONFIG: SSHConsoleConn
 }
