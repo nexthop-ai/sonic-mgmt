@@ -113,12 +113,13 @@ These tests do not require traffic and are standalone, designed to run on a Devi
     dut_name,physical_port,vendor_pn,vendor_sn,vendor_date,vendor_oui,vendor_rev
     dut_name_1,port_1,vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
     dut_name_1,port_2,vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
+
     # Add more DUTs as needed
     ```
 
     Functionality to parse the above files and store the data in a dictionary should be implemented in the test framework. This dictionary should act as a source of truth for the test cases.
-    The vendor_part_number from `transceiver_dut_info.csv` file should be used to fetch the common attributes of the transceiver from `transceiver_common_attributes.csv` file for a given port. 
-    If any non-string value is planned to be added to the dictionary, the `convert_row_types` function should be modified to convert the relevant value to the appropriate datatype. 
+    The vendor_part_number from `transceiver_dut_info.csv` file should be used to fetch the common attributes of the transceiver from `transceiver_common_attributes.csv` file for a given port.
+    If any non-string value is planned to be added to the dictionary, the `convert_row_types` function should be modified to convert the relevant value to the appropriate datatype.
 
     Example of an dictionary created by parsing the above files
 
