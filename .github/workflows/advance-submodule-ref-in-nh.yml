@@ -1,0 +1,98 @@
+name: Advance sonic-mgmt submodule reference in nh
+
+on:
+  pull_request:
+    branches:
+      - master
+      - 202411
+      - 202405
+    types:
+      - closed
+
+jobs:
+  create-pr-in-nh:
+    if: github.event.pull_request.merged == true  # Run only if PR is merged
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine Target NH Branch
+        id: branch_mapping
+        run: |
+          case "${{ github.event.pull_request.base.ref }}" in
+            master) NH_BRANCH="main" ;;
+            202411) NH_BRANCH="202411" ;;
+            202405) NH_BRANCH="202405" ;;
+            *) echo "Unsupported branch: ${{ github.event.pull_request.base.ref }}"; exit 1 ;;
+          esac
+          echo "NH_BRANCH=$NH_BRANCH" >> $GITHUB_ENV
+          echo "nh_branch=$NH_BRANCH" >> $GITHUB_OUTPUT  # Save for later steps
+
+      - name: Checkout nh repo
+        uses: actions/checkout@v4
+        with:
+          repository: nexthop-ai/nh
+          token: ${{ secrets.SONIC_MGMT_GHA_PAT }}
+          fetch-depth: 0
+          ref: ${{ env.NH_BRANCH }}  # Ensure we check out the correct branch
+
+      - name: Set Up Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://${{ secrets.SONIC_MGMT_GHA_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Update sonic-mgmt Submodule
+        run: |
+          case "${{ github.event.pull_request.base.ref }}" in
+            master) SUBMODULE_BRANCH="master" ;;
+            202411) SUBMODULE_BRANCH="202411" ;;
+            202405) SUBMODULE_BRANCH="202405" ;;
+            *) echo "Unsupported branch: ${{ github.event.pull_request.base.ref }}"; exit 1 ;;
+          esac
+
+          git submodule update --init sonic-mgmt
+          git submodule update --remote sonic-mgmt
+          git add sonic-mgmt
+          git commit -m "Update sonic-mgmt" || echo "No changes to commit"
+          git add sonic-mgmt
+          git commit -m "Update sonic-mgmt to latest commit from $SUBMODULE_BRANCH" || echo "No changes to commit"
+
+      - name: Push Changes to New Branch
+        id: push_branch
+        run: |
+          SYNC_BRANCH="sync-from-sonic-mgmt-$(date +%Y%m%d-%H%M%S)"
+          echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
+          echo "sync_branch=$SYNC_BRANCH" >> $GITHUB_OUTPUT  # Save for later steps
+          git checkout -b "$SYNC_BRANCH"
+          git push origin "$SYNC_BRANCH"
+
+      - name: Close Existing sonic-mgmt Sync PRs in NH Repo
+        env:
+          GH_TOKEN: ${{ secrets.SONIC_MGMT_GHA_PAT }}
+        run: |
+          EXISTING_PRS=$(gh pr list --repo nexthop-ai/nh --state open --json number,title | jq -c --arg BRANCH "${{ env.NH_BRANCH }}" '.[] | select(.title | startswith("NO-ISS: Sync sonic-mgmt submodule in \($BRANCH)"))')
+
+          if [ -n "$EXISTING_PRS" ]; then
+            echo "Closing existing sonic-mgmt sync PRs for branch ${{ env.NH_BRANCH }}..."
+            echo "$EXISTING_PRS" | jq -r '.number' | while read PR_NUM; do
+              gh pr close $PR_NUM --repo nexthop-ai/nh --delete-branch
+              echo "Closed PR #$PR_NUM"
+            done
+          else
+            echo "No existing sonic-mgmt sync PRs to close for branch ${{ env.NH_BRANCH }}."
+          fi
+
+      - name: Create Pull Request in NH Repo
+        env:
+          GH_TOKEN: ${{ secrets.SONIC_MGMT_GHA_PAT }}
+        run: |
+          PR_TITLE=$(echo "${{ github.event.pull_request.title }}" | sed 's/"/\\"/g')
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_URL="https://github.com/nexthop-ai/sonic-mgmt/pull/$PR_NUMBER"
+          PR_BODY=$(printf "This PR updates the sonic-mgmt submodule to include changes from [%s](%s)\n\nMerged Commit SHA: ${{ github.event.pull_request.merge_commit_sha }}" "PR #$PR_NUMBER: $PR_TITLE" "$PR_URL")
+          gh pr create \
+            --repo nexthop-ai/nh \
+            --title "NO-ISS: Sync sonic-mgmt submodule in ${{ env.NH_BRANCH }}" \
+            --body "$PR_BODY" \
+            --base "${{ env.NH_BRANCH }}" \
+            --head "${{ steps.push_branch.outputs.sync_branch }}"
