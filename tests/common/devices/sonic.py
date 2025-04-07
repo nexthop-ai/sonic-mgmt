@@ -1499,6 +1499,20 @@ Totals               6450                 6449
 
         return ipv4_summary, ipv6_summary
 
+    def get_route(self, prefix, namespace=DEFAULT_NAMESPACE):
+        ns_prefix = ''
+        if self.is_multi_asic:
+            ns_prefix = '-n {}'.format(self.get_asic_id_from_namespace(namespace))
+
+        if ipaddress.ip_network(prefix.encode().decode()).version == 4:
+            out = self.command("vtysh {} -c \"show bgp ipv4 unicast {} json\"".format(ns_prefix, prefix))
+        else:
+            out = self.command("vtysh {} -c \"show bgp ipv6 unicast {} json\"".format(ns_prefix, prefix))
+
+        prefix_info = json.loads(re.sub(r"\\\"", '"', re.sub(r"\\n", "", out['stdout'])))
+        logging.info("bgp {} info {}".format(prefix, prefix_info))
+        return prefix_info
+
     def get_dut_iface_mac(self, iface_name):
         """
         Gets the MAC address of specified interface.
