@@ -685,6 +685,7 @@ def test_vxlan_hash(add_default_route_to_dut, duthost, duthosts,                
                socket_recv_size=16384,
                is_python3=True)
 
+
 @pytest.fixture(params=["ipv4-ipv4", "ipv4-ipv6", "ipv6-ipv6", "ipv6-ipv4"])
 def nvgre_ipver(request):
     return request.param
@@ -737,6 +738,7 @@ def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                
                qlen=PTF_QLEN,
                socket_recv_size=16384,
                is_python3=True)
+
 
 @pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(True, False, 1514)])
 def test_ecmp_group_member_flap(
