@@ -207,6 +207,21 @@ def fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, du
     return files
 
 
+@pytest.fixture(scope='module')
+def global_hash_capabilities(duthost):
+    """
+    Get the generic hash capabilities.
+    Args:
+        duthost (AnsibleHost): Device Under Test (DUT)
+    Returns:
+        ecmp_hash_fields: a list of supported ecmp hash fields
+        lag_hash_fields: a list of supported lag hash fields
+    """
+    global_hash_capabilities = duthost.get_switch_hash_capabilities()
+    return {'ecmp': global_hash_capabilities['ecmp'], 'ecmp_algo': global_hash_capabilities['ecmp_algo'],
+            'lag': global_hash_capabilities['lag'], 'lag_algo': global_hash_capabilities['lag_algo']}
+
+
 @pytest.fixture(scope="module")
 def ignore_ttl(duthosts):
     # on the multi asic devices, the packet can have different ttl based on how the packet is routed
@@ -229,6 +244,14 @@ def updated_tbinfo(tbinfo):
             tbinfo['topo']['properties']['topology']['disabled_host_interfaces'].append(
                 iface)
     return tbinfo
+
+
+@pytest.fixture(scope="module")
+def ecmp_inner_header_hash_supported(global_hash_capabilities):
+    for field in global_hash_capabilities["ecmp"]:
+        if 'INNER' in field:
+            return True
+    return False
 
 
 @pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(True, True, 1514)])
@@ -468,7 +491,6 @@ def setup_active_active_ports(
 
     return
 
-
 def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noqa F811
               hash_keys, ptfhost, ipver, toggle_all_simulator_ports_to_rand_selected_tor_m,     # noqa F811
               updated_tbinfo, mux_server_url, mux_status_from_nic_simulator, ignore_ttl,        # noqa F811
@@ -527,7 +549,7 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
 def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa F811
                      hash_keys, ptfhost, ipver, tbinfo, mux_server_url,             # noqa F811
                      ignore_ttl, single_fib_for_duts, duts_running_config_facts,    # noqa F811
-                     duts_minigraph_facts, request):                                # noqa F811
+                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                # noqa F811
     # Skip test on none T1 testbed
     pytest_require('t1' == tbinfo['topo']['type'],
                    "The test case runs on T1 topology")
@@ -559,7 +581,8 @@ def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa F811
                        "ignore_ttl": ignore_ttl,
                        "single_fib_for_duts": single_fib_for_duts,
                        "ipver": ipver,
-                       "topo_name": tbinfo['topo']['name']
+                       "topo_name": tbinfo['topo']['name'],
+                       "ecmp_inner_header_hash_supported": ecmp_inner_header_hash_supported,
                        },
                log_file=log_file,
                qlen=PTF_QLEN,
@@ -669,7 +692,7 @@ def nvgre_ipver(request):
 def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                          # noqa F811
                      hash_keys, ptfhost, nvgre_ipver, tbinfo, mux_server_url,             # noqa F811
                      ignore_ttl, single_fib_for_duts, duts_running_config_facts,          # noqa F811
-                     duts_minigraph_facts, request):                                      # noqa F811
+                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                      # noqa F811
 
     fib_files = fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, duts_minigraph_facts,
                                             tbinfo, request)
@@ -708,7 +731,8 @@ def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                
                        "ignore_ttl": ignore_ttl,
                        "single_fib_for_duts": single_fib_for_duts,
                        "ipver": nvgre_ipver,
-                       "topo_name": tbinfo['topo']['name']
+                       "topo_name": tbinfo['topo']['name'],
+                       "ecmp_inner_header_hash_supported": ecmp_inner_header_hash_supported,
                        },
                log_file=log_file,
                qlen=PTF_QLEN,
