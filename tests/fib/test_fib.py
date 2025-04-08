@@ -245,12 +245,14 @@ def updated_tbinfo(tbinfo):
                 iface)
     return tbinfo
 
+
 @pytest.fixture(scope="module")
 def ecmp_inner_header_hash_supported(global_hash_capabilities):
     for field in global_hash_capabilities["ecmp"]:
         if 'INNER' in field:
             return True
     return False
+
 
 @pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(True, True, 1514)])
 def test_basic_fib(duthosts, ptfhost, tbinfo, ipv4, ipv6, mtu,
