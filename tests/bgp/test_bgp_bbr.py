@@ -384,7 +384,7 @@ def check_bbr_route_propagation(duthost, nbrhosts, setup, route, accepted=True):
         else:
             if dut_route and 'paths' in dut_route:
                 logging.warn('Prefix {} should not be accepted by DUT'.format(route.prefix))
-       return True
+        return True
 
     # Check route on other VMs
     @reset_ansible_local_tmp
