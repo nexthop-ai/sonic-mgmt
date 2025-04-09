@@ -66,6 +66,11 @@
           <a:PrefixStr>{{ ansible_hostv6 if ansible_hostv6 is defined else 'FC00:2::32' }}/{{ mgmt_subnet_v6_mask_length if mgmt_subnet_v6_mask_length is defined else '64' }}</a:PrefixStr>
         </a:ManagementIPInterface>
       </ManagementIPInterfaces>
+      <MgmtVrfConfigs xmlns:a="http://schemas.datacontract.org/2004/07/Microsoft.Search.Autopilot.Evolution">
+        <a:MgmtVrfGlobal>
+          <mgmtVrfEnabled>true</mgmtVrfEnabled>
+        </a:MgmtVrfGlobal>
+      </MgmtVrfConfigs>
       <ManagementVIPInterfaces xmlns:a="http://schemas.datacontract.org/2004/07/Microsoft.Search.Autopilot.Evolution"/>
 {% if voq_inband_ip is defined or voq_inband_ipv6 is defined %}
       <VoqInbandInterfaces xmlns:a="http://schemas.datacontract.org/2004/07/Microsoft.Search.Autopilot.Evolution">
@@ -332,6 +337,7 @@
       </LoopbackIPInterfaces>
       <ManagementIPInterfaces xmlns:a="http://schemas.datacontract.org/2004/07/Microsoft.Search.Autopilot.Evolution">
       </ManagementIPInterfaces>
+      <MgmtVrfConfigs xmlns:a="http://schemas.datacontract.org/2004/07/Microsoft.Search.Autopilot.Evolution" />
       <MplsInterfaces/>
       <MplsTeInterfaces/>
       <RsvpInterfaces/>
