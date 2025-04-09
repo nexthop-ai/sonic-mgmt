@@ -24,10 +24,6 @@ pytestmark = [
 BASE_LOOPBACK_ID = 1  # Starting Loopback ID
 PEERS_PER_DUT = 10  # Number of additional peers to configure per DUT
 
-# Default ASN values when they cannot be determined from configuration
-DEFAULT_LOCAL_ASN = 65100  # Default local ASN, commonly used in t0 topologies
-DEFAULT_REMOTE_ASN = 64600  # Default remote ASN for BGP peers
-
 
 def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
     """Get the IP address pairs between DUT and neighbor host.
@@ -103,9 +99,70 @@ def get_asn_values(duthost):
     Returns tuple of (local_asn, remote_asn)
     """
     try:
-        # First try to get from config facts
+        # Use vtysh to get BGP summary in JSON format for both IPv4 and IPv6
+        result = duthost.shell("vtysh -c 'show bgp summary json'", module_ignore_errors=True)
+
+        if result['rc'] == 0:
+            try:
+                # Parse the JSON output
+                import json
+                bgp_summary = json.loads(result['stdout'])
+                logger.debug(f"BGP summary JSON: {bgp_summary}")
+
+                # Get the local ASN from either IPv4 or IPv6 unicast
+                local_asn = None
+                if 'ipv4Unicast' in bgp_summary and bgp_summary['ipv4Unicast'].get('as') is not None:
+                    local_asn = bgp_summary['ipv4Unicast'].get('as')
+                    logger.info(f"Found BGP already running with ASN {local_asn} from IPv4 unicast")
+                elif 'ipv6Unicast' in bgp_summary and bgp_summary['ipv6Unicast'].get('as') is not None:
+                    local_asn = bgp_summary['ipv6Unicast'].get('as')
+                    logger.info(f"Found BGP already running with ASN {local_asn} from IPv6 unicast")
+
+                if local_asn is None:
+                    logger.warning("Could not find local ASN in BGP summary")
+                    return None, None
+
+                # Look for a peer with a different ASN in either IPv4 or IPv6 unicast
+                remote_asn = None
+
+                # Check IPv4 peers first
+                if 'ipv4Unicast' in bgp_summary:
+                    peers = bgp_summary['ipv4Unicast'].get('peers', {})
+                    for peer_ip, peer_data in peers.items():
+                        peer_remote_asn = peer_data.get('remoteAs')
+                        if peer_remote_asn is not None and peer_remote_asn != local_asn:
+                            remote_asn = peer_remote_asn
+                            logger.info(f"Found remote ASN {remote_asn} for IPv4 peer {peer_ip}")
+                            return local_asn, remote_asn
+
+                # If no IPv4 peer with different ASN, check IPv6 peers
+                if 'ipv6Unicast' in bgp_summary:
+                    peers = bgp_summary['ipv6Unicast'].get('peers', {})
+                    for peer_ip, peer_data in peers.items():
+                        peer_remote_asn = peer_data.get('remoteAs')
+                        if peer_remote_asn is not None and peer_remote_asn != local_asn:
+                            remote_asn = peer_remote_asn
+                            logger.info(f"Found remote ASN {remote_asn} for IPv6 peer {peer_ip}")
+                            return local_asn, remote_asn
+
+                logger.warning("Could not find a peer with a different ASN in BGP summary")
+                return None, None
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON output: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Error processing BGP summary JSON: {str(e)}")
+    except Exception as e:
+        logger.warning(f"Failed to get ASN values from BGP summary: {str(e)}")
+
+    # If vtysh method fails, try config facts
+    try:
+        # Try to get from config facts
         config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-        local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn', DEFAULT_LOCAL_ASN)
+        local_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
+
+        if local_asn is None:
+            logger.error("Could not determine local ASN from config facts")
+            return None, None
 
         # Try to get remote ASN from existing BGP neighbors
         bgp_config = config_facts.get('BGP_NEIGHBOR', {})
@@ -113,14 +170,15 @@ def get_asn_values(duthost):
             if 'asn' in peer_data and peer_data['asn'] != local_asn:
                 return local_asn, peer_data['asn']
 
+        logger.error("Could not determine remote ASN from BGP neighbors")
+        return None, None
+
     except Exception as e:
-        logger.warning(f"Failed to get ASN values from config: {str(e)}")
-
-    logger.warning(f"Using default ASN values: Local ASN {DEFAULT_LOCAL_ASN}, Remote ASN {DEFAULT_REMOTE_ASN}")
-    return DEFAULT_LOCAL_ASN, DEFAULT_REMOTE_ASN
+        logger.error(f"Failed to get ASN values from config: {str(e)}")
+        return None, None
 
 
-def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4"):
+def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
     """
     Common helper function to run BGP peer scale tests for IPv4 or IPv6.
 
@@ -134,15 +192,19 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
     configs = []
     try:
         for dut_index, duthost in enumerate(duthosts):
-            # Get local and remote asn values
-            local_asn, remote_asn = get_asn_values(duthost)
+            # Get local and remote asn values for the DUT
+            dut_local_asn, dut_remote_asn = get_asn_values(duthost)
+
+            if dut_local_asn is None or dut_remote_asn is None:
+                pytest.fail(f"Could not determine ASN values for DUT {duthost.hostname}")
+
+            logger.info(f"DUT {duthost.hostname} has local ASN {dut_local_asn} and remote ASN {dut_remote_asn}")
 
             # Get all current BGP neighbors for this DUT
             current_neighbors = [nbr["host"] for nbr in nbrhosts.values()]
 
             if not current_neighbors:
-                logger.error(f"No existing BGP neighbors found for DUT {duthost.hostname}")
-                continue
+                pytest.fail(f"No existing BGP neighbors found for DUT {duthost.hostname}")
 
             # Get port connections between DUT and neighbors
             for neighbor_index, nbrhost in enumerate(current_neighbors):
@@ -151,6 +213,14 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
                 if not dut_nbr_ip or not nbr_dut_ip:
                     pytest.fail(f"Failed to get neighbor IP addresses for {duthost.hostname} and {nbrhost.hostname}")
+
+                # Get ASN values for the neighbor
+                nbr_local_asn, nbr_remote_asn = get_asn_values(nbrhost)
+
+                if nbr_local_asn is None or nbr_remote_asn is None:
+                    pytest.fail(f"Could not determine ASN values for neighbor {nbrhost.hostname}")
+
+                logger.info(f"Neighbor {nbrhost.hostname} has local ASN {nbr_local_asn} and remote ASN {nbr_remote_asn}")
 
                 # Configure additional peers for this neighbor
                 for peer_index in range(PEERS_PER_DUT):
@@ -176,12 +246,16 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
 
                     # Configure eBGP peers
                     loopback_name = f"Loopback{loopback_id}"
-                    if not configure_bgp_peer(duthost, neighbor_ip, local_asn,
-                                              remote_asn, afi=addr_family,
+
+                    # Configure BGP peer on DUT using DUT's ASN values
+                    if not configure_bgp_peer(duthost, neighbor_ip, dut_local_asn,
+                                              nbr_local_asn, afi=addr_family,
                                               update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
-                    if not configure_bgp_peer(nbrhost, local_ip, remote_asn,
-                                              local_asn, afi=addr_family,
+
+                    # Configure BGP peer on neighbor using neighbor's ASN values
+                    if not configure_bgp_peer(nbrhost, local_ip, nbr_local_asn,
+                                              dut_local_asn, afi=addr_family,
                                               update_source_intf=loopback_name):
                         pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
 
@@ -191,8 +265,8 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
                         'loopback_id': loopback_id,
                         'local_ip': local_ip,
                         'neighbor_ip': neighbor_ip,
-                        'local_asn': local_asn,
-                        'remote_asn': remote_asn,
+                        'dut_local_asn': dut_local_asn,
+                        'nbr_local_asn': nbr_local_asn,
                         'addr_family': addr_family
                     })
 
@@ -211,13 +285,13 @@ def run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbi
             # Remove BGP neighbors added by this test
             duthost.shell(
                 f"vtysh -c 'configure terminal' "
-                f"-c 'router bgp {config['local_asn']}' "
+                f"-c 'router bgp {config['dut_local_asn']}' "
                 f"-c 'no neighbor {neighbor_ip}'",
                 module_ignore_errors=True
             )
             nbrhost.shell(
                 f"vtysh -c 'configure terminal' "
-                f"-c 'router bgp {config['remote_asn']}' "
+                f"-c 'router bgp {config['nbr_local_asn']}' "
                 f"-c 'no neighbor {local_ip}'",
                 module_ignore_errors=True
             )
