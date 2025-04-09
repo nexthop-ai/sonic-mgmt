@@ -570,7 +570,7 @@ def load_dscp_to_pg_map(duthost, port, dut_qos_maps_module):
         for dscp, tc in list(dscp_to_tc_map.items()):
             dscp_to_pg_map[dscp] = tc_to_pg_map[tc]
         return dscp_to_pg_map
-    except:     # noqa E722
+    except:     # noqa: E722
         logger.error("Failed to retrieve dscp to pg map for port {} on {}".format(port, duthost.hostname))
         return {}
 
@@ -594,7 +594,7 @@ def load_dscp_to_queue_map(duthost, port, dut_qos_maps_module):
         for dscp, tc in list(dscp_to_tc_map.items()):
             dscp_to_queue_map[dscp] = tc_to_queue_map[tc]
         return dscp_to_queue_map
-    except:     # noqa E722
+    except:     # noqa: E722
         logger.error("Failed to retrieve dscp to queue map for port {} on {}".format(port, duthost.hostname))
         return {}
 
@@ -624,6 +624,10 @@ def wait_bgp_sessions(duthost, timeout=120):
     A helper function to wait bgp sessions on DUT
     """
     bgp_neighbors = duthost.get_bgp_neighbors_per_asic(state="all")
+    if duthost.get_facts().get("modular_chassis"):
+        timeout = 900
+    logging.info("Wait until all bgp sessions are up in {} sec"
+                 .format(timeout))
     pt_assert(
         wait_until(timeout, 10, 0, duthost.check_bgp_session_state_all_asics, bgp_neighbors),
         "Not all bgp sessions are established after config reload",

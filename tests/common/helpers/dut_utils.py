@@ -421,7 +421,7 @@ def is_mellanox_fanout(duthost, localhost):
     return True
 
 
-def create_duthost_console(duthost,localhost, conn_graph_facts, creds):  # noqa F811
+def create_duthost_console(duthost, localhost, conn_graph_facts, creds):  # noqa: F811
     dut_hostname = duthost.hostname
     console_host = conn_graph_facts['device_console_info'][dut_hostname]['ManagementIp']
     if "/" in console_host:
@@ -430,6 +430,7 @@ def create_duthost_console(duthost,localhost, conn_graph_facts, creds):  # noqa 
     console_type = conn_graph_facts['device_console_link'][dut_hostname]['ConsolePort']['type']
     console_menu_type = conn_graph_facts['device_console_link'][dut_hostname]['ConsolePort']['menu_type']
     console_username = conn_graph_facts['device_console_link'][dut_hostname]['ConsolePort']['proxy']
+    console_device = conn_graph_facts['device_console_link'][dut_hostname]['ConsolePort']['peerdevice']
 
     console_type = f"console_{console_type}"
     console_menu_type = f"{console_type}_{console_menu_type}"
@@ -464,7 +465,8 @@ def create_duthost_console(duthost,localhost, conn_graph_facts, creds):  # noqa 
                                sonic_username=creds['sonicadmin_user'],
                                sonic_password=sonic_password,
                                console_username=console_username,
-                               console_password=creds['console_password'][console_type])
+                               console_password=creds['console_password'][console_type],
+                               console_device=console_device)
             break
         except Exception as e:
             logger.warning(f"Attempt {attempt}/3 failed: {e}")
@@ -567,6 +569,10 @@ def duthost_clear_console_port(
     """
     if menu_type == "console_ssh_":
         raise Exception("Device does not have a defined Console_menu_type.")
+
+    if menu_type == "console_conserver_":
+        logger.info("Skip clearing conserver console port")
+        return
 
     # Override console user if the configuration menu is Digi, as this requires admin login
     console_user = 'admin' if menu_type == CONSOLE_SSH_DIGI_CONFIG else console_username

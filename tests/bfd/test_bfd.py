@@ -4,7 +4,7 @@ import time
 import json
 import logging
 
-from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor_m    # noqa F401
+from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor_m    # noqa:F401
 from tests.common.snappi_tests.common_helpers import get_egress_queue_count
 
 pytestmark = [
@@ -110,7 +110,7 @@ def get_neighbors_scale(duthost, tbinfo, ipv6=False, scale_count=1):
     index = 0
     # The arrays: neighbor_intfs and ptf_intfs are filled only upto 128.
     # Beyond that we need to re-use the same addresses. We do this by
-    # using the modulus(% operation) instead of the actual index intself.
+    # using the modulus(% operation) instead of the actual index itself.
     for idx in range(1, scale_count):
         if idx != 0 and idx % 127 == 0:
             index += 1
@@ -471,7 +471,7 @@ def test_bfd_scale(request, rand_selected_dut, ptfhost, tbinfo, ipv6):
 
 @pytest.mark.parametrize('ipv6', [False, True], ids=['ipv4', 'ipv6'])
 def test_bfd_multihop(request, rand_selected_dut, ptfhost, tbinfo,
-                      toggle_all_simulator_ports_to_rand_selected_tor_m, ipv6):    # noqa F811
+                      toggle_all_simulator_ports_to_rand_selected_tor_m, ipv6):    # noqa:F811
     duthost = rand_selected_dut
 
     bfd_session_cnt = int(request.config.getoption('--num_sessions'))
