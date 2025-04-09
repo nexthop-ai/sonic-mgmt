@@ -332,7 +332,8 @@ def check_bbr_route_propagation(duthost, nbrhosts, setup, route, accepted=True):
             tor1_route_aspath = tor1_route['vrfs']['default']['bgpRouteEntries'][route.prefix]['bgpRoutePaths'][0]\
                 ['asPathEntry']['asPath']   # noqa E211
             if not tor1_route_aspath == route.aspath:
-                logging.warn('On {} expected aspath: {}, actual aspath: {}'.format(tor1, route.aspath, tor1_route_aspath))
+                logging.warn('On {} expected aspath: {}, actual aspath: {}'.format(
+                    tor1, route.aspath, tor1_route_aspath))
                 return False
         elif isinstance(nbrhosts[tor1]['host'], SonicHost):
             if not tor1_route:
@@ -340,7 +341,8 @@ def check_bbr_route_propagation(duthost, nbrhosts, setup, route, accepted=True):
                 return False
             tor1_route_aspath = tor1_route['paths'][0]['aspath']['string']
             if not tor1_route_aspath == route.aspath:
-                logging.warn('On {} expected aspath: {}, actual aspath: {}'.format(tor1, route.aspath, tor1_route_aspath))
+                logging.warn('On {} expected aspath: {}, actual aspath: {}'.format(
+                    tor1, route.aspath, tor1_route_aspath))
                 return False
         else:
             logging.error('Unknown host type {} for {}'.format(type(nbrhosts[tor1]['host']), tor1))
@@ -439,7 +441,6 @@ def check_bbr_route_propagation(duthost, nbrhosts, setup, route, accepted=True):
                 logging.error('Unknown host type {} for {}'.format(type(nbrhosts[node]['host']), node))
                 return
         return vm_route
-
 
     other_vms = setup['other_vms']
     bgp_neighbors = json.loads(duthost.shell("sonic-cfggen -d --var-json 'BGP_NEIGHBOR'")['stdout'])
