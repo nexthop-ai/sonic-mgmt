@@ -5,7 +5,6 @@ import ipaddress
 import logging
 import pytest
 from tests.bgp.bgp_helpers import configure_bgp_peer
-from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
 from tests.ip.ip_helpers import (
     configure_loopback,
     unconfigure_loopback,
@@ -26,34 +25,17 @@ BASE_LOOPBACK_ID = 1  # Starting Loopback ID
 PEERS_PER_DUT = 10  # Number of additional peers to configure per DUT
 
 
-@pytest.fixture(scope="module", autouse=True)
-def ignore_loopback_errors(duthosts, rand_one_dut_hostname):
-    """Fixture to ignore loopback interface IP address errors in the log analyzer.
-
-    This fixture configures the LogAnalyzer to ignore harmless errors related to
-    loopback interface configuration that occur during the BGP peer scale tests.
-    """
-    duthost = duthosts[rand_one_dut_hostname]
-    marker_prefix = "bgp_peer_scale"
-
-    # Initialize the LogAnalyzer
-    loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix=marker_prefix)
-
-    # Add the error patterns to ignore
-    ignore_regex = [
-        # Ignore errors about adding IP addresses to loopback interfaces that already exist
-        r".*ERR swss#intfmgrd: :- setIntfIp: Command '/sbin/ip address \"add\" \".*\"" \
-        r" dev \"Loopback.*\"' failed with rc 2.*",
-        # Ignore RTNETLINK answers: File exists errors
-        r".*swss#supervisord: intfmgrd RTNETLINK answers: File exists.*"
-    ]
-    loganalyzer.ignore_regex.extend(ignore_regex)
-
-    # Use the LogAnalyzer as a context manager with fail=False to prevent test failures
-    # due to harmless errors in the logs
-    with loganalyzer(fail=False) as _:
-        # Yield control back to the test
-        yield
+# Define regex patterns to ignore harmless loopback interface errors
+LOOPBACK_IGNORE_REGEX = [
+    # Ignore errors about adding IPv4 addresses to loopback interfaces that already exist
+    r".*ERR swss#intfmgrd: :- setIntfIp: Command '/sbin/ip address \"add\" \".*\"" \
+    r" dev \"Loopback.*\"' failed with rc 2.*",
+    # Ignore errors about adding IPv6 addresses to loopback interfaces that already exist
+    r".*ERR swss#intfmgrd: :- setIntfIp: Command '/sbin/ip -6 address \"add\" \".*\"" \
+    r" dev \"Loopback.*\"' failed with rc 2.*",
+    # Ignore RTNETLINK answers: File exists errors
+    r".*swss#supervisord: intfmgrd RTNETLINK answers: File exists.*"
+]
 
 
 def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
@@ -341,7 +323,11 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
                 logger.error(f"Failed to unconfigure loopback {loopback_id} on {nbrhost.hostname}")
 
 
-def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, loganalyzer):
+    # Configure loganalyzer to ignore loopback interface errors
+    for duthost in duthosts:
+        if duthost.hostname in loganalyzer:
+            loganalyzer[duthost.hostname].ignore_regex.extend(LOOPBACK_IGNORE_REGEX)
     """
     Verify BGP IPv4 peer scaling by checking:
     1. All VLAN interfaces are properly configured and up
@@ -351,7 +337,11 @@ def test_bgp_peer_scale_v4(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts,
     run_bgp_peer_scale(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, addr_family="ipv4")
 
 
-def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo):
+def test_bgp_peer_scale_v6(duthosts, enum_rand_one_per_hwsku_hostname, nbrhosts, tbinfo, loganalyzer):
+    # Configure loganalyzer to ignore loopback interface errors
+    for duthost in duthosts:
+        if duthost.hostname in loganalyzer:
+            loganalyzer[duthost.hostname].ignore_regex.extend(LOOPBACK_IGNORE_REGEX)
     """
     Verify BGP IPv6 peer scaling by checking:
     1. All VLAN interfaces are properly configured and up
