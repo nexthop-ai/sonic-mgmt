@@ -1,7 +1,6 @@
 """
 Test BGP peer scaling by adding multiple BGP peers using loopback interfaces on SONiC DUTs.
 """
-import ipaddress
 import logging
 import pytest
 from tests.bgp.bgp_helpers import configure_bgp_peer
@@ -22,7 +21,15 @@ pytestmark = [
 
 # Constants for BGP peer scaling
 BASE_LOOPBACK_ID = 1  # Starting Loopback ID
-PEERS_PER_DUT = 10  # Number of additional peers to configure per DUT
+PEERS_PER_DUT = 32  # Number of additional peers to configure per DUT
+MAX_PEERS_PER_DUT = 256  # Maximum number of peers per DUT (used for loopback ID calculation)
+
+# Multipliers for loopback ID calculation
+# These ensure that each peer gets a unique loopback ID
+# DUT_ID_MULTIPLIER must be large enough to avoid overlap between different DUTs
+# NEIGHBOR_ID_MULTIPLIER must be >= MAX_PEERS_PER_DUT to avoid overlap between different neighbors
+DUT_ID_MULTIPLIER = 10000  # Multiplier for DUT index in loopback ID calculation
+NEIGHBOR_ID_MULTIPLIER = MAX_PEERS_PER_DUT  # Multiplier for neighbor index in loopback ID calculation
 
 
 # Define regex patterns to ignore harmless loopback interface errors
@@ -87,24 +94,84 @@ def get_neighbor_ip_pairs(duthost, nbrhost, tbinfo, addr_family="ipv4"):
         return None, None
 
 
+def calculate_loopback_id(dut_index, neighbor_index, peer_index):
+    """Get a unique loopback ID based on DUT, neighbor, and peer indices.
+
+    Args:
+        dut_index (int): Index of the DUT
+        neighbor_index (int): Index of the neighbor
+        peer_index (int): Index of the peer
+
+    Returns:
+        int: A unique loopback ID
+    """
+    # Calculate a unique loopback ID that ensures no overlap
+    # Use a formula that can handle up to MAX_PEERS_PER_DUT peers per neighbor
+    # Each DUT gets a range of DUT_ID_MULTIPLIER IDs
+    # Each neighbor within a DUT gets a range of NEIGHBOR_ID_MULTIPLIER IDs
+    return BASE_LOOPBACK_ID + (dut_index * DUT_ID_MULTIPLIER) + (neighbor_index * NEIGHBOR_ID_MULTIPLIER) + peer_index
+
+
 def get_loopback_ip_pair(loopback_id):
     """Get a pair of non-overlapping IP addresses for local and neighbor loopback use."""
-    # Use loopback ID to create unique addresses
+    # Use loopback ID directly in the third octet to ensure each loopback gets a unique subnet
     # For example:
     # Loopback 1 -> 172.16.1.1/32 and 172.16.1.2/32
-    network = f"172.16.{loopback_id}.0/24"
-    net = ipaddress.ip_network(network)
-    return str(net[1]), str(net[2])
+    # Loopback 2 -> 172.16.2.1/32 and 172.16.2.2/32
+    # This supports up to 254 unique loopback IDs
+
+    # Ensure loopback ID doesn't exceed 254 (reserve 255 for future use)
+    if loopback_id > 254:
+        # For loopback IDs > 254, use a different second octet
+        # This extends support to 254 * 255 = 64,770 unique loopback IDs
+        second_octet = 16 + (loopback_id // 255)
+        third_octet = loopback_id % 255
+        if third_octet == 0:  # Avoid 0 in third octet
+            third_octet = 255
+            second_octet -= 1
+
+        # Ensure second octet doesn't exceed 254
+        if second_octet > 254:
+            logger.warning(f"Loopback ID {loopback_id} exceeds maximum supported value (64,770)")
+            second_octet = 254
+            third_octet = loopback_id % 255  # Use modulo to get a unique third octet
+            if third_octet == 0:  # Avoid 0 in third octet
+                third_octet = 255
+
+        # Create IP addresses
+        local_ip = f"172.{second_octet}.{third_octet}.1"
+        neighbor_ip = f"172.{second_octet}.{third_octet}.2"
+    else:
+        # For loopback IDs <= 254, use the original scheme
+        local_ip = f"172.16.{loopback_id}.1"
+        neighbor_ip = f"172.16.{loopback_id}.2"
+
+    return local_ip, neighbor_ip
 
 
 def get_loopback_ipv6_pair(loopback_id):
     """Get a pair of non-overlapping IPv6 addresses for local and neighbor loopback use."""
-    # Use loopback ID to create unique IPv6 addresses
+    # Use loopback ID directly in the IPv6 address to ensure each loopback gets a unique subnet
     # For example:
     # Loopback 1 -> fc00:1::1/128 and fc00:1::2/128
-    network = f"fc00:{loopback_id:x}::/64"
-    net = ipaddress.ip_network(network)
-    return str(net[1]), str(net[2])
+    # Loopback 2 -> fc00:2::1/128 and fc00:2::2/128
+    # This supports up to 65,535 unique loopback IDs
+
+    # Ensure loopback_id is within valid range for IPv6 hex notation
+    if loopback_id > 65535:
+        # For larger loopback IDs, use multiple segments
+        first_segment = loopback_id // 65536
+        second_segment = loopback_id % 65536
+
+        # Create IPv6 addresses
+        local_ip = f"fc00:{first_segment:x}:{second_segment:x}::1"
+        neighbor_ip = f"fc00:{first_segment:x}:{second_segment:x}::2"
+    else:
+        # For smaller loopback IDs, use a single segment
+        local_ip = f"fc00:{loopback_id:x}::1"
+        neighbor_ip = f"fc00:{loopback_id:x}::2"
+
+    return local_ip, neighbor_ip
 
 
 def get_asn_values(duthost):
@@ -202,6 +269,12 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
         tbinfo: Testbed information dictionary containing topology details
         addr_family: Address family ("ipv4" or "ipv6")
     """
+    # Check if PEERS_PER_DUT is set to a valid value
+    if PEERS_PER_DUT > MAX_PEERS_PER_DUT:
+        error_msg = f"PEERS_PER_DUT ({PEERS_PER_DUT}) exceeds MAX_PEERS_PER_DUT ({MAX_PEERS_PER_DUT})"
+        logger.error(error_msg)
+        pytest.fail(error_msg)
+
     configs = []
     try:
         for dut_index, duthost in enumerate(duthosts):
@@ -237,7 +310,8 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
 
                 # Configure additional peers for this neighbor
                 for peer_index in range(PEERS_PER_DUT):
-                    loopback_id = BASE_LOOPBACK_ID + (dut_index * 100) + (neighbor_index * 10) + peer_index
+                    # Calculate a unique loopback ID
+                    loopback_id = calculate_loopback_id(dut_index, neighbor_index, peer_index)
 
                     if addr_family == "ipv4":
                         local_ip, neighbor_ip = get_loopback_ip_pair(loopback_id)
@@ -245,10 +319,28 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
                         local_ip, neighbor_ip = get_loopback_ipv6_pair(loopback_id)
 
                     # Configure loopback interfaces on DUT and neighbor
+                    # Be little paranoid and verify that the IP addresses are different
+                    if local_ip == neighbor_ip:
+                        pytest.fail(f"IP conflict detected: Both DUT and neighbor would use {local_ip}")
+
+                    logger.info(f"Configuring loopback {loopback_id} with IP {local_ip} on {duthost.hostname}")
                     if not configure_loopback(duthost, loopback_id, local_ip):
-                        pytest.fail(f"Failed to configure loopback {loopback_id} on {duthost.hostname}")
+                        pytest.fail(
+                            f"Failed to configure loopback {loopback_id} with IP {local_ip} on {duthost.hostname}"
+                        )
+
+                    logger.info(f"Configuring loopback {loopback_id} with IP {neighbor_ip} on {nbrhost.hostname}")
                     if not configure_loopback(nbrhost, loopback_id, neighbor_ip):
-                        pytest.fail(f"Failed to configure loopback {loopback_id} on {nbrhost.hostname}")
+                        pytest.fail(
+                            f"Failed to configure loopback {loopback_id} with IP {neighbor_ip} on {nbrhost.hostname}"
+                        )
+
+                    logger.info(
+                        f"Successfully configured loopback {loopback_id} with IP {local_ip} on {duthost.hostname}"
+                    )
+                    logger.info(
+                        f"Successfully configured loopback {loopback_id} with IP {neighbor_ip} on {nbrhost.hostname}"
+                    )
 
                     # Configure routes to reach each other's loopbacks
                     prefix_len = '128' if addr_family == "ipv6" else '32'
@@ -256,21 +348,47 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
                         pytest.fail(f"Failed to configure route to peer loopback on {duthost.hostname}")
                     if not configure_static_route(nbrhost, f"{local_ip}/{prefix_len}", nbr_dut_ip):
                         pytest.fail(f"Failed to configure route to peer loopback on {nbrhost.hostname}")
+                    logger.info(
+                        f"Configured static route on {duthost.hostname} to reach {neighbor_ip} via {dut_nbr_ip}"
+                    )
+                    logger.info(
+                        f"Configured static route on {nbrhost.hostname} to reach {local_ip} via {nbr_dut_ip}"
+                    )
 
                     # Configure eBGP peers
                     loopback_name = f"Loopback{loopback_id}"
 
                     # Configure BGP peer on DUT using DUT's ASN values
+                    # DUT peers with neighbor's IP
+                    logger.info(
+                        f"Configuring BGP peer on {duthost.hostname} to peer with {neighbor_ip} "
+                        f"(using loopback {loopback_name})"
+                    )
                     if not configure_bgp_peer(duthost, neighbor_ip, dut_local_asn,
                                               nbr_local_asn, afi=addr_family,
                                               update_source_intf=loopback_name):
-                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {duthost.hostname}")
+                        pytest.fail(
+                            f"Failed to configure {addr_family} BGP peer on {duthost.hostname} to peer with {neighbor_ip}"
+                        )
+                    logger.info(
+                        f"Successfully configured BGP peer on {duthost.hostname} to peer with {neighbor_ip}"
+                    )
 
                     # Configure BGP peer on neighbor using neighbor's ASN values
+                    # Neighbor peers with DUT's IP
+                    logger.info(
+                        f"Configuring BGP peer on {nbrhost.hostname} to peer with {local_ip} "
+                        f"(using loopback {loopback_name})"
+                    )
                     if not configure_bgp_peer(nbrhost, local_ip, nbr_local_asn,
                                               dut_local_asn, afi=addr_family,
                                               update_source_intf=loopback_name):
-                        pytest.fail(f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname}")
+                        pytest.fail(
+                            f"Failed to configure {addr_family} BGP peer on {nbrhost.hostname} to peer with {local_ip}"
+                        )
+                    logger.info(
+                        f"Successfully configured BGP peer on {nbrhost.hostname} to peer with {local_ip}"
+                    )
 
                     configs.append({
                         'duthost': duthost,
