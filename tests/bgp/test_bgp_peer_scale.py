@@ -368,7 +368,7 @@ def run_bgp_peer_scale(duthosts, _, nbrhosts, tbinfo, addr_family="ipv4"):
                                               nbr_local_asn, afi=addr_family,
                                               update_source_intf=loopback_name):
                         pytest.fail(
-                            f"Failed to configure {addr_family} BGP peer on {duthost.hostname} to peer with {neighbor_ip}"
+                            f"Failed to configure BGP peer on {duthost.hostname} to peer with {neighbor_ip}"
                         )
                     logger.info(
                         f"Successfully configured BGP peer on {duthost.hostname} to peer with {neighbor_ip}"
