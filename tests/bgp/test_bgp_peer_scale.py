@@ -42,7 +42,8 @@ def ignore_loopback_errors(duthosts, rand_one_dut_hostname):
     # Add the error patterns to ignore
     ignore_regex = [
         # Ignore errors about adding IP addresses to loopback interfaces that already exist
-        r".*ERR swss#intfmgrd: :- setIntfIp: Command '/sbin/ip address \"add\" \".*\" dev \"Loopback.*\"' failed with rc 2.*",
+        r".*ERR swss#intfmgrd: :- setIntfIp: Command '/sbin/ip address \"add\" \".*\"" \
+        r" dev \"Loopback.*\"' failed with rc 2.*",
         # Ignore RTNETLINK answers: File exists errors
         r".*swss#supervisord: intfmgrd RTNETLINK answers: File exists.*"
     ]
