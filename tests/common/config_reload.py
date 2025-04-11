@@ -9,6 +9,7 @@ from tests.common.utilities import wait_until
 from tests.common.configlet.utils import chk_for_pfc_wd
 from tests.common.platform.interface_utils import check_interface_status_of_up_ports
 from tests.common.helpers.dut_utils import ignore_t2_syslog_msgs
+from ansible.errors import AnsibleConnectionFailure
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def config_system_checks_passed(duthost, delayed_services=[]):
 
 
 def config_force_option_supported(duthost):
-    out = duthost.shell("config reload -h", executable="/bin/bash")
+    out = duthost.shell("sudo config reload -h", executable="/bin/bash")
     if "force" in out['stdout'].strip():
         return True
     return False
@@ -132,10 +133,17 @@ def config_reload(sonic_host, config_source='config_db', wait=120, start_bgp=Tru
     :return:
     """
     def _config_reload_cmd_wrapper(cmd, executable):
-        out = sonic_host.shell(cmd, executable=executable)
-        if out['rc'] == 0:
+        try:
+            out = sonic_host.shell(cmd, executable=executable, module_ignore_errors=True)
+            if out['rc'] == 0:
+                return True
+            else:
+                return False
+        except AnsibleConnectionFailure as conn_err:
+            logger.info("Connection lost during config reload: {}".format(str(conn_err)))
             return True
-        else:
+        except Exception as e:
+            logger.info("Config reload try failed with exception: {}".format(str(e)))
             return False
 
     if config_source not in config_sources:
@@ -157,7 +165,7 @@ def config_reload(sonic_host, config_source='config_db', wait=120, start_bgp=Tru
             is_buffer_model_dynamic = (output and output.get('stdout') == 'dynamic')
         else:
             is_buffer_model_dynamic = False
-        cmd = 'config load_minigraph -y &>/dev/null'
+        cmd = 'sudo config load_minigraph -y'
         if traffic_shift_away:
             cmd += ' -t'
         if override_config:
@@ -167,18 +175,18 @@ def config_reload(sonic_host, config_source='config_db', wait=120, start_bgp=Tru
         sonic_host.shell(cmd, executable="/bin/bash")
         time.sleep(60)
         if start_bgp:
-            sonic_host.shell('config bgp startup all')
+            sonic_host.shell('sudo config bgp startup all')
         if is_buffer_model_dynamic:
             sonic_host.shell('enable-dynamic-buffer.py')
-        sonic_host.shell('config save -y')
+        sonic_host.shell('sudo config save -y')
 
     elif config_source == 'config_db':
-        cmd = 'config reload -y &>/dev/null'
+        cmd = 'sudo config reload -y &>/dev/nul'
         reloading = False
         if config_force_option_supported(sonic_host):
             if wait_before_force_reload:
                 reloading = wait_until(wait_before_force_reload, 10, 0, _config_reload_cmd_wrapper, cmd, "/bin/bash")
-            cmd = 'config reload -y -f &>/dev/null'
+            cmd = 'sudo config reload -y -f  &>/dev/nul'
         if not reloading:
             time.sleep(30)
             sonic_host.shell(cmd, executable="/bin/bash")
@@ -188,9 +196,9 @@ def config_reload(sonic_host, config_source='config_db', wait=120, start_bgp=Tru
         if sonic_host.is_multi_asic:
             for asic in range(sonic_host.num_asics()):
                 golden_path = f'{golden_path},/etc/sonic/running_golden_config{asic}.json'  # noqa: E231
-        cmd = f'config reload -y -l {golden_path} &>/dev/null'
+        cmd = f'sudo config reload -y -l {golden_path} &>/dev/nul'
         if config_force_option_supported(sonic_host):
-            cmd = f'config reload -y -f -l {golden_path} &>/dev/null'
+            cmd = f'sudo config reload -y -f -l {golden_path} &>/dev/nul'
         sonic_host.shell(cmd, executable="/bin/bash")
 
     modular_chassis = sonic_host.get_facts().get("modular_chassis")
