@@ -505,7 +505,6 @@ class TestIPPacket(object):
         asic_type = duthost.facts["asic_type"]
         (peer_ip_ifaces_pair, rif_rx_ifaces, rif_support, ptf_port_idx,
          pc_ports_map, ptf_indices, ingress_router_mac) = common_param
-
         pkt = testutils.simple_gre_packet(
             eth_dst=ingress_router_mac,
             eth_src=ptfadapter.dataplane.get_mac(0, ptf_port_idx),
