@@ -335,3 +335,12 @@ r, ".* ERR gbsyncd#syncd: /arsonic/packages/broncos-sai/build/PAI_\d+\.\d+/src/b
 
 # Ignore notifications about fabric port status changes on LCs
 r, ".*ERR swss\d*#orchagent:.*handlePortStatusChangeNotification: Failed to get port object for port id.*"
+
+# Ignore FRR, kdump and SAI errors
+r, ".* ERR monit.*Some routes are not set offloaded in FRR.*"
+r, ".* ERR route_check.*Some routes are not set offloaded in FRR.*"
+r, ".* ERR swss#orchagent: :- querySwitchLagHashAlgorithmEnumCapabilities: Failed to get attribute.*"
+r, ".* ERR swss#orchagent: :- .*returned value \d+ is not allowed on SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM.*"
+r, ".* ERR swss#orchagent: :- .*returned value \d+ is not allowed on SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM.*"
+r, ".* ERR swss#orchagent: :- .*returned value \d+ is not allowed on SAI_NEXT_HOP_GROUP_ATTR_TYPE.*"
+r, ".* ERR hostcfgd.*sonic-kdump-config.*failed.*"

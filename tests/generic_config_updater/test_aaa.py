@@ -9,6 +9,7 @@ from tests.common.gu_utils import format_json_patch_for_multiasic
 from tests.common.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
 
 pytestmark = [
+    pytest.mark.sanity_check(check_items=["_check_bgp"]),
     pytest.mark.topology('any'),
 ]
 
@@ -217,6 +218,22 @@ def parse_radius_server(duthost):
         radius_servers[address] = radius_server
 
     return radius_servers
+
+
+def parse_radius_server_config_files(duthost):
+    """ Parse radius server configuration files """
+    output = duthost.shell("ls -1 /etc/pam_radius_auth.d/")
+    servers = []
+    for line in output['stdout_lines']:
+        if not line.endswith(".conf") or '_' not in line:
+            continue
+        last_underscore_pos = line.rfind('_')
+        # Everything before the last underscore
+        ip_or_name = line[:last_underscore_pos]
+        # Everything after the last underscore, before .conf
+        port = line[last_underscore_pos+1:].split('.')[0]
+        servers.append((ip_or_name, port))
+    return servers
 
 
 def aaa_tc1_add_config(duthost, auth_method):
@@ -740,6 +757,33 @@ def radius_server_tc4_add_config(duthost):
         for opt, value in list(RADIUS_SERVER_OPTION.items()):
             pytest_assert(opt in options and options[opt] == value,
                           "radius server failed to add to config completely.")
+        servers = parse_radius_server_config_files(duthost)
+        pytest_assert((ip_address, RADIUS_SERVER_OPTION["auth_port"]) in servers,
+                      "radius server failed to add to config files.")
+    finally:
+        delete_tmpfile(duthost, tmpfile)
+
+
+def radius_server_tc4_remove_config(duthost):
+    """ Test radius server addition """
+    json_patch = [
+        {
+            "op": "remove",
+            "path": "/RADIUS_SERVER"
+        }
+    ]
+    json_patch = format_json_patch_for_multiasic(duthost=duthost, json_data=json_patch)
+    tmpfile = generate_tmpfile(duthost)
+    logger.info("tmpfile {}".format(tmpfile))
+
+    try:
+        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
+        expect_op_success(duthost, output)
+
+        radius_servers = parse_radius_server(duthost)
+        pytest_assert(not radius_servers, "radius server failed to remove.")
+        servers = parse_radius_server_config_files(duthost)
+        pytest_assert(not servers, "radius server failed to remove from config files.")
     finally:
         delete_tmpfile(duthost, tmpfile)
 
@@ -749,3 +793,4 @@ def test_tc4_radius_suite(rand_selected_dut):
     radius_add_init_config_without_table(rand_selected_dut)
     radius_global_tc4_add_config(rand_selected_dut)
     radius_server_tc4_add_config(rand_selected_dut)
+    radius_server_tc4_remove_config(rand_selected_dut)
