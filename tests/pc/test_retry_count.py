@@ -106,8 +106,6 @@ def higher_retry_count_on_dut(request, duthost, nbrhosts):
         pytest.skip("Only supported with SONiC neighbor")
 
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")["ansible_facts"]
-    if "PORTCHANNEL" not in cfg_facts:
-        pytest.skip("No port channels configured on DUT")
 
     featureCheckResult = duthost.shell("sudo config portchannel retry-count get {}".format(
         list(cfg_facts["PORTCHANNEL"].keys())[0]), module_ignore_errors=True)
