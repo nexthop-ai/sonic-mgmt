@@ -206,18 +206,18 @@ class TestIPPacket(object):
         pkt = testutils.simple_ip_packet(
             eth_dst=ingress_router_mac,
             eth_src=ptfadapter.dataplane.get_mac(0, ptf_port_idx),
-            pktlen=1246,
+            pktlen=508,
             ip_src="10.250.136.195",
             ip_dst="10.156.94.34",
-            ip_proto=47,
+            ip_proto=17,
             ip_tos=0x84,
             ip_id=0,
             ip_ihl=5,
-            ip_ttl=121,
+            ip_ttl=124,
         )
         pkt.payload.flags = 2
         exp_pkt = pkt.copy()
-        exp_pkt.payload.ttl = 120
+        exp_pkt.payload.ttl = 123
         exp_pkt.payload.chksum = 0x0100
         exp_pkt = mask.Mask(exp_pkt)
         exp_pkt.set_do_not_care_scapy(packet.Ether, 'dst')
@@ -279,19 +279,19 @@ class TestIPPacket(object):
         pkt = testutils.simple_ip_packet(
             eth_dst=ingress_router_mac,
             eth_src=ptfadapter.dataplane.get_mac(0, ptf_port_idx),
-            pktlen=1246,
+            pktlen=508,
             ip_src="10.250.136.195",
             ip_dst="10.156.94.34",
-            ip_proto=47,
+            ip_proto=17,
             ip_tos=0x84,
             ip_id=0,
             ip_ihl=5,
-            ip_ttl=121,
+            ip_ttl=124,
         )
         pkt.payload.flags = 2
         pkt.payload.chksum = 0xffff
         exp_pkt = pkt.copy()
-        exp_pkt.payload.ttl = 120
+        exp_pkt.payload.ttl = 123
         exp_pkt.payload.chksum = 0x0100
         exp_pkt = mask.Mask(exp_pkt)
         exp_pkt.set_do_not_care_scapy(packet.Ether, 'dst')
@@ -439,18 +439,18 @@ class TestIPPacket(object):
         pkt = testutils.simple_ip_packet(
             eth_dst=ingress_router_mac,
             eth_src=ptfadapter.dataplane.get_mac(0, ptf_port_idx),
-            pktlen=1246,
+            pktlen=508,
             ip_src="10.250.40.40",
             ip_dst="10.156.190.188",
-            ip_proto=47,
+            ip_proto=17,
             ip_tos=0x84,
             ip_id=0,
             ip_ihl=5,
-            ip_ttl=122,
+            ip_ttl=125,
         )
         pkt.payload.flags = 2
         exp_pkt = pkt.copy()
-        exp_pkt.payload.ttl = 121
+        exp_pkt.payload.ttl = 124
         exp_pkt.payload.chksum = 0x0001
         exp_pkt = mask.Mask(exp_pkt)
         exp_pkt.set_do_not_care_scapy(packet.Ether, 'dst')
@@ -511,18 +511,18 @@ class TestIPPacket(object):
         pkt = testutils.simple_ip_packet(
             eth_dst=ingress_router_mac,
             eth_src=ptfadapter.dataplane.get_mac(0, ptf_port_idx),
-            pktlen=1246,
+            pktlen=508,
             ip_src="10.250.136.195",
             ip_dst="10.156.94.34",
-            ip_proto=47,
+            ip_proto=17,
             ip_tos=0x84,
             ip_id=0,
             ip_ihl=5,
-            ip_ttl=122,
+            ip_ttl=125,
         )
         pkt.payload.flags = 2
         exp_pkt = pkt.copy()
-        exp_pkt.payload.ttl = 121
+        exp_pkt.payload.ttl = 124
         exp_pkt.payload.chksum = 0x0000
         exp_pkt = mask.Mask(exp_pkt)
         exp_pkt.set_do_not_care_scapy(packet.Ether, 'dst')
