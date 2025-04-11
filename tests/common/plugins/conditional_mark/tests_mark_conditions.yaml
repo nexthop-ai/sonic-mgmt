@@ -1652,6 +1652,15 @@ pc/test_retry_count.py:
       - "'t0' not in topo_name and 'lag' not in topo_name"
 
 #######################################
+#####           pfc               #####
+#######################################
+pfc/test_unknown_mac.py:
+  skip:
+    reason: In cisco-8000 platform, a packet with unknown MAC will be flooded, not dropped. This case will not pass in cisco-8000.
+    conditions:
+      - "asic_type in ['cisco-8000']"
+
+#######################################
 #####         pfc_asym            #####
 #######################################
 pfc_asym/test_pfc_asym.py:
