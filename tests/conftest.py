@@ -683,7 +683,7 @@ def ptfhost(ptfhosts):
 @pytest.fixture(scope="session")
 def ptfhosts(enhance_inventory, ansible_adhoc, tbinfo, duthost, request):
     _hosts = []
-    if 'ptp' in tbinfo['topo']['name']:
+    if tbinfo['topo']['name'] in ['ptp', 'isolated']:
         return None
     if "ptf_image_name" in tbinfo and "docker-keysight-api-server" in tbinfo["ptf_image_name"]:
         return None
