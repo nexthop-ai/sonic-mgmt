@@ -17,4 +17,4 @@ jobs:
       submodule_repo: nexthop-ai/sonic-mgmt
       submodule_path: sonic-mgmt
     secrets:
-      GH_TOKEN: ${{ secrets.SONIC_MGMT_GHA_PAT }}
+      GH_TOKEN: ${{ secrets.RABBIT_NEXTHOP_PAT }}
