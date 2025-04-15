@@ -15,22 +15,15 @@ def configure_loopback(duthost, loopback_id, ip_addr):
     try:
         loopback_name = f"Loopback{loopback_id}"
         is_ipv6 = ':' in ip_addr
-        ipcmd = 'ipv6' if is_ipv6 else 'ip'
         prefix_len = '128' if is_ipv6 else '32'
 
-        # Configure loopback interface
-        try:
-            # Check if loopback exists
-            check_cmd = duthost.shell(f"show {ipcmd} interfaces | grep {loopback_name}", module_ignore_errors=True)
-            loopback_exists = check_cmd['rc'] == 0
-        except Exception:
-            loopback_exists = False
-
-        if not loopback_exists:
-            result = duthost.shell(f"config loopback add {loopback_name}")
-            if result['rc'] != 0 and "already exists" not in result['stderr']:
-                logger.error(f"Failed to add loopback: {result['stderr']}")
-                return False
+        # Configure loopback interface - try to add it and handle the case if it already exists
+        result = duthost.shell(f"config loopback add {loopback_name}", module_ignore_errors=True)
+        if result['rc'] != 0 and "already exists" not in result.get('stderr', ''):
+            logger.error(f"Failed to add loopback: {result.get('stderr', '')}")
+            return False
+        elif result['rc'] != 0 and "already exists" in result.get('stderr', ''):
+            logger.info(f"Loopback {loopback_name} already exists, continuing with configuration")
 
         # Configure IP address
         duthost.add_ip_addr_to_port(loopback_name, f"{ip_addr}/{prefix_len}")
