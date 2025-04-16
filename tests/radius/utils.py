@@ -126,20 +126,17 @@ def start_tcpdump_and_try_login(
      - Analyze packet capture
     """
 
+    # using ip get here to make sure we are including ip rules that might be in play
     route_json = json.loads(
         duthost.command(
-            "show ip route {} json".format(ptfhost_mgmt_ip)
+            "ip -j route get {}".format(ptfhost_mgmt_ip)
         )["stdout"]
     )
 
     # make sure atleast one route was returned
-    pytest_assert(route_json.values())
+    pytest_assert(len(route_json.values), "no route available to PTF")
 
-    """
-    the RADIUS server is running on the PTF mgmt interface
-    so the first route here should be the correct one
-    """
-    tcpdump_int = next(iter(route_json.values()))[0]["nexthops"][0]["interfaceName"]
+    tcpdump_int = route_json[0]["dev"]
 
     tcpdump_command = (
         "sudo timeout {timeout} tcpdump -i {intf} port 1812 -w {dut_cap_file}"
