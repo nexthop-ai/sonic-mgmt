@@ -2,7 +2,7 @@ supported_vm_types: [ "veos", "ceos", "vsonic", "vcisco" ]
 root_path: veos-vm
 
 vm_console_base: 7000
-memory: 2097152
+memory: 4194304
 max_fp_num: 4
 
 ptf_bp_ip: 10.10.246.254/24
