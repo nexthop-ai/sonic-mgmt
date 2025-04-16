@@ -1,4 +1,3 @@
-import json
 import pytest
 import time
 import re
@@ -41,18 +40,6 @@ def restore_config_db(duthost):
     config_reload(duthost, safe_reload=True, check_intf_up_ports=True)
 
 
-def add_ptf_static_routes(dut, ptf_mgmt_ip, routes):
-    """
-    NEXTHOP PATCH
-    Adding static routes to mgmt vrf
-    """
-    nexthops = routes["{}/32".format(ptf_mgmt_ip)][0]["nexthops"]
-    logger.debug("NEXTHOP")
-    logger.debug(nexthops)
-    for routes in nexthops:
-        dut.command("sudo config route add prefix vrf mgmt {}/32 nexthop vrf mgmt {}".format(ptf_mgmt_ip, routes["ip"]))
-
-
 @pytest.fixture(scope="module")
 def check_ntp_sync(duthosts, rand_one_dut_hostname):
     duthost = duthosts[rand_one_dut_hostname]
@@ -69,15 +56,11 @@ def setup_mvrf(duthosts, rand_one_dut_hostname, localhost, check_ntp_sync, ptfho
     # Backup the original config_db without mgmt vrf config
     duthost.shell("cp /etc/sonic/config_db.json /etc/sonic/config_db.json.bak")
 
-    # grab any static route for ptf management rechability
-    route_json = json.loads(duthost.command("show ip route {} json".format(ptfhost.mgmt_ip))["stdout"])
-
     try:
         logger.info("Configure mgmt vrf")
         duthost.command("sudo config vrf add mgmt", module_async=True)
         time.sleep(5)
         verify_show_command(duthost, mvrf=True)
-        add_ptf_static_routes(duthost, ptfhost.mgmt_ip, route_json)
     except Exception as e:
         logger.error("Exception raised in setup, exception: {}".format(repr(e)))
         restore_config_db(duthost)
