@@ -199,4 +199,7 @@ def test_radius_source_ip(
         duthost, ptfhost.mgmt_ip, localhost, radius_creds
     )
 
-    pytest_assert(verify_radius_capture(pcap_file, source_ip))
+    pytest_assert(
+        verify_radius_capture(pcap_file, source_ip),
+        "Source IP of RADIUS packet does not have expected value of {}".format(source_ip)
+    )

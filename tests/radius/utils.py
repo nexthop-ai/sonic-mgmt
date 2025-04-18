@@ -125,16 +125,21 @@ def start_tcpdump_and_try_login(
        forcing RADIUS traffic
      - Analyze packet capture
     """
-    ptf_mgmt_prefix = ptfhost_mgmt_ip + "/32"
+
     route_json = json.loads(
         duthost.command(
-            "show ip route {} json".format(ptf_mgmt_prefix)
+            "show ip route {} json".format(ptfhost_mgmt_ip)
         )["stdout"]
     )
-    assert ptf_mgmt_prefix in route_json.keys()
-    tcpdump_int = route_json[ptf_mgmt_prefix][0]["nexthops"][0][
-        "interfaceName"
-    ]
+
+    # make sure atleast one route was returned
+    pytest_assert(route_json.values())
+
+    """
+    the RADIUS server is running on the PTF mgmt interface
+    so the first route here should be the correct one
+    """
+    tcpdump_int = next(iter(route_json.values()))[0]["nexthops"][0]["interfaceName"]
 
     tcpdump_command = (
         "sudo timeout {timeout} tcpdump -i {intf} port 1812 -w {dut_cap_file}"
@@ -176,5 +181,6 @@ def verify_radius_capture(pcap_file, source_ip):
     if the first packet contains the expected source IP
     """
     packets = rdpcap(pcap_file)
+    logger.info("Source IP of RADIUS PACKET is: {}".format(packets[0]["IP"].src))
     # first packet source should be from the DUT
     return packets[0]["IP"].src == source_ip
