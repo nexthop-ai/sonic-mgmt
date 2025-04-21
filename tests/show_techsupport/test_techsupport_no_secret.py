@@ -22,16 +22,21 @@ def check_image_version(duthost):
     skip_release(duthost, ["201811", "201911", "202012", "202106"])
 
 
+TEST_RADIUS_SERVER_ADDRESS = "1.2.3.4"
+
+
 @pytest.fixture
 def setup_password(duthosts, enum_rand_one_per_hwsku_hostname, creds_all_duts):
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     # Setup TACACS/Radius password
     duthost.shell("sudo config tacacs passkey %s" % creds_all_duts[duthost.hostname]['tacacs_passkey'])
     duthost.shell("sudo config radius passkey %s" % creds_all_duts[duthost.hostname]['radius_passkey'])
+    duthost.shell("sudo config radius add %s" % TEST_RADIUS_SERVER_ADDRESS)
     yield
     # Remove TACACS/Radius password
     duthost.shell("sudo config tacacs default passkey")
     duthost.shell("sudo config radius default passkey")
+    duthost.shell("sudo config radius delete %s" % TEST_RADIUS_SERVER_ADDRESS)
 
     # Remove TACACS/Radius keys
     delete_keys_json = [{"RADIUS": {}}, {"TACPLUS": {}}]
