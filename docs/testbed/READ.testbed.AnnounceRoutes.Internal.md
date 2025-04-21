@@ -70,7 +70,7 @@ Routes advertised by each M0:
 Routes advertised by each C0:
 
 - Loopback IP of C0, count: `1`
-  
+
 ## M0/MC0
 
 ### Design

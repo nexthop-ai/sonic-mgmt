@@ -32,10 +32,10 @@
 
 <!-- /TOC -->
 
-## Scope 
+## Scope
 This document proposes solutions for Smart Switch High-Availability test plans. The document will cover smart switch test scenarios.
 
-The goal of this test plan is to verify HA state machine behavior in normal operation scenarios and network failure scenarios with [t1-smartswitch-ha](https://github.com/sonic-net/sonic-mgmt/blob/master/ansible/vars/topo_t1-smartswitch-ha.yml) topology. Both control plane and data plane will need to be verified in the test cases. 
+The goal of this test plan is to verify HA state machine behavior in normal operation scenarios and network failure scenarios with [t1-smartswitch-ha](https://github.com/sonic-net/sonic-mgmt/blob/master/ansible/vars/topo_t1-smartswitch-ha.yml) topology. Both control plane and data plane will need to be verified in the test cases.
 
 ## Terminology
 | Term | Meaning              |
@@ -44,14 +44,14 @@ The goal of this test plan is to verify HA state machine behavior in normal oper
 
 ## Topology
 
-### Setup configuration  
+### Setup configuration
 
 Traffic passes through the HA set under test. Assuming dpu0 in SmartSwitch0 will be the Active node and dpu0 in SmartSwitch1 shall be set to Standby. Both DPUs will share same network configurations.
 
 In case the traffic lands on standby node, it will be tunnelled through T0 neighbor, to the active node, and eventually sent out to destination VM. Diagram below shows the logical path of the traffic. Note that inline sync is omitted in the graphs.
 ![vm-pls-standby](./Img/ssw-ha-testplan-pl-standby.png)
 
-In case the traffic lands on active node, the path will be like below. 
+In case the traffic lands on active node, the path will be like below.
 ![vm-pls-active](./Img/ssw-ha-testplan-pl-active.png)
 
 The production scenario simulated with this testbed, is a VM-to-PLS traffic scenario. Basically in [Azure Private Link](https://azure.microsoft.com/en-us/products/private-link) production scenario, a packet coming from the VM and being sent to PLS. We may add other critical scenarios, such as vnet-to-vnet, in the future.
@@ -69,17 +69,17 @@ Tests will run on a sonic-mgmt testbed. The key physical components will be:
 Key aspects of the physical connection:
 1. Every DUT port is connected to the leaf fanout switch.
 1. Every leaf fanout switch has unique VLAN tag for every DUT port.
-1. Root fanout switch connects leaf fanout switches and test servers using 802.1Q trunks. 
+1. Root fanout switch connects leaf fanout switches and test servers using 802.1Q trunks.
 
-For HA testbeds, the 2 smartswitch DUTs will be connected to the same leaf fanout, to eliminate factors that are irrelevant to the test scenarios. 
+For HA testbeds, the 2 smartswitch DUTs will be connected to the same leaf fanout, to eliminate factors that are irrelevant to the test scenarios.
 
-Any test server can access any DUT port by sending a packet with the port VLAN tag. In test servers, a set of dockers can be created for running cEOS to simulate neighbors of the SONiC DUT. A PTF container (based on the PTF test framework) for injecting/sniffing packets will be created. The PTF docker, the cEOS dockers and VLAN interfaces in test server can be interconnected by open vSwitch bridges. 
+Any test server can access any DUT port by sending a packet with the port VLAN tag. In test servers, a set of dockers can be created for running cEOS to simulate neighbors of the SONiC DUT. A PTF container (based on the PTF test framework) for injecting/sniffing packets will be created. The PTF docker, the cEOS dockers and VLAN interfaces in test server can be interconnected by open vSwitch bridges.
 
-For HA testbeds, the 2 smartswitch DUTs will share the same set of cEOS dockers as the neighbors, and same PTF docker for packets injecting and sniffing. 
+For HA testbeds, the 2 smartswitch DUTs will share the same set of cEOS dockers as the neighbors, and same PTF docker for packets injecting and sniffing.
 
 ![physical-connection](./Img/topo_smartswitch_ha.png)
 
-Please refer to [sonic-mgmt testbed overview](https://github.com/sonic-net/sonic-mgmt/blob/master/docs/testbed/README.testbed.Overview.md) for more about testbed setup and diagrams, also [HA Topology](https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/smart-switch-ha-hld.md#4-network-physical-topology) for HA Network Physical Design. 
+Please refer to [sonic-mgmt testbed overview](https://github.com/sonic-net/sonic-mgmt/blob/master/docs/testbed/README.testbed.Overview.md) for more about testbed setup and diagrams, also [HA Topology](https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/smart-switch-ha-hld.md#4-network-physical-topology) for HA Network Physical Design.
 
 
 
@@ -91,48 +91,48 @@ Please refer to [sonic-mgmt testbed overview](https://github.com/sonic-net/sonic
     * All packets sent out from DUT are forwarded to Neighbor and PTF
     * All packets sent out from PTF are only forwarded to DUT
 1. Traffic will be sent from PTF docker, and sniffed on PTF docker by sonic-mgmt test scripts.
-1. Depending on the test cases, switchovers will be triggered and verified. 
+1. Depending on the test cases, switchovers will be triggered and verified.
 1. Control plane status, DPU counters, metering data, and flow table diff between active/standby will be measured for the tests.
 
 **How to ensure the side traffic will land on?**
 
 To ensure traffic lands on the DUT we desire, for example the active side DUT, packets will be injected only from PTF interfaces that bind with the DUT's interfaces. In real production scenario, the outer packet will have the destination IP to the VIP, hence, the traffic would land on either side, if no special configuration.
 
-Similarly, when sniffing packets on PTF, we will sniff on the interfaces that we expect the packets to arrive. 
+Similarly, when sniffing packets on PTF, we will sniff on the interfaces that we expect the packets to arrive.
 
 **How to define a baseline?**
 
-The steady state module will be considered as baseline of the overall performance of ha testbed, packets sniffed will be analyzed and latency date will be collected and emitted to test reports. 
+The steady state module will be considered as baseline of the overall performance of ha testbed, packets sniffed will be analyzed and latency date will be collected and emitted to test reports.
 
 **How to verify the expected behavior?**
 
 * Expecting no traffic interruption.
 
-Sniffing process starts on PTF docker at the moment of test setup, and will be terminated after a fixed amount of time. Packets sniffed from the certain interfaces, will be parsed by SONiC-MGMT test utilities. The number of packets should be exactly same as the number of sent packets. Sequence numbers should be consecutive, no duplicates, and no missing. 
+Sniffing process starts on PTF docker at the moment of test setup, and will be terminated after a fixed amount of time. Packets sniffed from the certain interfaces, will be parsed by SONiC-MGMT test utilities. The number of packets should be exactly same as the number of sent packets. Sequence numbers should be consecutive, no duplicates, and no missing.
 
 * Expecting traffic interruption but should recover within certain time.
 
-Sniffing process starts on PTF docker at the moment of test setup, and will be terminated after a fixed amount of time. Packets sniffed from the certain interfaces, will be parsed by SONiC-MGMT test utilities. 
+Sniffing process starts on PTF docker at the moment of test setup, and will be terminated after a fixed amount of time. Packets sniffed from the certain interfaces, will be parsed by SONiC-MGMT test utilities.
 
 Sequence numbers should be consecutive with __only one allowed gap__, the number of missed packets should match the configured allowed amount.
 
-* Expecting HA state and metrics value. 
+* Expecting HA state and metrics value.
 
-Utilizing [wait_until](https://github.com/sonic-net/sonic-mgmt/blob/ab2b6c31e1a875442df0107967c0f350d85eb177/tests/common/utilities.py#L121) to check STATE_DB status, tests will fail if state doesn't change to the expected value before timeout. 
+Utilizing [wait_until](https://github.com/sonic-net/sonic-mgmt/blob/ab2b6c31e1a875442df0107967c0f350d85eb177/tests/common/utilities.py#L121) to check STATE_DB status, tests will fail if state doesn't change to the expected value before timeout.
 
 
 ## Test Plan
-Assuming there is a pair of DPUs in the system, and at the step of test setup, we have DPU-1 as active, DPU-2 as standby. 
+Assuming there is a pair of DPUs in the system, and at the step of test setup, we have DPU-1 as active, DPU-2 as standby.
 
-Traffic will be injected by PTF through the T2 neighbors' OVS bridges. PTF will also sniff on the interfaces binding to the T2 neighbors.  
+Traffic will be injected by PTF through the T2 neighbors' OVS bridges. PTF will also sniff on the interfaces binding to the T2 neighbors.
 
 For some of the cases, you will see two versions, one is traffic sending through DPU1, and the other one is traffic sending through DPU2. The purpose of  it is to verify:
 * Traffic shouldn’t be disrupted when failures happen on standby side.
-* Traffic should be tunneled if landing on standby side. 
+* Traffic should be tunneled if landing on standby side.
 
-The name convention of a test case will be “\<Test Scenario\>-[Active|Standby]”, indicating the traffic is sent through the initial active or standby side. 
+The name convention of a test case will be “\<Test Scenario\>-[Active|Standby]”, indicating the traffic is sent through the initial active or standby side.
 
-All of the test modules below, are requesting 2 SmartSwitch to form a pair. Test cases that run on one single SmartSwitch, are not under the scope of HA tests. 
+All of the test modules below, are requesting 2 SmartSwitch to form a pair. Test cases that run on one single SmartSwitch, are not under the scope of HA tests.
 
 ### Module 1 Steady State
 
@@ -171,7 +171,7 @@ Here the BFD pin down refers to a upstream service provided state, which does no
 | HA state pinned standalone – Active  | Verify control plane honors the pinned state. | • Start sending traffic to DPU1.<br>• Pin DPU2 as standalone.<br>• Remove Pin. | DPU1 becomes standby, DPU2 becomes active. | T2 receives packets without disruption. |
 | HA state pinned standalone – Standby | Verify control plane honors the pinned state. | • Start sending traffic to DPU2.<br>• Pin DPU2 as standalone.<br>• Remove Pin. | DPU1 becomes standby, DPU2 becomes active. | T2 receives packets without disruption. |
 
-###  Module 5 Link Failures 
+###  Module 5 Link Failures
 
 | Case                                    | Goal                                                                     | Test Steps                                                                                      | Expected Control Plane Behavior                                                          | Expected Data Plane Behavior                     |
 | --------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -207,12 +207,12 @@ An example of CONFIG_DB ACL rule entry to drop NPU to local DPU probe packets wi
 ```
 
 
-### Module 6 Critical Process Crash 
-For all process crash cases, we will have 4 variations, it’s 
+### Module 6 Critical Process Crash
+For all process crash cases, we will have 4 variations, it’s
 1. Process crash on DPU1, traffic landing on DPU2
 2. Process crash on DPU2, traffic landing on DPU1
 3. Process crash on DPU1, traffic landing on DPU1
-4. Process crash on DPU2, traffic landing on DPU2   
+4. Process crash on DPU2, traffic landing on DPU2
 
 The expected behavior is same, that HA state remains unchanged.
 
@@ -252,7 +252,7 @@ For each case in this module, there are 2 variations:
 | TSA on T1                              | Verify traffic when TSA on T1                              | • Start sending traffic<br>• TSA on T1<br>• TSB on T1                                              | Impacted side become non-active, the peer side become standalone. | T2 receives packets with allowed disruption. |
 | Config reload on T1                    | Verify traffic when config reload on T1                    | • Start sending traffic<br>• Config reload on T1                                                   | Impacted side become non-active, the peer side become standalone. | T2 receives packets with allowed disruption. |
 
-## Test Utilities 
+## Test Utilities
 There are some test utilities we need to implement to cover all test scenarios, including but not limited to:
 1. Utilities to configure [PTF namespace](https://github.com/sonic-net/sonic-mgmt/blob/035122ff3ed2ae23ba3e9903f06ab3967e00c1fe/docs/testbed/README.testbed.vSmartSwitch.md#ptf-container).
 1. Utilities to generate, send and sniff traffic.
