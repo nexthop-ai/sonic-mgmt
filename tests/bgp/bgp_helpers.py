@@ -355,7 +355,7 @@ def prepare_eos_routes(bgp_allow_list_setup, ptfhost, nbrhosts, tbinfo):
     for peer_ips in list(downstream_peers.values()):
         for peer_ip in peer_ips:
             cmds.append('neighbor {} send-community'.format(peer_ip))
-    nbrhosts[downstream]['host'].eos_config(lines=cmds, parents='router bgp {}'.format(downstream_asn))
+    nbrhosts[downstream]['host'].config(lines=cmds, parents='router bgp {}'.format(downstream_asn))
 
     for route in routes:
         if ipaddress.IPNetwork(route['prefix']).version == 4:
@@ -373,7 +373,7 @@ def prepare_eos_routes(bgp_allow_list_setup, ptfhost, nbrhosts, tbinfo):
             update_routes('withdraw', ptfhost.mgmt_ip, downstream_exabgp_port_v6, route)
     # Restore EOS config
     no_cmds = ['no {}'.format(cmd) for cmd in cmds]
-    nbrhosts[downstream]['host'].eos_config(lines=no_cmds, parents='router bgp {}'.format(downstream_asn))
+    nbrhosts[downstream]['host'].config(lines=no_cmds, parents='router bgp {}'.format(downstream_asn))
 
 
 def apply_allow_list(duthost, namespace, allow_list, allow_list_file_path):
@@ -396,11 +396,13 @@ def check_routes_on_from_neighbor(setup_info, nbrhosts):
     Verify if there are routes on neighbor who announce them.
     """
     downstream = setup_info['downstream']
+    host = nbrhosts[downstream]['host']
     for prefixes in list(PREFIX_LISTS.values()):
         for prefix in prefixes:
-            downstream_route = nbrhosts[downstream]['host'].get_route(prefix)
-            route_entries = downstream_route['vrfs']['default']['bgpRouteEntries']
-            pytest_assert(prefix in route_entries, 'Announced route {} not found on {}'.format(prefix, downstream))
+            downstream_route = host.get_route(prefix)
+            logging.info('downstream_route: {}'.format(downstream_route))
+            pytest_assert(check_route_exists(host, downstream_route, prefix),
+                          'Announced route {} not found on {}'.format(prefix, downstream))
 
 
 def check_results(results):
@@ -410,7 +412,51 @@ def check_results(results):
         failed_results[node] = [r for r in node_prefix_results if r['failed']]
 
     pytest_assert(all([len(r) == 0 for r in list(failed_results.values())]),
-                  'Unexpected routes on neighbors, failed_results={}'.format(json.dumps(failed_results, indent=2)))
+                  'Unexpected routes on neighbors, failed_results={}'
+                  .format(json.dumps(failed_results, indent=2)))
+
+
+def get_route_communities(host, route_data, prefix):
+    if isinstance(host, EosHost):
+        return (route_data['vrfs']['default']['bgpRouteEntries'][prefix]
+                ['bgpRoutePaths'][0]['routeDetail']['communityList'])
+    elif isinstance(host, SonicHost):
+        # Extract communities from SonicHost route data
+        communities = []
+        if 'paths' in route_data:
+            for path in route_data['paths']:
+                if 'community' in path:
+                    if isinstance(path['community'], dict):
+                        if 'string' in path['community']:
+                            communities.append(path['community']['string'])
+                        if 'list' in path['community']:
+                            communities.extend(path['community']['list'])
+                    elif isinstance(path['community'], list):
+                        communities.extend(path['community'])
+
+                # Check for large communities if present
+                if 'largeCommunity' in path:
+                    if isinstance(path['largeCommunity'], dict):
+                        if 'string' in path['largeCommunity']:
+                            communities.append(path['largeCommunity']['string'])
+                        if 'list' in path['largeCommunity']:
+                            communities.extend(path['largeCommunity']['list'])
+                    elif isinstance(path['largeCommunity'], list):
+                        communities.extend(path['largeCommunity'])
+
+        # Convert all communities to strings for consistent comparison
+        return [str(c) for c in communities]
+    else:
+        pytest.fail('Unsupported host type: {}'.format(type(host)))
+
+
+def check_route_exists(host, route_data, prefix):
+    if isinstance(host, EosHost):
+        return prefix in route_data['vrfs']['default']['bgpRouteEntries']
+    elif isinstance(host, SonicHost):
+        return bool(route_data) and 'paths' in route_data and len(route_data['paths']) > 0
+    else:
+        pytest.fail('Unsupported host type: {}'.format(type(host)))
 
 
 def check_routes_on_neighbors_empty_allow_list(nbrhosts, setup, permit=True):
@@ -422,20 +468,21 @@ def check_routes_on_neighbors_empty_allow_list(nbrhosts, setup, permit=True):
     @reset_ansible_local_tmp
     def check_other_neigh(nbrhosts, permit, node=None, results=None):
         logging.info('Checking routes on {}'.format(node))
+        nbr_host = nbrhosts[node]['host']
 
         prefix_results = []
         for list_name, prefixes in list(PREFIX_LISTS.items()):
             for prefix in prefixes:
                 prefix_result = {'failed': False, 'prefix': prefix, 'reasons': []}
-                neigh_route = nbrhosts[node]['host'].get_route(prefix)['vrfs']['default']['bgpRouteEntries']
+                route_data = nbr_host.get_route(prefix)
 
                 if permit:
                     # All routes should be forwarded
-                    if prefix not in neigh_route:
+                    if not check_route_exists(nbr_host, route_data, prefix):
                         prefix_result['failed'] = True
                         prefix_result['reasons'].append('Route {} not found on {}'.format(prefix, node))
                     else:
-                        communityList = neigh_route[prefix]['bgpRoutePaths'][0]['routeDetail']['communityList']
+                        communityList = get_route_communities(nbr_host, route_data, prefix)
 
                         # Should add drop_community to all routes
                         if DROP_COMMUNITY not in communityList:
@@ -455,7 +502,7 @@ def check_routes_on_neighbors_empty_allow_list(nbrhosts, setup, permit=True):
 
                 else:
                     # All routes should be dropped
-                    if prefix in neigh_route:
+                    if check_route_exists(nbr_host, route_data, prefix):
                         prefix_result['failed'] = True
                         prefix_result['reasons'].append('When default_action="deny" and allow list is empty, all routes'
                                                         ' should be dropped. route={}, node={}'.format(prefix, node))
@@ -475,21 +522,23 @@ def check_routes_on_neighbors(nbrhosts, setup, permit=True):
     @reset_ansible_local_tmp
     def check_other_neigh(nbrhosts, permit, node=None, results=None):
         logging.info('Checking routes on {}'.format(node))
+        nbr_host = nbrhosts[node]['host']
 
         prefix_results = []
         for list_name, prefixes in list(PREFIX_LISTS.items()):
             for prefix in prefixes:
                 prefix_result = {'failed': False, 'prefix': prefix, 'reasons': []}
-                neigh_route = nbrhosts[node]['host'].get_route(prefix)['vrfs']['default']['bgpRouteEntries']
+                route_data = nbr_host.get_route(prefix)
+                communityList = get_route_communities(nbr_host, route_data, prefix)
+                logging.info('{} route_data: {}'.format(nbr_host.hostname, route_data))
+                logging.info('{} communityList: {}'.format(nbr_host.hostname, communityList))
 
                 if permit:
                     # All routes should be forwarded
-                    if prefix not in neigh_route:
+                    if not check_route_exists(nbr_host, route_data, prefix):
                         prefix_result['failed'] = True
                         prefix_result['reasons'].append('Route {} not found on {}'.format(prefix, node))
                     else:
-                        communityList = neigh_route[prefix]['bgpRoutePaths'][0]['routeDetail']['communityList']
-
                         if 'DISALLOWED' in list_name:
                             # Should add drop_community to routes not on allow list
                             if DROP_COMMUNITY not in communityList:
@@ -517,18 +566,17 @@ def check_routes_on_neighbors(nbrhosts, setup, permit=True):
                 else:
                     if 'DISALLOWED' in list_name:
                         # Routes not on allow list should not be forwarded
-                        if prefix in neigh_route:
+                        if check_route_exists(nbr_host, route_data, prefix):
                             prefix_result['failed'] = True
                             prefix_result['reasons'].append('When default_action="deny", route NOT on allow list should'
                                                             ' not be forwarded. route={}, node={}'.format(prefix, node))
                     else:
                         # Routes on allow list should be forwarded
-                        if prefix not in neigh_route:
+                        if not check_route_exists(nbr_host, route_data, prefix):
                             prefix_result['failed'] = True
                             prefix_result['reasons'].append('When default_action="deny", route on allow list should be '
                                                             'forwarded. route={}, node={}'.format(prefix, node))
                         else:
-                            communityList = neigh_route[prefix]['bgpRoutePaths'][0]['routeDetail']['communityList']
                             # Forwarded route should not have DROP_COMMUNITY
                             if DROP_COMMUNITY in communityList:
                                 prefix_result['failed'] = True

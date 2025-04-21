@@ -2,6 +2,7 @@
 '''
 import logging
 import pytest
+import json
 
 from tests.common.helpers.assertions import pytest_assert
 # Constants
@@ -34,6 +35,31 @@ ALLOW_LIST = {
         }
     }
 }
+
+
+@pytest.fixture(scope="module")
+def load_remove_neighbors_allow_list(nbrhosts, bgp_allow_list_setup):     # noqa:F811
+    namespace = bgp_allow_list_setup['downstream_namespace']
+    allowed_list_prefixes = ALLOW_LIST['BGP_ALLOWED_PREFIXES']
+    for _, value in list(allowed_list_prefixes.items()):
+        value['default_action'] = 'permit'
+
+    for nbr_name, nbr_info in nbrhosts.items():
+        logging.info('apply_allow_list on nbr: {}'.format(nbr_name))
+        nbr_info['host'].copy(content=json.dumps(ALLOW_LIST, indent=3), dest=ALLOW_LIST_PREFIX_JSON_FILE)
+        nbr_info['host'].shell('sonic-cfggen {} -j {} -w'
+                               .format('-n ' + namespace if namespace else '', ALLOW_LIST_PREFIX_JSON_FILE))
+
+    yield
+
+    for nbr_name, nbr_info in nbrhosts.items():
+        allow_list_keys = nbr_info['host'].shell('sonic-db-cli {} CONFIG_DB keys "BGP_ALLOWED_PREFIXES*"'
+                                                 .format('-n ' + namespace if namespace else ''))['stdout_lines']
+        for key in allow_list_keys:
+            logging.info('remove_allow_list on nbr: {}'.format(nbr_name))
+            nbr_info['host'].shell('sonic-db-cli {} CONFIG_DB del "{}"'
+                                   .format('-n ' + namespace if namespace else '', key))
+            nbr_info['host'].shell('rm -rf {}'.format(ALLOW_LIST_PREFIX_JSON_FILE))
 
 
 @pytest.fixture
@@ -80,7 +106,7 @@ def test_default_allow_list_preconfig(duthosts, rand_one_dut_hostname, bgp_allow
 
 @pytest.mark.parametrize('load_remove_allow_list', ["permit", "deny"], indirect=['load_remove_allow_list'])
 def test_allow_list(duthosts, rand_one_dut_hostname, bgp_allow_list_setup, nbrhosts,    # noqa:F811
-                    load_remove_allow_list, ptfhost, bgpmon_setup_teardown):
+                    load_remove_neighbors_allow_list, load_remove_allow_list, ptfhost, bgpmon_setup_teardown):
     permit = True if load_remove_allow_list == "permit" else False
     duthost = duthosts[rand_one_dut_hostname]
     # All routes should be found on from neighbor.
