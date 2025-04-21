@@ -1,7 +1,12 @@
 import time
 import re
-from .base_console_conn import (CONSOLE_SSH_DIGI_CONFIG, CONSOLE_SSH_LANTRONIX_CONFIG, CONSOLE_SSH_RARITAN_CONFIG,
-                               BaseConsoleConn, CONSOLE_SSH)
+from .base_console_conn import (
+    CONSOLE_SSH_DIGI_CONFIG,
+    CONSOLE_SSH_LANTRONIX_CONFIG,
+    CONSOLE_SSH_RARITAN_CONFIG,
+    BaseConsoleConn,
+    CONSOLE_SSH
+)
 try:
     from netmiko.ssh_exception import NetMikoAuthenticationException
 except ImportError:
