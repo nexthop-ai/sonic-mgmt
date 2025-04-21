@@ -171,6 +171,22 @@ redis_db_cmds = [
     "{}sonic-db-dump -n 'COUNTERS_DB' -y",
 ]
 
+mvrf_cmds = [
+    "show mgmt-vrf",
+    "show mgmt-vrf routes",
+    "show management_interface address",
+]
+
+acl_cmds = [
+    "show acl table",
+    "show acl rule",
+]
+
+dhcp_relay_cmds = [
+    "show dhcp_relay ipv4 helper",
+    "show dhcp_relay ipv6 destination",
+]
+
 docker_cmds = [
     "docker exec syncd{} saidump",
     "docker stats --no-stream",
@@ -201,13 +217,18 @@ docker_cmds_t2 = [
 ]
 
 misc_show_cmds = [
+    "show clock",
     "show services",
     "show reboot-cause",
+    "show run ntp",
     "show vlan brief",
     "show version",
+    "show system-health sysready-status detail",
+    "show system-health detail",
     "show interface status -d all",
     "show interface transceiver presence",
     "show interface transceiver eeprom --dom",
+    "show interface transceiver pm",
     "show ip interface",
     "show interface counters",
     "{}show queue counters",

@@ -478,6 +478,9 @@ def commands_to_check(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
         "nat_cmds": cmds.nat_cmds,
         "bfd_cmds": add_asic_arg(" -n {}", cmds.bfd_cmds, num),
         "redis_db_cmds": add_asic_arg("asic{} ", cmds.redis_db_cmds, num),
+        "mvrf_cmds": cmds.mvrf_cmds,
+        "acl_cmds": cmds.acl_cmds,
+        "dhcp_relay_cmds": cmds.dhcp_relay_cmds,
         "misc_show_cmds": add_asic_arg("asic{} ", cmds.misc_show_cmds, num),
         "misc_cmds": cmds.misc_cmds,
     }
