@@ -2767,6 +2767,12 @@ Totals               6450                 6449
         return result_dict
 
     def config(self, lines=None, parents=None, module_ignore_errors=False, asic_id=DEFAULT_ASIC_ID):
+        # Convert string inputs to lists
+        if isinstance(lines, str):
+            lines = [lines]
+        if isinstance(parents, str):
+            parents = [parents]
+
         lines = lines or []
         parents = parents or []
         # conf t, add parent commands, add lines, exit for all config contexts
