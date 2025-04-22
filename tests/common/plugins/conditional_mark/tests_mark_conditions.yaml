@@ -2370,13 +2370,6 @@ ssh/test_ssh_default_password:
   skip:
     reason: "Skip because the default password test is no longer appropriate after password rotation."
 
-ssh/test_ssh_stress.py::test_ssh_stress:
-  # This test is not stable, skip it for now.
-  # known issue: https://github.com/paramiko/paramiko/issues/1508
-  skip:
-    reason: "This test failed intermittent due to known issue of paramiko, skip for now"
-    conditions: https://github.com/paramiko/paramiko/issues/1508
-
 #######################################
 #####     sub_port_interfaces     #####
 #######################################

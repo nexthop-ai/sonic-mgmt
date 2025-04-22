@@ -63,11 +63,11 @@ def get_system_stats(duthost):
     return used_memory/total_memory, used_cpu/total_cpu
 
 
-def start_SSH_connection(dut_mgmt_ip):
+def start_SSH_connection(dut_mgmt_ip, creds):
     """Starts SSH connection to provided IP"""
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(dut_mgmt_ip, username="admin", password="password",
+    ssh.connect(dut_mgmt_ip, username=creds["sonicadmin_user"], password=creds["sonicadmin_password"],
                 allow_agent=False, look_for_keys=False)
 
     return ssh
@@ -87,11 +87,11 @@ def monitor_system(duthost):
         time.sleep(1)
 
 
-def work(dut_mgmt_ip, commands, baselines):
+def work(dut_mgmt_ip, commands, baselines, creds):
     """Runs commands over ssh on the DUT"""
     command_ind = 0
 
-    ssh = start_SSH_connection(dut_mgmt_ip)
+    ssh = start_SSH_connection(dut_mgmt_ip, creds)
 
     while not done:
         if not commands:
@@ -152,7 +152,7 @@ def get_baseline_time(ssh, command):
     return tot_time/5
 
 
-def test_ssh_stress(duthosts, rand_one_dut_hostname, setup_teardown):
+def test_ssh_stress(duthosts, rand_one_dut_hostname, setup_teardown, creds):
     """This test creates several SSH connections that all run different commands. CPU/Memory are tracked throughout"""
     global done, max_mem, max_cpu
 
@@ -175,7 +175,7 @@ def test_ssh_stress(duthosts, rand_one_dut_hostname, setup_teardown):
     ]
 
     logging.info("Collecting baseline times for commands")
-    ssh = start_SSH_connection(dut_mgmt_ip)
+    ssh = start_SSH_connection(dut_mgmt_ip, creds)
     baseline_times = [tuple((get_baseline_time(ssh, com)
                             for com in pair)) for pair in command_pairs]
 
@@ -189,7 +189,7 @@ def test_ssh_stress(duthosts, rand_one_dut_hostname, setup_teardown):
     # Initiates threads
     for ind in range(len(command_pairs)):
         new_thread = threading.Thread(target=work, args=(
-            dut_mgmt_ip, command_pairs[ind], baseline_times[ind],))
+            dut_mgmt_ip, command_pairs[ind], baseline_times[ind], creds))
         new_thread.start()
         threads.append(new_thread)
 
@@ -223,7 +223,7 @@ def test_ssh_stress(duthosts, rand_one_dut_hostname, setup_teardown):
     ssh_connections = []
 
     for ind in range(20):
-        ssh = start_SSH_connection(dut_mgmt_ip)
+        ssh = start_SSH_connection(dut_mgmt_ip, creds)
         ssh_connections.append(ssh)
         try:
             stdin, stdout, stderr = ssh.exec_command("show mac", timeout=10)
