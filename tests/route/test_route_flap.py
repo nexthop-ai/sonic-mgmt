@@ -499,7 +499,7 @@ def test_route_flap(duthosts, tbinfo, ptfhost, ptfadapter,
             # Check if route is withdraw with first 3 routes
             if route_index < 4:
                 pytest_assert(wait_until(20, 1, 0, check_route, duthost, dst_prefix, dev_port, WITHDRAW),
-                              "Route {} was not withdrawn after 10 seconds".format(dst_prefix))
+                              "Route {} was not withdrawn".format(dst_prefix))
             send_recv_ping_packet(
                 ptfadapter, ptf_send_port, ptf_recv_ports, vlan_mac, dut_mac, ptf_ip, ping_ip, tbinfo)
 
@@ -507,7 +507,7 @@ def test_route_flap(duthosts, tbinfo, ptfhost, ptfadapter,
             # Check if route is announced with first 3 routes
             if route_index < 4:
                 pytest_assert(wait_until(20, 1, 0, check_route, duthost, dst_prefix, dev_port, ANNOUNCE),
-                              "Route {} was not announced after 10 seconds".format(dst_prefix))
+                              "Route {} was not announced".format(dst_prefix))
             send_recv_ping_packet(
                 ptfadapter, ptf_send_port, ptf_recv_ports, vlan_mac, dut_mac, ptf_ip, ping_ip, tbinfo)
 
