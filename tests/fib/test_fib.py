@@ -833,10 +833,12 @@ def test_ecmp_group_member_flap(
     asic_ns = ""
     if num_asic > 1:
         asic_ns = "-n asic{}".format(nh_dut_ports[0][0])
+    port_index_to_shut = 0
     logging.info("Shutting down port {}".format(nh_dut_ports[0][1]))
-    duthosts[0].shell("sudo config interface {} shutdown {}".format(asic_ns, nh_dut_ports[0][1]))
+    duthosts[0].shell("sudo config interface {} shutdown {}".format(asic_ns, nh_dut_ports[port_index_to_shut][1]))
 
     time.sleep(10)  # Allow time for the state to stabilize
+    filtered_ports.append(nh_ptf_ports[port_index_to_shut])
 
     # --- Re-run the PTF test after member down ---
     logging.info("Verifying ECMP behavior after member down.")
@@ -882,7 +884,7 @@ def test_ecmp_group_member_flap(
     duthosts[0].shell("sudo config interface {} startup {}".format(asic_ns, nh_dut_ports[0][1]))
 
     time.sleep(60)  # Allow time for the state to stabilize
-
+    filtered_ports.pop()
     # --- Re-run the PTF test after member is back up ---
     logging.info("Re-verifying ECMP behavior after member up.")
     new_fib_files2 = fib_info_files_per_function(
