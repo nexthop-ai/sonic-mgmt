@@ -14,6 +14,7 @@
     - [4.3 Authentication Fallback](#43-authentication-fallback)
     - [4.4 Error Handling](#44-error-handling)
     - [4.5 Source IP Configuration](#45-source-ip-configuration)
+    - [4.6 Management VRF](#46-management-vrf)
   - [5 Implementation Details](#5-implementation-details)
     - [5.1 Test Framework](#51-test-framework)
     - [5.2 Key Utilities](#52-key-utilities)
@@ -36,7 +37,6 @@ Key components tested:
 - FreeRADIUS server setup and configuration
 - RADIUS client configuration on SONiC
 - User credentials management
-- Authentication protocols (PAP)
 - Network connectivity between RADIUS client and server
 
 ## 3 Test Setup
@@ -131,6 +131,27 @@ Configuration files:
 - Verify RADIUS packets use correct source IP
 - Skip test if no routed interfaces are available
 
+### 4.6 Management VRF
+
+**Test Case 7: RADIUS with Management VRF (`test_radius_mgmt_vrf`)**
+- Enable management VRF on DUT
+- Verify RADIUS server reachability through mgmt VRF
+- Test read-write user authentication:
+  * Verify successful authentication
+  * Check user group membership
+  * Verify RADIUS statistics:
+    - Access-Accept counter increments
+    - Access-Reject counter remains unchanged
+- Test read-only user authentication:
+  * Verify successful authentication
+  * Check user group membership
+  * Verify RADIUS statistics:
+    - Access-Accept counter increments
+    - Access-Reject counter remains unchanged
+- Clean up:
+  * Remove management VRF
+  * Verify SSH accessibility after VRF removal
+
 ## 5 Implementation Details
 
 ### 5.1 Test Framework
@@ -163,4 +184,3 @@ Test failures should provide:
 - Clear error messages
 - Relevant log information
 - RADIUS statistics for debugging
-
