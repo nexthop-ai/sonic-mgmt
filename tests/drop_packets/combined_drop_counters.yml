@@ -30,6 +30,7 @@ l2_l3:
     - "x86_64-wistron_sw_to3200k-r0"
     - "x86_64-nokia.*"
     - "x86_64-micas_m2*"
+    - "x86_64-nexthop*"
 
 acl_l2:
     - "x86_64-mlnx"
