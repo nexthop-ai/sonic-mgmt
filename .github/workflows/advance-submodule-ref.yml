@@ -4,8 +4,7 @@ on:
   pull_request:
     branches:
       - master
-      - 202411
-      - 202405
+      - '20*'
     types: [closed]
 
 jobs:
