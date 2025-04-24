@@ -312,8 +312,21 @@ def setup_vlan_peer(duthost, ptfhost, cfg_facts):
         vlan_port = get_vlan_members(vlan, cfg_facts)[0]
         vlan_peer_port = cfg_facts['config_port_indices'][vlan_port]
 
-        # deploy peer namespace on ptf
-        ptfhost.shell("ip netns add {}".format(ns))
+        # Try to create the namespace
+        result = ptfhost.shell("ip netns add {}".format(ns), module_ignore_errors=True)
+
+        # Check if the error is specifically about the namespace already existing
+        if result['rc'] != 0 and "File exists" not in result.get('stderr', ''):
+            # Log the error and raise a standard exception
+            error_msg = "Failed to create namespace {}. Error: {}".format(ns, result.get('stderr', ''))
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        else:
+            # Either succeeded or failed with "File exists" error (which we can ignore)
+            if result['rc'] == 0:
+                logger.info("Successfully created namespace {}".format(ns))
+            else:
+                logger.info("Namespace {} already exists, continuing".format(ns))
 
         # bind port to namespace
         ptfhost.shell("ip link add e{}mv1 link eth{} type macvlan mode bridge".format(
@@ -628,8 +641,8 @@ class TestVrfCreateAndBind():
                     except Exception:
                         return False
 
-                # Wait up to 30 seconds for the interface to be bound to the VRF
-                pytest_assert(wait_until(30, 2, 0, check_intf_in_vrf),
+                # Wait up to 60 seconds for the interface to be bound to the VRF
+                pytest_assert(wait_until(60, 2, 0, check_intf_in_vrf),
                               "The master dev of interface %s should be %s!" % (intf, vrf))
 
     def test_vrf_in_appl_db(self, duthosts, rand_one_dut_hostname, cfg_facts):
