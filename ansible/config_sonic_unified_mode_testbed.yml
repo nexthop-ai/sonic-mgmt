@@ -14,11 +14,24 @@
         msg: "Invalid frr_mgmt_config. Must be either true or false"
       when: frr_mgmt_config is defined and frr_mgmt_config|string not in ['true', 'false']
 
+    - name: Check if config_db.json exists
+      stat:
+        path: /etc/sonic/config_db.json
+      register: config_db_stat
+      become: true
+
     - name: backup config_db.json
       copy:
         src: /etc/sonic/config_db.json
         dest: /etc/sonic/config_db.json.bak
         remote_src: yes
+      become: true
+      when: config_db_stat.stat.exists
+
+    - name: Check if minigraph.xml exists
+      stat:
+        path: /etc/sonic/minigraph.xml
+      register: minigraph_stat
       become: true
 
     - name: backup minigraph.xml
@@ -27,6 +40,7 @@
         dest: /etc/sonic/minigraph.xml.bak
         remote_src: yes
       become: true
+      when: minigraph_stat.stat.exists
 
     - name: Check if golden_config_db.json exists
       stat:
@@ -535,6 +549,8 @@
         dest: /etc/sonic/config_db.json
         remote_src: yes
       become: true
+      when: config_db_stat.stat.exists
+      ignore_errors: true
 
     - name: Restore minigraph.xml on failure
       copy:
@@ -542,6 +558,8 @@
         dest: /etc/sonic/minigraph.xml
         remote_src: yes
       become: true
+      when: minigraph_stat.stat.exists
+      ignore_errors: true
 
     - name: Restore golden_config_db.json on failure
       copy:
@@ -550,7 +568,12 @@
         remote_src: yes
       become: true
       when: golden_config_stat.stat.exists
+      ignore_errors: true
 
     - name: Fail with error message
       fail:
         msg: "Failed to deploy configuration in unified mode. Both minigraph.xml and config_db.json have been restored to their previous state."
+
+  when: >
+    (routing_config_mode is defined and routing_config_mode is not none and routing_config_mode | length > 0) or
+    (frr_mgmt_config is defined and frr_mgmt_config is not none and frr_mgmt_config | length > 0)
