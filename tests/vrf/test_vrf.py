@@ -6,7 +6,6 @@ import json
 import random
 import logging
 import os
-import re
 import tempfile
 import traceback
 
