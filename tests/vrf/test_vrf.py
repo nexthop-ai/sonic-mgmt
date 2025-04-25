@@ -1047,7 +1047,7 @@ class TestVrfLoopbackIntf():
 
         # Get the current BGP AS number if exists
         bgp_as = duthost.shell("vtysh -c 'show running-config' | grep 'router bgp' | head -1",
-                                module_ignore_errors=True)['stdout']
+                               module_ignore_errors=True)['stdout']
         if not bgp_as or not re.search(r'router bgp (\d+)', bgp_as):
             # If BGP is not configured or we couldn't extract the AS number, create a new BGP router
             logger.warning("No BGP configuration found or couldn't extract AS number, creating default")
