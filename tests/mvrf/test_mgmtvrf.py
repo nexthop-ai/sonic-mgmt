@@ -229,19 +229,18 @@ class TestServices():
         if check_ntp_sync:
             setup_ntp(ptfhost, duthost, ntp_servers)
 
-        # There is no entry ntp in `/etc/passwd` on kvm testbed.
-        cmd = "getent passwd ntp"
-        ntp_uid_output = duthost.command(cmd, module_ignore_errors=True)
-        if duthost.facts["asic_type"] == "vs" and ntp_uid_output['rc'] == 2:
-            return
-        assert ntp_uid_output['rc'] == 0, "Run command '{}' failed".format(cmd)
-        ntp_uid = ":".join(ntp_uid_output['stdout'].split(':')[2:4])
+        ntp_service = "chrony" if ntp_daemon_in_use == NtpDaemon.CHRONY else "ntpsec"
 
-        force_ntp = "timeout 20 ntpd -gq -u {}".format(ntp_uid)
-        duthost.service(name="ntp", state="stopped")
-        logger.info("Ntp restart in mgmt vrf")
-        execute_dut_command(duthost, force_ntp)
-        duthost.service(name="ntp", state="restarted")
+        # Skip the check for vs platform that doesnt have the ntp support
+        if duthost.facts["asic_type"] == "vs":
+            cmd = f"systemctl is-enabled {ntp_service}"
+            result = execute_dut_command(duthost, cmd)
+            if result['rc'] or result["stdout"] != "enabled":
+                return
+
+        # Restart ntp service
+        cmd = f"systemctl restart {ntp_service}"
+        execute_dut_command(duthost, cmd)
         pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
 
     def test_service_acl(self, duthosts, rand_one_dut_hostname, localhost):
