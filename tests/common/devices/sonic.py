@@ -2330,7 +2330,7 @@ Totals               6450                 6449
             raise Exception("Invalid V4 address {}".format(ns_docker_if_ipv4))
         return ns_docker_if_ipv4
 
-    def ping_v4(self, ipv4, count=1, ns_arg=""):
+    def ping_v4(self, ipv4, count=1, ns_arg="", intf=None, ttl=None):
         """
         Returns 'True' if ping to IP address works, else 'False'
         Args:
@@ -2349,8 +2349,13 @@ Totals               6450                 6449
             netns_arg = "sudo ip netns exec {} ".format(ns_arg)
 
         try:
-            rc = self.shell("{}ping -q -c{} {} > /dev/null".format(
-                netns_arg, count, ipv4
+            options = f"-q -c{count}"
+            if ttl is not None:
+                options += f" -t{ttl}"
+            if intf is not None:
+                options += f" -I{intf}"
+            rc = self.shell("{}ping {} {}> /dev/null".format(
+                netns_arg, options, ipv4
             ))
         except RunAnsibleModuleFail:
             return False
