@@ -1,1 +1,1 @@
-docker_registry_host: sonicdev-microsoft.azurecr.io:443
+docker_registry_host: container-registry.sw.internal.nexthop.ai:443
