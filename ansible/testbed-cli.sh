@@ -532,11 +532,19 @@ function generate_minigraph
   # Parse additional options
   while [ "$1" != "" ]; do
     case $1 in
-      -r | --routing-config-mode ) shift
-                                   routing_config_mode=$1
-                                   ;;
-      -f | --frr-mgmt-framework )  frr_mgmt_framework="true"
-                                   ;;
+      -e ) shift
+           if [[ "$1" == routing_config_mode=* ]]; then
+             routing_config_mode="${1#*=}"
+             # Remove quotes if present
+             routing_config_mode="${routing_config_mode%\"}"
+             routing_config_mode="${routing_config_mode#\"}"
+           elif [[ "$1" == frr_mgmt_config=* ]]; then
+             frr_mgmt_config="${1#*=}"
+             # Remove quotes if present
+             frr_mgmt_config="${frr_mgmt_config%\"}"
+             frr_mgmt_config="${frr_mgmt_config#\"}"
+           fi
+           ;;
     esac
     shift
   done
@@ -564,11 +572,19 @@ function deploy_minigraph
   # Parse additional options
   while [ "$1" != "" ]; do
     case $1 in
-      -r | --routing-config-mode ) shift
-                                   routing_config_mode=$1
-                                   ;;
-      -f | --frr-mgmt-framework )  frr_mgmt_framework="true"
-                                   ;;
+      -e ) shift
+           if [[ "$1" == routing_config_mode=* ]]; then
+             routing_config_mode="${1#*=}"
+             # Remove quotes if present
+             routing_config_mode="${routing_config_mode%\"}"
+             routing_config_mode="${routing_config_mode#\"}"
+           elif [[ "$1" == frr_mgmt_config=* ]]; then
+             frr_mgmt_config="${1#*=}"
+             # Remove quotes if present
+             frr_mgmt_config="${frr_mgmt_config%\"}"
+             frr_mgmt_config="${frr_mgmt_config#\"}"
+           fi
+           ;;
     esac
     shift
   done
