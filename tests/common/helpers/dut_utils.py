@@ -612,7 +612,7 @@ def duthost_clear_console_port(
         ],
         CONSOLE_SSH_RARITAN_CONFIG: [
             ('maintenance', "Maintenance"),
-            ('logoff {console_port}', 'Force log off successful.')
+            (f'logoff port {console_port}', 'Force log off successful.')
         ]
     }
 
