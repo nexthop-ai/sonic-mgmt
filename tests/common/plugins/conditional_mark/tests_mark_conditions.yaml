@@ -1704,6 +1704,13 @@ pfcwd:
     conditions:
       - "topo_type in ['m0', 'mx', 'm1', 'm2', 'm3']"
 
+pfcwd/test_pfc_config.py:
+   skip:
+     reason: "Some of the pfc watchdog tests can not run on older platforms"
+     conditions_logical_operator: or
+     conditions:
+        - "hwsku in ['Accton-AS5835-54X']"
+
 pfcwd/test_pfc_config.py::TestPfcConfig::test_forward_action_cfg:
    skip:
      reason: "Forward action not supported in cisco-8000; Not supported on M* testbed."
@@ -1721,6 +1728,13 @@ pfcwd/test_pfcwd_all_port_storm.py:
      conditions:
       - "hwsku in ['Arista-7060X6-64PE-256x200G']"
       - "topo_type in ['m0', 'mx', 'm1', 'm2', 'm3']"
+
+pfcwd/test_pfcwd_function.py:
+   skip:
+     reason: "Some of the pfc watchdog tests can not run on older platforms"
+     conditions_logical_operator: or
+     conditions:
+        - "hwsku in ['Accton-AS5835-54X']"
 
 pfcwd/test_pfcwd_function.py::TestPfcwdFunc::test_pfcwd_actions:
   xfail:
