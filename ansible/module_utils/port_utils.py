@@ -506,7 +506,7 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                 port_alias_to_name_map["Ethernet-BP%d" % i] = "Ethernet-BP%d" % i
         elif hwsku == "NH-4010":
             logical_num = 1
-            for i in range(1, 505, 8):
+            for i in range(0, 504, 8):
                 port_alias_to_name_map["Ethernet%d/1" % logical_num] = "Ethernet%d" % i
                 logical_num += 1
         else:
