@@ -148,7 +148,8 @@ function read_yaml
 
   tb_line=${tb_lines[0]}
   line_arr=($1)
-  for attr in group-name topo ptf_image_name ptf ptf_ip ptf_ipv6 ptf_extra_mgmt_ip netns_mgmt_ip server vm_base dut inv_name auto_recover comment;
+
+  for attr in group-name topo ptf_image_name ptf ptf_ip ptf_ipv6 ptf_extra_mgmt_ip netns_mgmt_ip server vm_base dut inv_name auto_recover fanout comment;
   do
     value=$(python -c "from __future__ import print_function; tb=eval(\"$tb_line\"); print(tb.get('$attr', None))")
     [ "$value" == "None" ] && value=
@@ -171,6 +172,8 @@ function read_yaml
   dut=${line_arr[11]}
   duts=$(python -c "from __future__ import print_function; print(','.join(eval(\"$dut\")))")
   inv_name=${line_arr[12]}
+  auto_recover=${line_arr[13]}
+  fanout=${line_arr[14]}
 }
 
 function read_file
@@ -310,8 +313,16 @@ function add_topo_fanout
       ansible_options+=" -e eos_batch_size=1"
   fi
 
+  # Check if fanout is defined in the testbed configuration
+  fanout_limit=""
+  if [[ -n "$fanout" ]]; then
+      fanout_limit="-l $fanout"
+      echo "Using fanout limit: $fanout"
+  fi
+
   if [[ "$ptf_imagename" != "docker-keysight-api-server" ]]; then
-    ansible-playbook fanout.yml -i ${inv_name}  --vault-password-file="${passwd}"
+    echo "DEBUG: Running ansible-playbook with fanout_limit='$fanout_limit'"
+    ansible-playbook fanout.yml -i ${inv_name} $fanout_limit --vault-password-file="${passwd}" $@
   fi
 
   cache_files_path_value=$(is_cache_exist)

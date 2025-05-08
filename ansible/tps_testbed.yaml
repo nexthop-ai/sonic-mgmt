@@ -1,0 +1,48 @@
+---
+- conf-name: tps_tb1
+  group-name: tps_tb1
+  topo: t1-62
+  ptf_image_name: docker-ptf
+  ptf: ptf_tps_tb1
+  ptf_ip: 10.249.1.3/24
+  ptf_ipv6: fc00:1::3/64
+  server: server_ts107_tps_tb1
+  vm_base: VM0100
+  dut:
+    - ge101
+  inv_name: tps_lab
+  fanout: dvc106
+  auto_recover: 'False'
+  comment: GE 64 Port T1
+
+- conf-name: tps_tb2
+  group-name: tps_tb2
+  topo: t1-8
+  ptf_image_name: docker-ptf
+  ptf: ptf_tps_tb2
+  ptf_ip: 10.249.2.3/24
+  ptf_ipv6: fc00:2::3/64
+  server: server_ts102_tps_tb2
+  vm_base: VM0200
+  dut:
+    - dvc117
+  fanout: dvc116
+  inv_name: tps_lab
+  auto_recover: 'False'
+  comment: Edgecore DUT 3rd Party
+
+- conf-name: tps_tb3
+  group-name: tps_tb3
+  topo: t2_single_node_max
+  ptf_image_name: docker-ptf
+  ptf: ptf_tps_tb3
+  ptf_ip: 10.249.3.3/24
+  ptf_ipv6: fc00:3::3/64
+  server: server_ts102_tps_tb3
+  vm_base: VM0300
+  dut:
+    - dvc121
+  inv_name: tps_lab
+  fanout: dvc116
+  auto_recover: 'False'
+  comment: Ufispace DUT 3rd Party
