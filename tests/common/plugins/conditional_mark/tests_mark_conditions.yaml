@@ -2378,13 +2378,6 @@ srv6/test_srv6_vlan_forwarding.py:
       - "asic_type not in ['mellanox', 'broadcom'] or release not in ['202412']"
 
 #######################################
-#####             ssh             #####
-#######################################
-ssh/test_ssh_default_password:
-  skip:
-    reason: "Skip because the default password test is no longer appropriate after password rotation."
-
-#######################################
 #####     sub_port_interfaces     #####
 #######################################
 sub_port_interfaces:

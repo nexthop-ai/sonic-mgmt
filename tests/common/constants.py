@@ -10,7 +10,7 @@ BACKEND_TOPOLOGY_IND = "backend"
 # ssh connect default username and password
 DEFAULT_SSH_CONNECT_PARAMS = {
     "public": {"username": "admin",
-               "password": "YourPaSsWoRd"}
+               "password": "Nexthop@24"}
 }
 # resolv.conf expected nameservers
 RESOLV_CONF_NAMESERVERS = {
