@@ -6,6 +6,6 @@ ts107_tps_tb1,10.20.16.18/24,TestServ,server,,ubuntu
 ts102_tps_tb2,10.20.16.20/24,TestServ,server,,ubuntu
 ts102_tps_tb3,10.20.16.20/24,TestServ,server,,ubuntu
 con104,10.60.1.9/24,Lantronix-EDS3032PR,consoleserver,ssh_to_port,other
-pdu105,10.60.0.2,Raritan-DSX2-32,Pdu,snmp,
+pdu105,10.60.1.18,Raritan-DSX2-32,Pdu,snmp,
 dvc121,10.249.3.2/24,UFISPACE-S9620-32E,DevSonic,,sonic
 dvc116,10.60.1.133/24,Accton-AS9716-32D,FanoutLeaf,,sonic

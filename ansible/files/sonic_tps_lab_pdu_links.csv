@@ -1,0 +1,8 @@
+StartDevice,StartPort,EndDevice,EndPort,EndFeed
+pdu105,6,dvc106,PSU1,
+pdu105,12,dvc121,PSU1,
+pdu105,13,dvc117,PSU1,
+pdu105,14,dvc116,PSU1,
+pdu105,17,dvc105,PSU1,
+pdu105,22,dvc103,PSU1,
+pdu105,11,ge101,PSU1,

@@ -53,8 +53,8 @@ all:
               ansible_host: 10.20.16.18
         pdu:
           hosts:
-            pdu_106:
-              ansible_host: 10.60.1.20
+            pdu105:
+              ansible_host: 10.60.1.18
               protocol: snmp
     ptf:
       vars:
