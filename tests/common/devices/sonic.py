@@ -2850,7 +2850,7 @@ Totals               6450                 6449
         frr_config = self.shell(
             'sudo sonic-db-cli CONFIG_DB HGET "DEVICE_METADATA|localhost" '
             '"frr_mgmt_framework_config"'
-        )
+        )['stdout'].strip()
         return frr_config == "true"
 
     def get_bgp_docker_names(self):

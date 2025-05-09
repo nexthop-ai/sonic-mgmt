@@ -4,7 +4,6 @@ import requests
 
 from tests.common.utilities import wait_tcp_connection
 
-
 NEIGHBOR_SAVE_DEST_TMPL = "/tmp/neighbor_%s.j2"
 BGP_SAVE_DEST_TMPL = "/tmp/bgp_%s.j2"
 
@@ -47,7 +46,17 @@ def run_bgp_facts(duthost, enum_asic_index):
     nbrs_in_cfg_facts.update(config_facts.get('BGP_INTERNAL_NEIGHBOR', {}))
     # In VoQ Chassis, we would have BGP_VOQ_CHASSIS_NEIGHBOR as well.
     nbrs_in_cfg_facts.update(config_facts.get('BGP_VOQ_CHASSIS_NEIGHBOR', {}))
-    for k, v in list(nbrs_in_cfg_facts.items()):
+
+    neighbors = {}
+    # When FRR management framework is enabled, there's an additional level of nesting with 'default' as the key
+    if duthost.get_frr_mgmt_framework_config() and 'default' in nbrs_in_cfg_facts:
+        # Extract the neighbors from the 'default' VRF
+        neighbors = nbrs_in_cfg_facts['default']
+    else:
+        # Use the original structure
+        neighbors = nbrs_in_cfg_facts
+
+    for k, v in list(neighbors.items()):
         # Compare the bgp neighbors name with config db bgp neighbors name
         assert v['name'] == bgp_facts['bgp_neighbors'][k]['description']
         # Compare the bgp neighbors ASN with config db
