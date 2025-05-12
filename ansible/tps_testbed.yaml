@@ -1,5 +1,5 @@
 ---
-- conf-name: tps_tb1
+- conf-name: tps_tb1-t1-62
   group-name: tps_tb1
   topo: t1-62
   ptf_image_name: docker-ptf
@@ -15,7 +15,7 @@
   auto_recover: 'False'
   comment: GE 64 Port T1
 
-- conf-name: tps_tb2
+- conf-name: tps_tb2-t1-8
   group-name: tps_tb2
   topo: t1-8
   ptf_image_name: docker-ptf
@@ -31,7 +31,7 @@
   auto_recover: 'False'
   comment: Edgecore DUT 3rd Party
 
-- conf-name: tps_tb3
+- conf-name: tps_tb3-t2_single_node_max
   group-name: tps_tb3
   topo: t2_single_node_max
   ptf_image_name: docker-ptf
