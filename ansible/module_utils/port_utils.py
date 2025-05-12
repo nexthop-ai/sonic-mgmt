@@ -519,21 +519,16 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                 port_alias_to_name_map["Eth%d(Port%d)" % (i, i)] = "Ethernet%d" % (i * 8)
 
         elif hwsku == "Accton-AS9716-32D":
-            total_ports = 32
-
-            for i in range(0, total_ports, 8):  # Increment by 8 each time
-                port_name = f"Ethernet{i}"
-                alias = f"fourHundredGigE{(i // 8) + 1}"
-                port_alias_to_name_map[alias] = port_name
+            # 32 ports with 8 lanes each
+            for i in range(32):
+                # Main port - port aliases start from 1
+                port_alias_to_name_map["Eth%d(Port%d)" % (i+1, i+1)] = "Ethernet%d" % (i * 8)
 
         elif hwsku == "ACS-SN6500":
-            total_ports = 65
-            for i in range(0, total_ports, 8):
-                port_name = f"Ethernet{i}"
-                alias_name = f"etp{(i // 8) + 1}"
-
-                # Assign the alias to the port
-                port_alias_to_name_map[port_name] = alias_name
+            # 64 ports with 8 lanes each
+            for i in range(64):
+                # Main port - port aliases start from 1
+                port_alias_to_name_map["etp%d" % (i+1)] = "Ethernet%d" % (i * 8)
 
         else:
             if "Arista-7800" in hwsku:
