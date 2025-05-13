@@ -26,8 +26,8 @@
   vm_base: VM0200
   dut:
     - dvc121
-  inv_name: tps_lab
   fanout: dvc116
+  inv_name: tps_lab
   auto_recover: 'False'
   comment: Ufispace DUT 3rd Party
 

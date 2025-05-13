@@ -10,8 +10,14 @@ all:
     eos:
       children:
         vms_tps_tb1:
+          vars:
+            vm_console_base: 7100  # Base console port for tb1 VMs
         vms_tps_tb2:
+          vars:
+            vm_console_base: 7200  # Base console port for tb2 VMs
         vms_tps_tb3:
+          vars:
+            vm_console_base: 7300  # Base console port for tb3 VMs
     servers:
       vars:
         topologies:
