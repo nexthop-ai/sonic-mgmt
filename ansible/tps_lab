@@ -35,20 +35,20 @@ all:
         server_ts102_tps_tb2:
           hosts:
             ts102_tps_tb2:
-              ansible_host: 10.20.16.20
+              ansible_host: 10.20.16.22
 
         server_ts102_tps_tb3:
           hosts:
             ts102_tps_tb3:
-              ansible_host: 10.20.16.20
+              ansible_host: 10.20.16.22
 
 
         server:
           hosts:
             ts102_tps_tb2:
-              ansible_host: 10.20.16.20
+              ansible_host: 10.20.16.22
             ts102_tps_tb3:
-              ansible_host: 10.20.16.20
+              ansible_host: 10.20.16.22
             ts107_tps_tb1:
               ansible_host: 10.20.16.18
         pdu:
@@ -326,6 +326,64 @@ vms_tps_tb1:
   VM0199:
     ansible_host: 10.249.1.109
 
+vms_tps_tb2:
+ hosts:
+  VM0200:
+    ansible_host: 10.249.2.10
+  VM0201:
+    ansible_host: 10.249.2.11
+  VM0202:
+    ansible_host: 10.249.2.12
+  VM0203:
+    ansible_host: 10.249.2.13
+  VM0204:
+    ansible_host: 10.249.2.14
+  VM0205:
+    ansible_host: 10.249.2.15
+  VM0206:
+    ansible_host: 10.249.2.16
+  VM0207:
+    ansible_host: 10.249.2.17
+  VM0208:
+    ansible_host: 10.249.2.18
+  VM0209:
+    ansible_host: 10.249.2.19
+  VM0210:
+    ansible_host: 10.249.2.20
+  VM0211:
+    ansible_host: 10.249.2.21
+  VM0212:
+    ansible_host: 10.249.2.22
+  VM0213:
+    ansible_host: 10.249.2.23
+  VM0214:
+    ansible_host: 10.249.2.24
+  VM0215:
+    ansible_host: 10.249.2.25
+  VM0216:
+    ansible_host: 10.249.2.26
+  VM0217:
+    ansible_host: 10.249.2.27
+  VM0218:
+    ansible_host: 10.249.2.28
+  VM0219:
+    ansible_host: 10.249.2.29
+  VM0220:
+    ansible_host: 10.249.2.30
+  VM0221:
+    ansible_host: 10.249.2.31
+  VM0222:
+    ansible_host: 10.249.2.32
+  VM0223:
+    ansible_host: 10.249.2.33
+  VM0224:
+    ansible_host: 10.249.2.34
+  VM0225:
+    ansible_host: 10.249.2.35
+  VM0226:
+    ansible_host: 10.249.2.36
+  VM0227:
+    ansible_host: 10.249.2.37
 
 vms_tps_tb3:
  hosts:
