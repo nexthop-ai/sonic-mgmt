@@ -530,6 +530,25 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                 # Main port - port aliases start from 1
                 port_alias_to_name_map["etp%d" % (i+1)] = "Ethernet%d" % (i * 8)
 
+        elif hwsku == "M2-W6940-64OC":
+            index = 1
+            for i in range(1, 65):
+                sub_index = 0  # Tracks subport index within each physical port
+                # Each 400G port breaks out into 2 subports
+                for x in range(1, 3):  # Two lanes for each breakout port
+                    port_alias_to_name_map["Ethernet%d/%d" % (i, x)] = "Ethernet%d" % (index + sub_index)
+                    sub_index += 4  # Increment subport index by 4
+                index += 8  # Increment overall port index by 8 for 200G breakout
+
+        elif hwsku == "M2-W6920-32QC2X":
+            index = 1
+            for i in range(1, 33):
+                sub_index = 0
+                for x in range(1, 5):
+                    port_alias_to_name_map["Ethernet%d/%d" % (i, x)] = "Ethernet%d" % ((index + sub_index))
+                    sub_index += 2
+                index += 8
+
         else:
             if "Arista-7800" in hwsku:
                 assert False, "Please add port_alias_to_name_map for new modular SKU %s." % hwsku
