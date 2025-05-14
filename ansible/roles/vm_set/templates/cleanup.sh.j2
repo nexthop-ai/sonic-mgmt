@@ -338,7 +338,9 @@ if [ "$CLEAN_ALL" = true ]; then
   if [ -n "$RUNNING_CONTAINERS" ]; then
     execute echo "Would stop these running docker containers:"
     for CONTAINER in $RUNNING_CONTAINERS; do
+      {% raw %}
       CONTAINER_NAME=$(docker ps --format "{{.Names}}" -f "id=$CONTAINER" 2>/dev/null || echo "")
+      {% endraw %}
       execute echo "  - $CONTAINER_NAME ($CONTAINER)"
     done
     if [ "$DRY_RUN" = false ]; then
@@ -353,7 +355,9 @@ if [ "$CLEAN_ALL" = true ]; then
   if [ -n "$ALL_CONTAINERS" ]; then
     execute echo "Would remove these docker containers:"
     for CONTAINER in $ALL_CONTAINERS; do
+      {% raw %}
       CONTAINER_NAME=$(docker ps -a --format "{{.Names}}" -f "id=$CONTAINER" 2>/dev/null || echo "")
+      {% endraw %}
       execute echo "  - $CONTAINER_NAME ($CONTAINER)"
     done
     if [ "$DRY_RUN" = false ]; then
@@ -368,7 +372,9 @@ if [ "$CLEAN_ALL" = true ]; then
   if [ -n "$ALL_IMAGES" ]; then
     execute echo "Would remove these docker images:"
     for IMAGE in $ALL_IMAGES; do
+      {% raw %}
       IMAGE_TAG=$(docker images --format "{{.Repository}}:{{.Tag}}" -f "reference=$IMAGE" 2>/dev/null || echo "")
+      {% endraw %}
       execute echo "  - $IMAGE_TAG ($IMAGE)"
     done
     if [ "$DRY_RUN" = false ]; then
@@ -383,7 +389,9 @@ elif [ -n "$PTF_FILTER" ]; then
   if [ -n "$PTF_CONTAINERS" ]; then
     execute echo "Would stop these PTF containers matching ${PTF_NAME}:"
     for CONTAINER in $PTF_CONTAINERS; do
+      {% raw %}
       CONTAINER_NAME=$(docker ps --format "{{.Names}}" -f "id=$CONTAINER" 2>/dev/null || echo "")
+      {% endraw %}
       execute echo "  - $CONTAINER_NAME ($CONTAINER)"
     done
     if [ "$DRY_RUN" = false ]; then
@@ -398,7 +406,9 @@ elif [ -n "$PTF_FILTER" ]; then
   if [ -n "$ALL_PTF_CONTAINERS" ]; then
     execute echo "Would remove these PTF containers matching ${PTF_NAME}:"
     for CONTAINER in $ALL_PTF_CONTAINERS; do
+      {% raw %}
       CONTAINER_NAME=$(docker ps -a --format "{{.Names}}" -f "id=$CONTAINER" 2>/dev/null || echo "")
+      {% endraw %}
       execute echo "  - $CONTAINER_NAME ($CONTAINER)"
     done
     if [ "$DRY_RUN" = false ]; then
