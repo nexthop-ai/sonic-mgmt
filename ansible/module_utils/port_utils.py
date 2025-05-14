@@ -509,7 +509,7 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
             logical_num = 1
 
             for i in range(0, 505, 8):
-                port_alias_to_name_map["Ethernet%d/1" % logical_num] = "Ethernet%d" % i
+                port_alias_to_name_map["Port%d" % logical_num] = "Ethernet%d" % i
                 logical_num += 1
 
         elif hwsku == "UFISPACE-S9620-32E":
