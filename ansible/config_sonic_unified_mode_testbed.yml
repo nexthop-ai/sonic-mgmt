@@ -295,8 +295,8 @@
                 'vrf_name': 'default',
                 'neighbor': neighbor,
                 'afi_safi': 'ipv4_unicast',
-                'route_map_in': 'allow_all',
-                'route_map_out': 'all_prefix',
+                'route_map_in': ['allow_all'],
+                'route_map_out': ['all_prefix'],
               }}) %}
               {% elif ':' in neighbor %}
               {% set af_key = 'default|' ~ neighbor ~ '|ipv6_unicast' %}
@@ -305,8 +305,8 @@
                 'vrf_name': 'default',
                 'neighbor': neighbor,
                 'afi_safi': 'ipv6_unicast',
-                'route_map_in': 'allow_all',
-                'route_map_out': 'all_prefix',
+                'route_map_in': ['allow_all'],
+                'route_map_out': ['all_prefix'],
               }}) %}
               {% endif %}
               {% endfor %}
@@ -345,15 +345,15 @@
                   'vrf_name': 'default',
                   'peer_group_name': 'peer4',
                   'afi_safi': 'ipv4_unicast',
-                  'route_map_in': 'allow_all',
-                  'route_map_out': 'all_prefix'
+                  'route_map_in': ['allow_all'],
+                  'route_map_out': ['all_prefix']
                 },
                 'default|peer6|ipv6_unicast': {
                   'vrf_name': 'default',
                   'peer_group_name': 'peer6',
                   'afi_safi': 'ipv6_unicast',
-                  'route_map_in': 'allow_all',
-                  'route_map_out': 'all_prefix'
+                  'route_map_in': ['allow_all'],
+                  'route_map_out': ['all_prefix']
                 }
               }
             }, recursive=False) }}"
@@ -369,6 +369,19 @@
                 'allow_all|100': {
                   'name': 'allow_all',
                   'route_operation': 'permit'
+                }
+              }
+            }, recursive=False) }}"
+
+        - name: Add ROUTE_MAP_SET configuration
+          set_fact:
+            config_db: "{{ config_db | combine({
+              'ROUTE_MAP_SET': {
+                'all_prefix': {
+                  'name': 'all_prefix'
+                },
+                'allow_all': {
+                  'name': 'allow_all'
                 }
               }
             }, recursive=False) }}"
