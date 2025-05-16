@@ -104,18 +104,45 @@ class BGPNeighbor(object):
                 neighbor_hwsku=None,
                 neighbor_type=self.type
             )
+            if not self.duthost.get_frr_mgmt_framework_config():
+                _write_variable_from_j2_to_configdb(
+                    self.duthost,
+                    "bgp/templates/bgp_template.j2",
+                    namespace=self.namespace,
+                    save_dest_path=BGP_SAVE_DEST_TMPL % self.name,
+                    db_table_name="BGP_NEIGHBOR",
+                    peer_addr="default|" + self.ip,
+                    asn=self.asn,
+                    local_addr=self.peer_ip,
+                    peer_name=self.name
+                )
+            else:
+                _write_variable_from_j2_to_configdb(
+                    self.duthost,
+                    "bgp/templates/bgp_umf_template.j2",
+                    namespace=self.namespace,
+                    save_dest_path=BGP_SAVE_DEST_TMPL % self.name,
+                    db_table_name="BGP_NEIGHBOR",
+                    vrf_name="default",
+                    peer_addr=self.ip,
+                    asn=self.asn,
+                    local_addr=self.peer_ip,
+                    peer_name=self.name,
+                    peer_group_name="peer4"
+                )
 
-            _write_variable_from_j2_to_configdb(
-                self.duthost,
-                "bgp/templates/bgp_template.j2",
-                namespace=self.namespace,
-                save_dest_path=BGP_SAVE_DEST_TMPL % self.name,
-                db_table_name="BGP_NEIGHBOR",
-                peer_addr=self.ip,
-                asn=self.asn,
-                local_addr=self.peer_ip,
-                peer_name=self.name
-            )
+                _write_variable_from_j2_to_configdb(
+                    self.duthost,
+                    "bgp/templates/neighbor_af_umf_template.j2",
+                    namespace=self.namespace,
+                    save_dest_path=BGP_SAVE_DEST_TMPL % self.name,
+                    db_table_name="BGP_NEIGHBOR_AF",
+                    vrf_name="default",
+                    peer_addr=self.ip,
+                    afi_safi="ipv4_unicast",
+                    route_map_in=["allow_all"],
+                    route_map_out=["all_prefix"]
+                )
 
         self.ptfhost.exabgp(
             name=self.name,
@@ -145,7 +172,13 @@ class BGPNeighbor(object):
         logging.debug("stop bgp session %s", self.name)
         if not self.is_passive:
             for asichost in self.duthost.asics:
-                asichost.run_sonic_db_cli_cmd("CONFIG_DB del 'BGP_NEIGHBOR|{}'".format(self.ip))
+                if self.duthost.get_frr_mgmt_framework_config():
+                    asichost.run_sonic_db_cli_cmd(
+                        "CONFIG_DB del 'BGP_NEIGHBOR|default|{}'".format(self.ip))
+                    asichost.run_sonic_db_cli_cmd(
+                        "CONFIG_DB del 'BGP_NEIGHBOR_AF|default|{}|ipv4_unicast'".format(self.ip))
+                else:
+                    asichost.run_sonic_db_cli_cmd("CONFIG_DB del 'BGP_NEIGHBOR|{}'".format(self.ip))
                 asichost.run_sonic_db_cli_cmd("CONFIG_DB del 'DEVICE_NEIGHBOR_METADATA|{}'".format(self.name))
         self.ptfhost.exabgp(name=self.name, state="absent")
 
@@ -164,7 +197,12 @@ class BGPNeighbor(object):
             for asichost in self.duthost.asics:
                 if asichost.namespace == self.namespace:
                     logging.debug("update CONFIG_DB admin_status to down on {}".format(asichost.namespace))
-                    asichost.run_sonic_db_cli_cmd("CONFIG_DB hset 'BGP_NEIGHBOR|{}' admin_status down".format(self.ip))
+                    if self.duthost.get_frr_mgmt_framework_config():
+                        asichost.run_sonic_db_cli_cmd(
+                            "CONFIG_DB hset 'BGP_NEIGHBOR|default|{}' admin_status down".format(self.ip))
+                    else:
+                        asichost.run_sonic_db_cli_cmd(
+                            "CONFIG_DB hset 'BGP_NEIGHBOR|{}' admin_status down".format(self.ip))
 
     def announce_route(self, route):
         if "aspath" in route:
