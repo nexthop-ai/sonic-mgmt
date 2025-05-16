@@ -1358,13 +1358,6 @@ hash/test_generic_hash.py::test_reboot[CRC_CCITT-IN_PORT:
     - "asic_type in ['broadcom', 'mellanox']"
 
 #######################################
-#####           http              #####
-#######################################
-http/test_http_copy.py:
-  skip:
-    reason: "Test doesn't clean up the files in /tmp, it will cause the subsequent cases in /tmp fail, skipping until the issue is addressed"
-
-#######################################
 #####    iface_loopback_action    #####
 #######################################
 iface_loopback_action/test_iface_loopback_action.py:
