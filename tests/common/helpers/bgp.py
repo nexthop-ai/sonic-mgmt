@@ -46,21 +46,26 @@ def run_bgp_facts(duthost, enum_asic_index):
     nbrs_in_cfg_facts.update(config_facts.get('BGP_INTERNAL_NEIGHBOR', {}))
     # In VoQ Chassis, we would have BGP_VOQ_CHASSIS_NEIGHBOR as well.
     nbrs_in_cfg_facts.update(config_facts.get('BGP_VOQ_CHASSIS_NEIGHBOR', {}))
-
-    neighbors = {}
-    # When FRR management framework is enabled, there's an additional level of nesting with 'default' as the key
-    if duthost.get_frr_mgmt_framework_config() and 'default' in nbrs_in_cfg_facts:
-        # Extract the neighbors from the 'default' VRF
-        neighbors = nbrs_in_cfg_facts['default']
-    else:
-        # Use the original structure
-        neighbors = nbrs_in_cfg_facts
+    neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
 
     for k, v in list(neighbors.items()):
         # Compare the bgp neighbors name with config db bgp neighbors name
         assert v['name'] == bgp_facts['bgp_neighbors'][k]['description']
         # Compare the bgp neighbors ASN with config db
         assert int(v['asn'].encode().decode("utf-8")) == bgp_facts['bgp_neighbors'][k]['remote AS']
+
+
+def get_bgp_neighbors_from_config_facts(duthost, config_facts, vrf_name="default"):
+    nbrs_in_cfg_facts = config_facts.get('BGP_NEIGHBOR', {})
+    bgp_neighbors = {}
+    # When FRR management framework is enabled,
+    # there's an additional level of nesting with vrf name as the key
+    if duthost.get_frr_mgmt_framework_config() and vrf_name in nbrs_in_cfg_facts:
+        bgp_neighbors = nbrs_in_cfg_facts[vrf_name]
+    else:
+        bgp_neighbors = nbrs_in_cfg_facts
+
+    return bgp_neighbors
 
 
 class BGPNeighbor(object):

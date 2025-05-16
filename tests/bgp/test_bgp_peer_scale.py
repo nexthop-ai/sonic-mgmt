@@ -12,6 +12,7 @@ from tests.ip.ip_helpers import (
 )
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
+from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,7 @@ def get_asn_values(duthost):
             return None, None
 
         # Try to get remote ASN from existing BGP neighbors
-        bgp_config = config_facts.get('BGP_NEIGHBOR', {})
+        bgp_config = get_bgp_neighbors_from_config_facts(duthost, config_facts)
         for peer_data in bgp_config.values():
             if 'asn' in peer_data and peer_data['asn'] != local_asn:
                 return local_asn, peer_data['asn']
