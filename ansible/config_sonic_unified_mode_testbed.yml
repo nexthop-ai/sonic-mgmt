@@ -240,6 +240,45 @@
               }
             }, recursive=True) }}"
 
+
+        # BGP_GLOBALS_AF_NETWORK configuration to advertise the Loopback0 addresses
+        - name: Initialize BGP_GLOBALS_AF_NETWORK
+          set_fact:
+            bgp_global_af_networks: {}
+
+        - name: Process loopback interfaces
+          set_fact:
+            bgp_global_af_networks: "{{ bgp_global_af_networks | combine({
+              'default|' + ('ipv4_unicast' if '.' in item.split('|')[1] else 'ipv6_unicast') + '|' + item.split('|')[1]: {}
+            }) }}"
+          when: item.startswith('Loopback0|') and (('.' in item) or (':' in item))
+          loop: "{{ config_db.LOOPBACK_INTERFACE.keys() | list }}"
+
+        - name: Update config_db with BGP_GLOBALS_AF_NETWORK
+          set_fact:
+            config_db: "{{ config_db | combine({'BGP_GLOBALS_AF_NETWORK': bgp_global_af_networks}, recursive=True) }}"
+
+        # Extract Loopback0 IP and use it as router_id
+        - name: Extract Loopback0 IP for router_id
+          set_fact:
+            loopback0_ip: "{{ item.split('|')[1].split('/')[0] }}"
+          when: config_db.LOOPBACK_INTERFACE is defined and item.startswith('Loopback0|') and item.find('.') != -1
+          loop: "{{ config_db.LOOPBACK_INTERFACE.keys() | list }}"
+
+        # Update BGP_GLOBALS with router_id from Loopback0
+        - name: Update BGP_GLOBALS with router_id from Loopback0
+          set_fact:
+            config_db: "{{ config_db | combine({
+              'BGP_GLOBALS': {
+                'default': {
+                  'router_id': loopback0_ip
+                }
+              }
+            }, recursive=True) }}"
+          when: loopback0_ip is defined and config_db.BGP_GLOBALS is defined
+
+
+        # BGP_NEIGHBOR configuration
         - name: Transform BGP_NEIGHBOR entries
           vars:
             excluded_keys: ['nhopself', 'rrclient', 'admin_status', 'holdtime', 'keepalive']

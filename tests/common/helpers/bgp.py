@@ -31,14 +31,19 @@ def run_bgp_facts(duthost, enum_asic_index):
         assert v['state'] == 'established'
         # Verify local ASNs in bgp sessions
         assert v['local AS'] == int(config_facts['DEVICE_METADATA']['localhost']['bgp_asn'].encode().decode("utf-8"))
-        # Check bgpmon functionality by validate STATE DB contains this neighbor as well
-        state_fact = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "state"'
-                                   .format(sonic_db_cmd, k), module_ignore_errors=False)['stdout_lines']
-        peer_type = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "peerType"'
-                                  .format(sonic_db_cmd, k),
-                                  module_ignore_errors=False)['stdout_lines']
-        assert state_fact[0] == "Established"
-        assert peer_type[0] == "i-BGP" if v['remote AS'] == v['local AS'] else "e-BGP"
+        if duthost.get_frr_mgmt_framework_config():
+            # bgpmon is part of bgpcfgd and not applicable for frr mgmt
+            # hence, validate using direct (vtysh) statistics
+            nbinfo = duthost.get_bgp_neighbor_info(k)
+            assert nbinfo['bgpState'] == "Established"
+        else:
+            # Check bgpmon functionality by validate STATE DB contains this neighbor as well
+            state_fact = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "state"'.format(sonic_db_cmd, k),
+                                       module_ignore_errors=False)['stdout_lines']
+            peer_type = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "peerType"'.format(sonic_db_cmd, k),
+                                      module_ignore_errors=False)['stdout_lines']
+            assert state_fact[0] == "Established"
+            assert peer_type[0] == "i-BGP" if v['remote AS'] == v['local AS'] else "e-BGP"
 
     # In multi-asic, would have 'BGP_INTERNAL_NEIGHBORS' and possibly no 'BGP_NEIGHBOR' (ebgp) neighbors.
     nbrs_in_cfg_facts = {}
