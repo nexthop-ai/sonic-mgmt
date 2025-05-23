@@ -98,10 +98,11 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
     # If frr_mgmt_framework_config is set to true, expect vrf name in the config facts
     for ip, details in bgp_neighbors.items():
         logger.debug(ip)
-        if check_frr_mgmt_framework_config(duthost):
-            get_ip = f"({vrfname}, '{ip}')"
+        if duthost.get_frr_mgmt_framework_config():
+            get_ip = f"('{vrfname}', '{ip}')"
         else:
             get_ip = ip
+
         logger.debug(neighbor_ip_to_interfaces)
         logger.debug(neighbor_ip_to_interfaces[get_ip])
         if get_ip in neighbor_ip_to_interfaces:
@@ -132,20 +133,6 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
 
         pytest_assert(wait_until(120, 10, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())),
                       "Not all BGP sessions are established on DUT")
-
-
-def check_frr_mgmt_framework_config(duthost):
-    """
-    Check if frr_mgmt_framework_config is set to "true" in DEVICE_METADATA
-
-    Args:
-        duthost: DUT host object
-
-    Returns:
-        bool: True if frr_mgmt_framework_config is "true", False otherwise
-    """
-    frr_config = duthost.shell('sonic-db-cli CONFIG_DB HGET "DEVICE_METADATA|localhost" "frr_mgmt_framework_config"')
-    return frr_config == "true"
 
 
 def verify_bgp_session_down(duthost, bgp_neighbor):
