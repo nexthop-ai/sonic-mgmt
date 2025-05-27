@@ -78,12 +78,11 @@ sonic_acs_as9716_32D:
   hosts:
     dvc117:
       ansible_host: 10.249.3.2
-      ansible_hostv6: fd00::3::2
       ansible_ssh_user: admin
       ansible_ssh_pass: Nexthop@24
-      model: FP5ZZ8632400A
-      serial: 971632D2429019
-      base_mac: 7C:8D:9C:34:08:2C
+      model: FP5ZZ8632409A
+      serial: 971632D2451021
+      base_mac: A4:7D:78:97:F4:A1
 
 sonic_ufi_s9620:
   vars:
