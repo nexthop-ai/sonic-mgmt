@@ -275,8 +275,9 @@
                 }
               }
             }, recursive=True) }}"
-          when: loopback0_ip is defined and config_db.BGP_GLOBALS is defined
-
+          when: >
+              configuration_properties.common.router_id is not defined and
+              loopback0_ip is defined and config_db.BGP_GLOBALS is defined
 
         # BGP_NEIGHBOR configuration
         - name: Transform BGP_NEIGHBOR entries
@@ -299,9 +300,9 @@
                 'neighbor': key
               }) %}
               {% if '.' in key %}
-              {% set _ = filtered_value.update({'peer_group_name': 'peer4'}) %}
+              {% set _ = filtered_value.update({'peer_group_name': 'PEER_V4'}) %}
               {% elif ':' in key %}
-              {% set _ = filtered_value.update({'peer_group_name': 'peer6'}) %}
+              {% set _ = filtered_value.update({'peer_group_name': 'PEER_V6'}) %}
               {% endif %}
               {% set _ = result.update({actual_key: filtered_value}) %}
               {% endif %}
@@ -334,8 +335,8 @@
                 'vrf_name': 'default',
                 'neighbor': neighbor,
                 'afi_safi': 'ipv4_unicast',
-                'route_map_in': ['allow_all'],
-                'route_map_out': ['all_prefix'],
+                'route_map_in': ['FROM_BGP_PEER_V4'],
+                'route_map_out': ['TO_BGP_PEER_V4'],
               }}) %}
               {% elif ':' in neighbor %}
               {% set af_key = 'default|' ~ neighbor ~ '|ipv6_unicast' %}
@@ -344,8 +345,8 @@
                 'vrf_name': 'default',
                 'neighbor': neighbor,
                 'afi_safi': 'ipv6_unicast',
-                'route_map_in': ['allow_all'],
-                'route_map_out': ['all_prefix'],
+                'route_map_in': ['FROM_BGP_PEER_V6'],
+                'route_map_out': ['TO_BGP_PEER_V6'],
               }}) %}
               {% endif %}
               {% endfor %}
@@ -361,16 +362,16 @@
           set_fact:
             config_db: "{{ config_db | combine({
               'BGP_PEER_GROUP': {
-                'default|peer4': {
+                'default|PEER_V4': {
                   'local_asn': bgp_asn,
-                  'name': 'peer4',
-                  'peer_group_name': 'peer4',
+                  'name': 'PEER_V4',
+                  'peer_group_name': 'PEER_V4',
                   'vrf_name': 'default'
                 },
-                'default|peer6': {
+                'default|PEER_V6': {
                   'local_asn': bgp_asn,
-                  'name': 'peer6',
-                  'peer_group_name': 'peer6',
+                  'name': 'PEER_V6',
+                  'peer_group_name': 'PEER_V6',
                   'vrf_name': 'default'
                 }
               }
@@ -380,33 +381,120 @@
           set_fact:
             config_db: "{{ config_db | combine({
               'BGP_PEER_GROUP_AF': {
-                'default|peer4|ipv4_unicast': {
+                'default|PEER_V4|ipv4_unicast': {
                   'vrf_name': 'default',
-                  'peer_group_name': 'peer4',
+                  'peer_group_name': 'PEER_V4',
                   'afi_safi': 'ipv4_unicast',
-                  'route_map_in': ['allow_all'],
-                  'route_map_out': ['all_prefix']
+                  'soft_reconfiguration_in': 'true',
+                  'route_map_in': ['FROM_BGP_PEER_V4'],
+                  'route_map_out': ['TO_BGP_PEER_V4']
                 },
-                'default|peer6|ipv6_unicast': {
+                'default|PEER_V6|ipv6_unicast': {
                   'vrf_name': 'default',
-                  'peer_group_name': 'peer6',
+                  'peer_group_name': 'PEER_V6',
                   'afi_safi': 'ipv6_unicast',
-                  'route_map_in': ['allow_all'],
-                  'route_map_out': ['all_prefix']
+                  'soft_reconfiguration_in': 'true',
+                  'route_map_in': ['FROM_BGP_PEER_V6'],
+                  'route_map_out': ['TO_BGP_PEER_V6']
                 }
               }
             }, recursive=False) }}"
 
-        - name: Replace ROUTE_MAP configuration
+        - name: Add COMMUNITY_SET configuration
+          set_fact:
+            config_db: "{{ config_db | combine({
+              'COMMUNITY_SET': {
+                'allow_list_default_community': {
+                  'set_type': 'STANDARD',
+                  'match_action': 'ANY',
+                  'community_member': ['no-export', '5060:12345']
+                }
+              }
+            }, recursive=False) }}"
+
+        - name: Replace ROUTE_MAP configuration with older schema format
           set_fact:
             config_db: "{{ config_db | combine({
               'ROUTE_MAP': {
-                'all_prefix|100': {
-                  'name': 'all_prefix',
+                'FROM_BGP_PEER_V4|10': {
+                  'name': 'FROM_BGP_PEER_V4',
+                  'stmt_name': '10',
+                  'route_operation': 'permit',
+                  'call_route_map': 'ALLOW_LIST_DEPLOYMENT_ID_0_V4',
+                },
+                'FROM_BGP_PEER_V4|11': {
+                  'name': 'FROM_BGP_PEER_V4',
+                  'stmt_name': '11',
+                  'route_operation': 'permit',
+                  'match_community': 'allow_list_default_community'
+                },
+                'FROM_BGP_PEER_V4|100': {
+                  'name': 'FROM_BGP_PEER_V4',
+                  'stmt_name': '100',
                   'route_operation': 'permit'
                 },
-                'allow_all|100': {
-                  'name': 'allow_all',
+                'FROM_BGP_PEER_V6|1': {
+                  'name': 'FROM_BGP_PEER_V6',
+                  'stmt_name': '1',
+                  'route_operation': 'permit',
+
+                  'set_ipv6_next_hop_prefer_global': 'true'
+                },
+                'FROM_BGP_PEER_V6|10': {
+                  'name': 'FROM_BGP_PEER_V6',
+                  'stmt_name': '10',
+                  'route_operation': 'permit',
+                  'call_route_map': 'ALLOW_LIST_DEPLOYMENT_ID_0_V6',
+
+                },
+                'FROM_BGP_PEER_V6|11': {
+                  'name': 'FROM_BGP_PEER_V6',
+                  'stmt_name': '11',
+                  'route_operation': 'permit',
+                  'match_community': 'allow_list_default_community'
+                },
+                'FROM_BGP_PEER_V6|100': {
+                  'name': 'FROM_BGP_PEER_V6',
+                  'stmt_name': '100',
+                  'route_operation': 'permit'
+                },
+                'TO_BGP_PEER_V4|100': {
+                  'name': 'TO_BGP_PEER_V4',
+                  'stmt_name': '100',
+                  'route_operation': 'permit',
+                  'call_route_map': 'CHECK_IDF_ISOLATION'
+                },
+                'TO_BGP_PEER_V6|100': {
+                  'name': 'TO_BGP_PEER_V6',
+                  'stmt_name': '100',
+                  'route_operation': 'permit',
+                  'call_route_map': 'CHECK_IDF_ISOLATION'
+                },
+                'CHECK_IDF_ISOLATION|10': {
+                  'name': 'CHECK_IDF_ISOLATION',
+                  'stmt_name': '10',
+                  'route_operation': 'permit'
+                },
+                'ALLOW_LIST_DEPLOYMENT_ID_0_V4|65535': {
+                  'name': 'ALLOW_LIST_DEPLOYMENT_ID_0_V4',
+                  'stmt_name': '65535',
+                  'route_operation': 'permit',
+                  'set_community_inline': ['5060:12345', 'additive']
+                },
+                'ALLOW_LIST_DEPLOYMENT_ID_0_V6|65535': {
+                  'name': 'ALLOW_LIST_DEPLOYMENT_ID_0_V6',
+                  'stmt_name': '65535',
+                  'route_operation': 'permit',
+                  'set_community_inline': ['5060:12345', 'additive']
+                },
+                'RM_SET_SRC|10': {
+                  'name': 'RM_SET_SRC',
+                  'stmt_name': '10',
+                  'route_operation': 'permit'
+                },
+                'RM_SET_SRC6|10': {
+                  'name': 'RM_SET_SRC6',
+                  'stmt_name': '10',
                   'route_operation': 'permit'
                 }
               }
@@ -416,11 +504,32 @@
           set_fact:
             config_db: "{{ config_db | combine({
               'ROUTE_MAP_SET': {
-                'all_prefix': {
-                  'name': 'all_prefix'
+                'FROM_BGP_PEER_V4': {
+                  'name': 'FROM_BGP_PEER_V4'
                 },
-                'allow_all': {
-                  'name': 'allow_all'
+                'FROM_BGP_PEER_V6': {
+                  'name': 'FROM_BGP_PEER_V6'
+                },
+                'TO_BGP_PEER_V4': {
+                  'name': 'TO_BGP_PEER_V4'
+                },
+                'TO_BGP_PEER_V6': {
+                  'name': 'TO_BGP_PEER_V6'
+                },
+                'RM_SET_SRC': {
+                  'name': 'RM_SET_SRC'
+                },
+                'RM_SET_SRC6': {
+                  'name': 'RM_SET_SRC6'
+                },
+                'ALLOW_LIST_DEPLOYMENT_ID_0_V4': {
+                  'name': 'ALLOW_LIST_DEPLOYMENT_ID_0_V4'
+                },
+                'ALLOW_LIST_DEPLOYMENT_ID_0_V6': {
+                  'name': 'ALLOW_LIST_DEPLOYMENT_ID_0_V6'
+                },
+                'CHECK_IDF_ISOLATION': {
+                  'name': 'CHECK_IDF_ISOLATION'
                 }
               }
             }, recursive=False) }}"
@@ -490,8 +599,8 @@
                 msg: "Invalid BGP_NEIGHBOR entry '{{ item.key }}': Missing 'default|' prefix or incorrect peer_group_name"
               when: >
                 not item.key.startswith('default|') or
-                (('.' in item.key[7:] and item.value.peer_group_name != 'peer4') or
-                  (':' in item.key[7:] and item.value.peer_group_name != 'peer6'))
+                (('.' in item.key[7:] and item.value.peer_group_name != 'PEER_V4') or
+                  (':' in item.key[7:] and item.value.peer_group_name != 'PEER_V6'))
               loop: "{{ config_db['BGP_NEIGHBOR'] | dict2items }}"
 
             - name: Verify excluded attributes are removed
@@ -521,8 +630,8 @@
               fail:
                 msg: "Missing or invalid BGP_PEER_GROUP configuration for {{ pg_key }}"
               loop:
-                - "default|peer4"
-                - "default|peer6"
+                - "default|PEER_V4"
+                - "default|PEER_V6"
               loop_control:
                 loop_var: pg_key
               when: >
@@ -536,8 +645,8 @@
               fail:
                 msg: "Missing or invalid BGP_PEER_GROUP_AF configuration for {{ pgaf_key }}"
               loop:
-                - "default|peer4|ipv4_unicast"
-                - "default|peer6|ipv6_unicast"
+                - "default|PEER_V4|ipv4_unicast"
+                - "default|PEER_V6|ipv6_unicast"
               loop_control:
                 loop_var: pgaf_key
               when: >
@@ -551,8 +660,10 @@
               fail:
                 msg: "Missing or invalid ROUTE_MAP configuration for {{ rm_key }}"
               loop:
-                - "all_prefix|100"
-                - "allow_all|100"
+                - "TO_BGP_PEER_V4|100"
+                - "FROM_BGP_PEER_V4|100"
+                - "TO_BGP_PEER_V6|100"
+                - "FROM_BGP_PEER_V6|100"
               loop_control:
                 loop_var: rm_key
               when: >

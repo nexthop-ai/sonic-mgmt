@@ -116,7 +116,7 @@ class BGPNeighbor(object):
                     namespace=self.namespace,
                     save_dest_path=BGP_SAVE_DEST_TMPL % self.name,
                     db_table_name="BGP_NEIGHBOR",
-                    peer_addr="default|" + self.ip,
+                    peer_addr=self.ip,
                     asn=self.asn,
                     local_addr=self.peer_ip,
                     peer_name=self.name
@@ -133,7 +133,7 @@ class BGPNeighbor(object):
                     asn=self.asn,
                     local_addr=self.peer_ip,
                     peer_name=self.name,
-                    peer_group_name="peer4"
+                    peer_group_name="PEER_V4"
                 )
 
                 _write_variable_from_j2_to_configdb(
@@ -145,8 +145,6 @@ class BGPNeighbor(object):
                     vrf_name="default",
                     peer_addr=self.ip,
                     afi_safi="ipv4_unicast",
-                    route_map_in=["allow_all"],
-                    route_map_out=["all_prefix"]
                 )
 
         self.ptfhost.exabgp(

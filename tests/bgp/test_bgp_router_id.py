@@ -121,9 +121,9 @@ def router_id_loopback_setup_and_teardown(duthosts, enum_frontend_dut_hostname, 
 
     yield
 
-    unset_router_id_config(duthost)
     duthost.shell("sonic-db-cli CONFIG_DB hset \"LOOPBACK_INTERFACE|Loopback0|{}/32\" \"NULL\" \"NULL\""
                   .format(loopback_ip), module_ignore_errors=True)
+    unset_router_id_config(duthost)
 
 
 def test_bgp_router_id_default(duthosts, enum_frontend_dut_hostname, enum_asic_index, nbrhosts, request, loopback_ip):
