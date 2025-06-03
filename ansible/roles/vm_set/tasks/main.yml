@@ -183,7 +183,7 @@
       name: libvirtd
       state: restarted
     become: yes
-  when: host_distribution_version.stdout >= "24.04"
+  when: host_distribution_version.stdout >= "22.04"
 
 - name: Install br_netfilter kernel module
   become: yes
