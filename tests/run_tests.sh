@@ -298,7 +298,9 @@ function prepare_dut()
     echo "prepare_dut: BEG: $(date)"
     echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
     python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    local ret_code=$?
     echo "prepare_dut: END: $(date)"
+    return ${ret_code}
 }
 
 function cleanup_dut()
@@ -307,7 +309,9 @@ function cleanup_dut()
     echo "cleanup_dut: BEG: $(date)"
     echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
     python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    local ret_code=$?
     echo "cleanup_dut: END: $(date)"
+    return ${ret_code}
 }
 
 function run_group_tests()
@@ -316,7 +320,9 @@ function run_group_tests()
     echo "run_group_tests: BEG: $(date)"
     echo Running: python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
     python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
+    local ret_code=$?
     echo "run_group_tests: END: $(date)"
+    return ${ret_code}
 }
 
 function run_individual_tests()
@@ -339,7 +345,7 @@ function run_individual_tests()
 
         echo Running: python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
         python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} ${CACHE_CLEAR}
-        ret_code=$?
+        local ret_code=$?
 
         # Clear pytest cache for the first run
         if [[ -n ${CACHE_CLEAR} ]]; then
