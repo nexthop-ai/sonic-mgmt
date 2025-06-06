@@ -15,22 +15,44 @@ SONIC_SSH_REGEX = "OpenSSH_[\\w\\.]+ Debian"
 HTTP_PORT = "8080"
 TEST_FILE_NAME = ""
 
+<<<<<<< HEAD
+=======
+local_start_server_filename = "http/start_http_server.py"
+ptf_start_server_filename = "/tmp/start_http_server.py"
+local_stop_server_filename = "http/stop_http_server.py"
+ptf_stop_server_filename = "/tmp/stop_http_server.py"
+
+>>>>>>> upstream/master
 
 @pytest.fixture(autouse=True)
 def setup_teardown(ptfhost):
     global TEST_FILE_NAME
 
     # Copies http server files to ptf
+<<<<<<< HEAD
     ptfhost.copy(src="http/start_http_server.py", dest="/tmp/start_http_server.py")
     ptfhost.copy(src="http/stop_http_server.py", dest="/tmp/stop_http_server.py")
+=======
+    ptfhost.copy(src=local_start_server_filename, dest=ptf_start_server_filename)
+    ptfhost.copy(src=local_stop_server_filename, dest=ptf_stop_server_filename)
+>>>>>>> upstream/master
 
     with tempfile.NamedTemporaryFile(prefix="http_copy_test_file", suffix=".bin") as test_file:
         TEST_FILE_NAME = os.path.basename(test_file.name)
 
+<<<<<<< HEAD
         yield
 
         # Delete files off ptf and ensure that files were removed
         files_to_remove = ["./{}".format(TEST_FILE_NAME), "/tmp/start_http_server.py", "/tmp/stop_http_server.py"]
+=======
+        # this 'yield' is inside the scope of the with-statment so that the temporary binary will be in scope for the
+        # test but will be automatically deleted when the test is done
+        yield
+
+        # Delete files off ptf and ensure that files were removed
+        files_to_remove = [ptf_start_server_filename, ptf_stop_server_filename]
+>>>>>>> upstream/master
 
         for file in files_to_remove:
             ptfhost.file(path=file, state="absent")
@@ -43,7 +65,7 @@ def test_http_copy(duthosts, rand_one_dut_hostname, ptfhost):
     ptf_ip = ptfhost.mgmt_ip
 
     # Starts the http server on the ptf
-    ptfhost.command("python /tmp/start_http_server.py", module_async=True)
+    ptfhost.command(f"python {ptf_start_server_filename}", module_async=True)
 
     # Validate HTTP Server has started
     started = False
@@ -84,7 +106,7 @@ def test_http_copy(duthosts, rand_one_dut_hostname, ptfhost):
     pytest_assert(orig_checksum == new_checksum, "Original file differs from file sent to the DUT")
 
     # Stops http server
-    ptfhost.command("python /tmp/stop_http_server.py")
+    ptfhost.command(f"python {ptf_stop_server_filename}")
 
     # Ensure that HTTP server was closed
     started = True

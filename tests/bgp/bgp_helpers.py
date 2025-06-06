@@ -23,7 +23,10 @@ from tests.bgp.traffic_checker import get_traffic_shift_state
 from tests.bgp.constants import TS_NORMAL
 from tests.common.devices.eos import EosHost
 from tests.common.devices.sonic import SonicHost
+<<<<<<< HEAD
 from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
+=======
+>>>>>>> upstream/master
 
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 DUT_TMP_DIR = os.path.join('tmp', os.path.basename(BASE_DIR))

@@ -86,8 +86,13 @@ class SonicHost(AnsibleHostBase):
 
         self._facts = self._gather_facts()
         self._os_version = self._get_os_version()
-        if 'router_type' in self.facts and self.facts['router_type'] == 'spinerouter':
+
+        device_metadata = self.get_running_config_facts().get('DEVICE_METADATA', {}).get('localhost', {})
+        device_type = device_metadata.get('type')
+        device_subtype = device_metadata.get('subtype')
+        if (device_type == 'UpperSpineRouter') or (device_subtype in ['UpstreamLC', 'DownstreamLC']):
             self.DEFAULT_ASIC_SERVICES.append("macsec")
+
         feature_status = self.get_feature_status(disable_cache=False)
         # Append gbsyncd only for non-VS to avoid pretest check for gbsyncd
         # e.g. in test_feature_status, test_disable_rsyslog_rate_limit
@@ -749,7 +754,7 @@ class SonicHost(AnsibleHostBase):
         for service in self.critical_services:
             cmd = 'docker exec {} supervisorctl status'.format(service)
             cmds.append(cmd)
-        results = self.shell_cmds(cmds=cmds, continue_on_fail=True, module_ignore_errors=True, timeout=30)['results']
+        results = self.shell_cmds(cmds=cmds, continue_on_fail=True, module_ignore_errors=True, timeout=60)['results']
 
         # Extract service name of each command result, transform results list to a dict keyed by service name
         service_results = {}
@@ -1600,6 +1605,9 @@ Totals               6450                 6449
         for line in show_cmd_output["stdout_lines"]:
             container_name = line.split()[0].strip()
             container_state = line.split()[1].strip()
+            if container_name == "frr_bmp":
+                continue
+
             if container_state in ["enabled", "disabled"]:
                 container_autorestart_states[container_name] = container_state
 
@@ -1832,6 +1840,7 @@ Totals               6450                 6449
         search_sets = {
             "td2": {"b85", "BCM5685"},
             "td3": {"b87", "BCM5687"},
+            "td4": {"b78", "BCM5678"},
             "th":  {"b96", "BCM5696"},
             "th2": {"b97", "BCM5697"},
             "th3": {"b98", "BCM5698"},
@@ -2302,7 +2311,10 @@ Totals               6450                 6449
         if not auto_neg_mode:
             cmd = 'config interface speed {} {}'.format(interface_name, speed)
         else:
-            cmd = 'config interface advertised-speeds {} {}'.format(interface_name, speed)
+            if speed:
+                cmd = 'config interface advertised-speeds {} {}'.format(interface_name, speed)
+            else:
+                cmd = f'config interface advertised-speeds {interface_name} all'
         self.shell(cmd)
         return True
 
@@ -2315,7 +2327,7 @@ Totals               6450                 6449
         Returns:
             str: SONiC style interface speed value. E.g, 1G=1000, 10G=10000, 100G=100000.
         """
-        cmd = 'sonic-db-cli APPL_DB HGET \"PORT_TABLE:{}\" \"{}\"'.format(interface_name, 'speed')
+        cmd = 'sonic-db-cli STATE_DB HGET \"PORT_TABLE|{}\" \"{}\"'.format(interface_name, 'speed')
         speed = self.shell(cmd)['stdout'].strip()
         return speed
 

@@ -284,8 +284,42 @@ function add_topo_ptf
         -e ptf_extra_mgmt_ip="$ptf_extra_mgmt_ip" -e netns_mgmt_ip="$netns_mgmt_ip" \
         $ansible_options $@
 
+<<<<<<< HEAD
   # Delete the obsoleted arp entry for the PTF IP
   ip neighbor flush $ptf_ip || true
+=======
+  for i in $(seq 0 $(($server_count-1)))
+  do
+    if [ -n "$servers" ]; then
+      parse_servers "$i" "$servers"
+      ansible_options+=" -e dut_interfaces=$dut_interfaces"
+    fi
+
+    ANSIBLE_SCP_IF_SSH=y ansible-playbook -i $vmfile -i ${inv_name} testbed_add_vm_topology.yml --vault-password-file="${passwd}" -l "$server" \
+          -e testbed_name="$testbed_name" -e duts_name="$duts" -e VM_base="$vm_base" \
+          -e ptf_ip="$ptf_ip" -e topo="$topo" -e vm_set_name="$vm_set_name" \
+          -e ptf_imagename="$ptf_imagename" -e vm_type="$vm_type" -e ptf_ipv6="$ptf_ipv6" \
+          -e ptf_extra_mgmt_ip="$ptf_extra_mgmt_ip" -e netns_mgmt_ip="$netns_mgmt_ip" \
+          $ansible_options $@
+
+    if [ $i -eq 0 ]; then
+      fanout_options+=" -e clean_before_add=y"
+    else
+      fanout_options+=" -e clean_before_add=n"
+    fi
+
+    if [[ "$ptf_imagename" != "docker-keysight-api-server" ]]; then
+      ansible-playbook fanout_connect.yml -i $vmfile --limit "$server" --vault-password-file="${passwd}" -e "dut=$duts" $fanout_options $@
+    fi
+
+    if [[ $topo == *"t2"* ]]; then
+      ansible-playbook -i ${inv_name} testbed_config_vchassis.yml -l "$duts" -e topo="$topo"
+    fi
+
+    # Delete the obsoleted arp entry for the PTF IP
+    ip neighbor flush $ptf_ip || true
+  done
+>>>>>>> upstream/master
 
   cache_files_path_value=$(is_cache_exist)
   if [[ -n $cache_files_path_value ]]; then
@@ -867,8 +901,7 @@ function config_vs_chassis
 
   read_file $testbed_name
 
-  ansible-playbook -i "$inventory" testbed_config_vchassis.yml --vault-password-file="$passfile" -l "$duts" -e testbed_name="$testbed_name" \
-  -e topo="$topo" -e testbed_file=$tbfile -e vm_file=$vmfile -e deploy=true $@
+  ansible-playbook -i "$inventory" testbed_config_vchassis.yml --vault-password-file="$passfile" -l "$duts" -e topo="$topo"
 
   echo Done
 }
