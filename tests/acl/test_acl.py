@@ -422,14 +422,9 @@ def setup(duthosts, ptfhost, rand_selected_dut, rand_selected_front_end_dut, ran
     # TODO: We should make this more robust (i.e. bind all active front-panel ports)
     acl_table_ports = defaultdict(list)
 
-<<<<<<< HEAD
-    if topo in ["t0", "mx", "m0_vlan", "m0_l3"] or tbinfo["topo"]["name"] in ("t1", "t1-lag", "t1-28-lag",
-                                                                              "t1-isolated-d28u1", "t1-8"):
-=======
     if (topo in ["t0", "mx", "m0_vlan", "m0_l3", "m1", "ft2"]
-            or tbinfo["topo"]["name"] in ("t1", "t1-lag", "t1-28-lag")
+            or tbinfo["topo"]["name"] in ("t1", "t1-lag", "t1-28-lag", "t1-8")
             or 't1-isolated' in tbinfo["topo"]["name"]):
->>>>>>> upstream/master
         for namespace, port in list(downstream_ports.items()):
             acl_table_ports[namespace] += port
             # In multi-asic we need config both in host and namespace.
@@ -953,15 +948,10 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         """Generate a TCP packet for testing."""
         src_ip = src_ip or DEFAULT_SRC_IP[ip_version]
         dst_ip = dst_ip or self.get_dst_ip(direction, ip_version)
-        port_key = sorted(ptfadapter.dataplane.ports.keys())[0]
         if ip_version == "ipv4":
             pkt = testutils.simple_tcp_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ip_dst=dst_ip,
                 ip_src=src_ip,
                 tcp_sport=sport,
@@ -974,11 +964,7 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         else:
             pkt = testutils.simple_tcpv6_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ipv6_dst=dst_ip,
                 ipv6_src=src_ip,
                 tcp_sport=sport,
@@ -998,15 +984,10 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         """Generate a UDP packet for testing."""
         src_ip = src_ip or DEFAULT_SRC_IP[ip_version]
         dst_ip = dst_ip or self.get_dst_ip(direction, ip_version)
-        port_key = sorted(ptfadapter.dataplane.ports.keys())[0]
         if ip_version == "ipv4":
             return testutils.simple_udp_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ip_dst=dst_ip,
                 ip_src=src_ip,
                 udp_sport=sport,
@@ -1016,11 +997,7 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         else:
             return testutils.simple_udpv6_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ipv6_dst=dst_ip,
                 ipv6_src=src_ip,
                 udp_sport=sport,
@@ -1032,15 +1009,10 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         """Generate an ICMP packet for testing."""
         src_ip = src_ip or DEFAULT_SRC_IP[ip_version]
         dst_ip = dst_ip or self.get_dst_ip(direction, ip_version)
-        port_key = sorted(ptfadapter.dataplane.ports.keys())[0]
         if ip_version == "ipv4":
             return testutils.simple_icmp_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ip_dst=dst_ip,
                 ip_src=src_ip,
                 icmp_type=icmp_type,
@@ -1050,11 +1022,7 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
         else:
             return testutils.simple_icmpv6_packet(
                 eth_dst=setup["destination_mac"][direction][self.src_port],
-<<<<<<< HEAD
-                eth_src=ptfadapter.dataplane.get_mac(*port_key),
-=======
                 eth_src=ptfadapter.dataplane.get_mac(*list(ptfadapter.dataplane.ports.keys())[0]),
->>>>>>> upstream/master
                 ipv6_dst=dst_ip,
                 ipv6_src=src_ip,
                 icmp_type=icmp_type,
