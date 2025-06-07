@@ -40,16 +40,7 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
     duthost = duthosts[rand_one_dut_hostname]
 
     config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-<<<<<<< HEAD
     bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts, vrf_name=vrfname)
-=======
-    # If frr_mgmt_framework_config is set to true, expect vrf name in the config facts
-    if check_frr_mgmt_framework_config(duthost):
-        bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
-        bgp_neighbors = bgp_neighbors[vrfname]
-    else:
-        bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
->>>>>>> upstream/master
     portchannels = config_facts.get('PORTCHANNEL_MEMBER', {})
     dev_nbrs = config_facts.get('DEVICE_NEIGHBOR', {})
     bgp_neighbor = list(bgp_neighbors.keys())[0]
@@ -108,18 +99,11 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
     # If frr_mgmt_framework_config is set to true, expect vrf name in the config facts
     for ip, details in bgp_neighbors.items():
         logger.debug(ip)
-<<<<<<< HEAD
         if duthost.get_frr_mgmt_framework_config():
             get_ip = f"('{vrfname}', '{ip}')"
         else:
             get_ip = ip
 
-=======
-        if check_frr_mgmt_framework_config(duthost):
-            get_ip = f"({vrfname}, '{ip}')"
-        else:
-            get_ip = ip
->>>>>>> upstream/master
         logger.debug(neighbor_ip_to_interfaces)
         logger.debug(neighbor_ip_to_interfaces[get_ip])
         if get_ip in neighbor_ip_to_interfaces:
