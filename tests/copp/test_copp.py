@@ -312,11 +312,7 @@ def ignore_expected_loganalyzer_exceptions(enum_rand_one_per_hwsku_frontend_host
 
 
 def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
-<<<<<<< HEAD
-                 ip_version="4", packet_size=100):    # noqa F811
-=======
-                 ip_version="4"):    # noqa: F811
->>>>>>> upstream/master
+                 ip_version="4", packet_size=100):    # noqa: F811
     """
         Configures and runs the PTF test cases.
     """

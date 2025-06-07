@@ -584,8 +584,4 @@ class EosHost(AnsibleHostBase):
         return out
 
     def config(self, lines=None, parents=None, module_ignore_errors=False):
-<<<<<<< HEAD
-        return self.eos_config(lines=lines, parents=parents, ignore_errors=module_ignore_errors)
-=======
         return self.eos_config(lines=lines, parents=parents)
->>>>>>> upstream/master

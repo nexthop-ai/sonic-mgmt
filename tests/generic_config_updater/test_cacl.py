@@ -776,7 +776,6 @@ def cacl_protocol(request):       # noqa F811
     return request.param
 
 
-<<<<<<< HEAD
 def cacl_ignore_regex(duthost, loganalyzer):
     # Currently the Broadcom SAI API for sai_query_attribute_enum_values_capability returns an invalid value
     # for the SAI_NEXT_HOP_GROUP_ATTR_TYPE enum. This causes this particular error message to be printed in
@@ -788,24 +787,11 @@ def cacl_ignore_regex(duthost, loganalyzer):
         loganalyzer[duthost.hostname].ignore_regex.extend([ignore_regex])
 
 
-def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_dut, loganalyzer):
-    logger.info("Test acl table for protocol {}".format(cacl_protocol))
-    cacl_ignore_regex(rand_selected_dut, loganalyzer)
-    cacl_tc1_add_new_table(rand_selected_dut, cacl_protocol)
-    cacl_tc1_add_duplicate_table(rand_selected_dut, cacl_protocol)
-    cacl_tc1_replace_table_variable(rand_selected_dut, cacl_protocol)
-    cacl_tc1_add_invalid_table(rand_selected_dut, cacl_protocol)
-    cacl_tc1_remove_unexisted_table(rand_selected_dut)
-    cacl_tc1_remove_table(rand_selected_dut, cacl_protocol)
-
-
-# ACL_RULE tests are related. So group them into one test.
-def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_dut, loganalyzer):
-=======
 def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_front_end_dut, enum_rand_one_frontend_asic_index,
                                   ip_netns_namespace_prefix):
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
+    cacl_ignore_regex(rand_selected_front_end_dut, loganalyzer)
     cacl_tc1_add_new_table(rand_selected_front_end_dut, cacl_protocol, ip_netns_namespace_prefix, namespace)
     cacl_tc1_add_duplicate_table(rand_selected_front_end_dut, cacl_protocol, namespace)
     cacl_tc1_replace_table_variable(rand_selected_front_end_dut, cacl_protocol, ip_netns_namespace_prefix, namespace)
@@ -819,9 +805,8 @@ def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_front_end_dut, enum
                                 ip_netns_namespace_prefix):
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
 
->>>>>>> upstream/master
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
-    cacl_ignore_regex(rand_selected_dut, loganalyzer)
+    cacl_ignore_regex(rand_selected_front_end_dut, loganalyzer)
     if cacl_protocol == 'EXTERNAL_CLIENT':
         cacl_external_client_add_new_table(rand_selected_front_end_dut, ip_netns_namespace_prefix, namespace)
     cacl_tc2_add_init_rule(rand_selected_front_end_dut, cacl_protocol, ip_netns_namespace_prefix, namespace)
@@ -833,12 +818,7 @@ def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_front_end_dut, enum
     cacl_tc2_remove_rule(rand_selected_front_end_dut, ip_netns_namespace_prefix, namespace)
 
 
-<<<<<<< HEAD
-def test_cacl_tc3_acl_all(rand_selected_dut, loganalyzer):
-    cacl_ignore_regex(rand_selected_dut, loganalyzer)
-    cacl_tc3_acl_table_and_acl_rule(rand_selected_dut)
-=======
 def test_cacl_tc3_acl_all(rand_selected_front_end_dut, enum_rand_one_frontend_asic_index, ip_netns_namespace_prefix):
+    cacl_ignore_regex(rand_selected_front_end_dut, loganalyzer)
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
     cacl_tc3_acl_table_and_acl_rule(rand_selected_front_end_dut, ip_netns_namespace_prefix, namespace)
->>>>>>> upstream/master

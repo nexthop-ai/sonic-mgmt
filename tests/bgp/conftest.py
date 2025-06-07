@@ -26,10 +26,7 @@ from tests.common.dualtor.dual_tor_utils import mux_cable_server_ip
 from tests.common import constants
 from tests.common.devices.eos import EosHost
 from tests.common.devices.sonic import SonicHost
-<<<<<<< HEAD
 from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
-=======
->>>>>>> upstream/master
 
 logger = logging.getLogger(__name__)
 

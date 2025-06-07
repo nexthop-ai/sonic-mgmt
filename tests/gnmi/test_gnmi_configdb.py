@@ -297,11 +297,8 @@ def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost):
     assert status == "down", "Full config failed to toggle interface %s status" % interface
     # Startup interface
     duthost.shell("config interface startup %s" % interface)
-<<<<<<< HEAD
-=======
     # Wait for BGP neighbor to be up
     wait_bgp_neighbor(duthost)
->>>>>>> upstream/master
 
 
 def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost):
@@ -353,8 +350,6 @@ def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost)
     # Startup interface
     duthost.shell("config interface startup %s" % interface)
     duthost.shell("config save -y")
-<<<<<<< HEAD
-=======
     # Wait for BGP neighbor to be up
     wait_bgp_neighbor(duthost)
 
@@ -496,4 +491,3 @@ def test_gnmi_configdb_subscribe_authenticate(duthosts, rand_one_dut_hostname, p
 
     # Restore default role
     add_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
->>>>>>> upstream/master

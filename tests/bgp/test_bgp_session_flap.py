@@ -101,11 +101,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     else:
         # Else use industry standard 'show run | sec bgp'
         logger.info("Neighbor BGP Config: {}".format(
-<<<<<<< HEAD
-           nbrhosts[tor1]["host"].commands(commands=["show run | section bgp"])))
-=======
            nbrhosts[tor1]["host"].eos_command(commands=["show run | section bgp"])))
->>>>>>> upstream/master
 
     logger.info('Setup_info: {}'.format(setup_info))
 

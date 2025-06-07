@@ -549,15 +549,7 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
 def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa F811
                      hash_keys, ptfhost, ipver, tbinfo, mux_server_url,             # noqa F811
                      ignore_ttl, single_fib_for_duts, duts_running_config_facts,    # noqa F811
-<<<<<<< HEAD
                      duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                # noqa F811
-    # Skip test on none T1 testbed
-    pytest_require('t1' == tbinfo['topo']['type'],
-                   "The test case runs on T1 topology")
-
-    fib_files = fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, duts_minigraph_facts,
-=======
-                     duts_minigraph_facts, request):                                # noqa F811
     # Only run this test on T1 or T0 (including dualtor) topologies
     pytest_require(tbinfo['topo']['type'] in ['t1', 't0'], "The test case runs on T1 or T0 topology")
     logging.info(f"Topology type: {tbinfo['topo']['type']}")
@@ -565,7 +557,6 @@ def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa F811
                                             ptfhost,
                                             duts_running_config_facts,
                                             duts_minigraph_facts,
->>>>>>> upstream/master
                                             tbinfo, request)
     timestamp = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
     log_file = "/tmp/hash_test.IPinIPHashTest.{}.{}.log".format(
@@ -748,11 +739,7 @@ def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                
                        "single_fib_for_duts": single_fib_for_duts,
                        "ipver": nvgre_ipver,
                        "topo_name": tbinfo['topo']['name'],
-<<<<<<< HEAD
                        "ecmp_inner_header_hash_supported": ecmp_inner_header_hash_supported,
-=======
-                       "topo_type": tbinfo['topo']['type']
->>>>>>> upstream/master
                        },
                log_file=log_file,
                qlen=PTF_QLEN,

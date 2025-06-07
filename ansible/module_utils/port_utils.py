@@ -580,14 +580,6 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                 port_alias_to_name_map["Ethernet%d" % i] = "Ethernet%d" % i
             for i in range(0, 8, 1):
                 port_alias_to_name_map["Ethernet-BP%d" % i] = "Ethernet-BP%d" % i
-<<<<<<< HEAD
-
-        elif hwsku == "NH-4010":
-            logical_num = 1
-
-            for i in range(0, 505, 8):
-                port_alias_to_name_map["Port%d" % logical_num] = "Ethernet%d" % i
-                logical_num += 1
 
         elif hwsku == "UFISPACE-S9620-32E":
             # 32 ports with 8 lanes each
@@ -625,7 +617,7 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                     port_alias_to_name_map["Ethernet%d/%d" % (i, x)] = "Ethernet%d" % ((index + sub_index))
                     sub_index += 2
                 index += 8
-=======
+
         elif hwsku == "Nokia-IXR7220-D4-36D":
             for i in range(1, 9):
                 port_alias_to_name_map["Ethernet{}/{}".format(i, 1)] = "Ethernet%d" % ((i - 1) * 2)
@@ -633,6 +625,7 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
                 port_alias_to_name_map["Ethernet{}/{}".format(i, 1)] = "Ethernet%d" % ((i * 4) - 20)
             for i in range(29, 37):
                 port_alias_to_name_map["Ethernet{}/{}".format(i, 1)] = "Ethernet%d" % ((i * 8) - 136)
+
         elif hwsku == "NH-4010":
             logical_num = 1
             for i in range(0, 505, 8):
@@ -641,7 +634,6 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
             # adding 25G ports
             port_alias_to_name_map["Port65"] = "Ethernet512"
             port_alias_to_name_map["Port66"] = "Ethernet513"
->>>>>>> upstream/master
 
         else:
             if "Arista-7800" in hwsku:
