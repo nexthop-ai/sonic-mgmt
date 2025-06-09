@@ -85,13 +85,15 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
         pytest.fail("No LLDP neighbors received (lldpctl_facts are empty)")
     for k, v in list(lldpctl_facts['lldpctl'].items()):
         # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
-        assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name']
+        # Get the first key from the chassis dictionary
+        neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
+        assert neighbor in v
         # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
         if request.config.getoption("--neighbor_type") == 'eos':
-            assert v['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
+            assert v[neighbor]['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
         else:
             # Dealing with KVM that advertises port description
-            assert v['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
+            assert v[neighbor]['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
 
 
 def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_duts,
@@ -125,19 +127,20 @@ def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_
 
     for k, v in list(lldpctl_facts['lldpctl'].items()):
         try:
-            hostip = v['chassis']['mgmt-ip']
+            neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
+            hostip = v[neighbor]['chassis']['mgmt-ip']
         except Exception:
-            logger.info("Neighbor device {} does not sent management IP via lldp".format(v['chassis']['name']))
-            hostip = nei_meta[v['chassis']['name']]['mgmt_addr']
+            logger.info(f"Neighbor device {neighbor} does not sent management IP via lldp")
+            hostip = nei_meta[neighbor]['mgmt_addr']
 
         if request.config.getoption("--neighbor_type") == 'eos':
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=eos['snmp_rocommunity'])[
                 'ansible_facts']
-            neighbor_interface = v['port']['ifname']
+            neighbor_interface = v[neighbor]['port']['ifname']
         else:
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=sonic['snmp_rocommunity'])[
                 'ansible_facts']
-            neighbor_interface = v['port']['local']
+            neighbor_interface = v[neighbor]['port']['id']['value']
         # Verify the published DUT system name field is correct
         assert nei_lldp_facts['ansible_lldp_facts'][neighbor_interface]['neighbor_sys_name'] == duthost.hostname
         # Verify the published DUT chassis id field is not empty
