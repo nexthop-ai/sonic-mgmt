@@ -30,10 +30,20 @@ def ignore_expected_loganalyzer_exceptions(duthosts, rand_one_dut_hostname, loga
     KVMIgnoreRegex = [
         ".*queryStatsCapability: failed to find switch.*",
     ]
+    IgnoreMemoryCheckerRegex = [
+        r".* ERR memory_checker: \[memory_checker\] Failed to get container ID of.*",
+        r".* ERR memory_checker: \[memory_checker\] cgroup memory usage file.*does not exist on device.*",
+        r".* ERR memory_checker: \[memory_checker\] cgroup memory statistics file.*does not exist on device.*",
+        r".* ERR memory_checker: \[memory_checker\] Failed to get the memory usage of container.*",
+        r".* ERR memory_checker: \[memory_checker\] Failed to get the cache usage of container.*",
+    ]
     duthost = duthosts[rand_one_dut_hostname]
     if loganalyzer:  # Skip if loganalyzer is disabled
         if duthost.facts["asic_type"] == "vs":
             loganalyzer[duthost.hostname].ignore_regex.extend(KVMIgnoreRegex)
+        # The test does 'config reload -y' which will restart the containers. So,
+        # memory_checker may not find the container based on timing
+        loganalyzer[duthost.hostname].ignore_regex.extend(IgnoreMemoryCheckerRegex)
 
 
 @pytest.fixture(scope='function', autouse=True)
