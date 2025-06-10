@@ -788,7 +788,7 @@ def cacl_ignore_regex(duthost, loganalyzer):
 
 
 def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_front_end_dut, enum_rand_one_frontend_asic_index,
-                                  ip_netns_namespace_prefix):
+                                  ip_netns_namespace_prefix, loganalyzer):
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
     cacl_ignore_regex(rand_selected_front_end_dut, loganalyzer)
@@ -802,7 +802,7 @@ def test_cacl_tc1_acl_table_suite(cacl_protocol, rand_selected_front_end_dut, en
 
 # ACL_RULE tests are related. So group them into one test.
 def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_front_end_dut, enum_rand_one_frontend_asic_index,
-                                ip_netns_namespace_prefix):
+                                ip_netns_namespace_prefix, loganalyzer):
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
 
     logger.info("Test acl table for protocol {}".format(cacl_protocol))
@@ -818,7 +818,7 @@ def test_cacl_tc2_acl_rule_test(cacl_protocol, rand_selected_front_end_dut, enum
     cacl_tc2_remove_rule(rand_selected_front_end_dut, ip_netns_namespace_prefix, namespace)
 
 
-def test_cacl_tc3_acl_all(rand_selected_front_end_dut, enum_rand_one_frontend_asic_index, ip_netns_namespace_prefix):
+def test_cacl_tc3_acl_all(rand_selected_front_end_dut, enum_rand_one_frontend_asic_index, ip_netns_namespace_prefix, loganalyzer):
     cacl_ignore_regex(rand_selected_front_end_dut, loganalyzer)
     namespace = rand_selected_front_end_dut.get_namespace_from_asic_id(enum_rand_one_frontend_asic_index)
     cacl_tc3_acl_table_and_acl_rule(rand_selected_front_end_dut, ip_netns_namespace_prefix, namespace)
