@@ -10,6 +10,7 @@ from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.ntp_helper import NtpDaemon, ntp_daemon_in_use   # noqa: F401
 from tests.common.helpers.snmp_helpers import get_snmp_facts
 from tests.common.devices.ptf import PTFHost
+from tests.common.gu_utils import apply_patch, generate_tmpfile, delete_tmpfile, format_json_patch_for_multiasic
 
 pytestmark = [
     pytest.mark.topology("any")
@@ -94,11 +95,33 @@ def ntp_servers(duthosts, rand_one_dut_hostname):
     return ntp_servers
 
 
+def ntp_vrf_config_update(duthost, vrf="default"):
+    """
+    Apply NTP configuration with specified VRF as json patch
+    """
+    json_patch = [
+        {
+            "op": "replace",
+            "path": "/NTP/global/vrf",
+            "value": vrf
+        }
+    ]
+    json_patch = format_json_patch_for_multiasic(duthost=duthost, json_data=json_patch)
+    tmpfile = generate_tmpfile(duthost)
+    try:
+        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
+        logger.info(f"Apply patch result: {output}")
+    finally:
+        delete_tmpfile(duthost, tmpfile)
+
+
 @pytest.fixture()
 def ntp_teardown(ptfhost, duthosts, rand_one_dut_hostname, ntp_servers):
     yield
 
     duthost = duthosts[rand_one_dut_hostname]
+    # Reset the NTP VRF configuration
+    ntp_vrf_config_update(duthost, vrf="default")
     # stop ntp server
     ptfhost.service(name="ntp", state="stopped")
     # reset ntp client configuration
@@ -238,9 +261,8 @@ class TestServices():
             if result['rc'] or result["stdout"] != "enabled":
                 return
 
-        # Restart ntp service
-        cmd = f"systemctl restart {ntp_service}"
-        execute_dut_command(duthost, cmd)
+        # Run NTP in mgmt VRF
+        ntp_vrf_config_update(duthost, vrf="mgmt")
         pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
 
     def test_service_acl(self, duthosts, rand_one_dut_hostname, localhost):

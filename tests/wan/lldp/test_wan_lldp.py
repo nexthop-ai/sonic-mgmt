@@ -32,15 +32,16 @@ def test_wan_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost
         pytest.fail("No LLDP neighbors received (lldpctl_facts are empty)")
     for k, v in list(lldpctl_facts['lldpctl'].items()):
         # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
-        assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name']
+        neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
+        assert neighbor in v
         # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
         # Sonic is using subtype 7 to advertise ifalias
         if 'ifname' in v['port']:
-            assert v['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
+            assert v[neighbor]['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
         elif 'local' in v['port']:
-            assert v['port']['local'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
+            assert v[neighbor]['port']['local'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
         else:
-            assert(False)
+            assert False
 
 
 def test_wan_lldp_neighbor(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost, eos,
@@ -77,18 +78,19 @@ def test_wan_lldp_neighbor(duthosts, enum_rand_one_per_hwsku_frontend_hostname, 
 
     for k, v in list(lldpctl_facts['lldpctl'].items()):
         try:
-            hostip = v['chassis']['mgmt-ip']
+            neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
+            hostip = v[neighbor]['chassis']['mgmt-ip']
         except KeyError:
-            logger.info("Neighbor device {} does not sent management IP via lldp".format(v['chassis']['name']))
-            hostip = nei_meta[v['chassis']['name']]['mgmt_addr']
+            logger.info(f"Neighbor device {neighbor} does not sent management IP via lldp")
+            hostip = nei_meta[neighbor]['mgmt_addr']
 
         nei_lldp_facts = localhost.lldp_facts(host=hostip,
                                               version='v2c',
                                               community=eos['snmp_rocommunity'])['ansible_facts']
         if ('ifname' in v['port']):
-            neighbor_interface = v['port']['ifname']
+            neighbor_interface = v[neighbor]['port']['ifname']
         elif ('local' in v['port']):
-            neighbor_interface = v['port']['local']
+            neighbor_interface = v[neighbor]['port']['local']
 
         # Verify the published DUT system name field is correct
         assert nei_lldp_facts['ansible_lldp_facts'][neighbor_interface]['neighbor_sys_name'] == duthost.hostname

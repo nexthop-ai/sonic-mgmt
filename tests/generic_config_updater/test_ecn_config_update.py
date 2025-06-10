@@ -84,18 +84,34 @@ def ensure_application_of_updated_config(duthost, configdb_field, values):
     )
 
 
+def ecn_config(duthost):
+    """Get ECN configuration data"""
+    ecn_data = duthost.shell('sonic-db-cli CONFIG_DB hgetall "WRED_PROFILE|AZURE_LOSSLESS"')['stdout']
+    ecn_data = ast.literal_eval(ecn_data) if ecn_data else {}
+    return ecn_data
+
+
+@pytest.fixture(scope="module")
+def check_ecn_config_exists(duthost):
+    """Check ECN configuration exists for the tests to run"""
+    ecn_data = ecn_config(duthost)
+    if not ecn_data:
+        pytest.skip("Base ECN configuration does not exist / not supported")
+    return ecn_data
+
+
 @pytest.mark.parametrize("configdb_field", ["green_min_threshold", "green_max_threshold", "green_drop_probability",
                          "green_min_threshold,green_max_threshold,green_drop_probability"])
 @pytest.mark.parametrize("operation", ["replace"])
-def test_ecn_config_updates(duthost, ensure_dut_readiness, configdb_field, operation):
+def test_ecn_config_updates(duthost, ensure_dut_readiness, check_ecn_config_exists, configdb_field, operation):
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {} created for json patch of field: {} and operation: {}"
                 .format(tmpfile, configdb_field, operation))
 
     json_patch = list()
     values = list()
-    ecn_data = duthost.shell('sonic-db-cli CONFIG_DB hgetall "WRED_PROFILE|AZURE_LOSSLESS"')['stdout']
-    ecn_data = ast.literal_eval(ecn_data)
+    ecn_data = ecn_config(duthost)
+
     for field in configdb_field.split(','):
         value = int(ecn_data[field]) + 1
         values.append(str(value))
