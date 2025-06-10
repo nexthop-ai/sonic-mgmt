@@ -73,7 +73,7 @@ Microsoft uses an internal tool called Elastictest for distributing the tests, a
 - Full Parallel: Run all processes simultaneously
 - RP First: Runs the supervisor process first, followed by LCs' processes. This mode is helpful when the test includes supervisor reboot or reload
 
-We have enabled parallel run for ~40 tests modules for Cisco 8800 chassis qualification, and observed reduced runtime for them, including: 
+We have enabled parallel run for ~40 tests modules for Cisco 8800 chassis qualification, and observed reduced runtime for them, including:
 
 - `crm/test_crm.py`: Full Parallel; 272 min with parallel run disabled, 138 min with parallel run enabled
 - `platform_tests/test_reboot.py`:  RP First; 300 min with parallel run disabled, 200 min with parallel run enabled

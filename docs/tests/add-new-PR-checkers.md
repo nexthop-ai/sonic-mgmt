@@ -6,49 +6,49 @@ In our PR testing, each PR checker represents a specific topology and runs the c
 ### Location of PR Checkers
 PR checkers are defined in the `sonic-mgmt/azure-pipelines.yml` file. Each job represents a PR checker. Here’s a template example of the job:
 ```
-- job: impacted_area_dualtor_elastictest  
-  displayName: "impacted-area-kvmtest-dualtor by Elastictest"  
-  dependsOn:  
-  - get_impacted_area  
-  - choose_between_mixed_and_py3_ptf_image  
-  condition: contains(dependencies.get_impacted_area.outputs['SetVariableTask.PR_CHECKERS'], 'dualtor_checker')  
-  variables:  
-    TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['SetVariableTask.TEST_SCRIPTS'] ]  
-    set_ptf_image_tag: $[ dependencies.choose_between_mixed_and_py3_ptf_image.outputs['ptf_image_tag.tag_value'] ]  
-  timeoutInMinutes: 240  
-  continueOnError: false  
-  pool: sonic-ubuntu-1c  
-  steps:  
-    - template: .azure-pipelines/impacted_area_testing/calculate-instance-numbers.yml  
-      parameters:  
-        TOPOLOGY: dualtor  
-        BUILD_BRANCH: $(BUILD_BRANCH)  
-        # 30 mins for preparing testbed, 30 mins for pre-test and 20 mins for post-test  
-        PREPARE_TIME: 80  
-  
-    - template: .azure-pipelines/run-test-elastictest-template.yml  
-      parameters:  
-        TOPOLOGY: dualtor  
-        PTF_IMAGE_TAG: $(set_ptf_image_tag)  
-        SCRIPTS: $(SCRIPTS)  
-        MIN_WORKER: $(INSTANCE_NUMBER)  
-        MAX_WORKER: $(INSTANCE_NUMBER)  
-        COMMON_EXTRA_PARAMS: "--disable_loganalyzer "  
-        KVM_IMAGE_BRANCH: $(BUILD_BRANCH)  
+- job: impacted_area_dualtor_elastictest
+  displayName: "impacted-area-kvmtest-dualtor by Elastictest"
+  dependsOn:
+  - get_impacted_area
+  - choose_between_mixed_and_py3_ptf_image
+  condition: contains(dependencies.get_impacted_area.outputs['SetVariableTask.PR_CHECKERS'], 'dualtor_checker')
+  variables:
+    TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['SetVariableTask.TEST_SCRIPTS'] ]
+    set_ptf_image_tag: $[ dependencies.choose_between_mixed_and_py3_ptf_image.outputs['ptf_image_tag.tag_value'] ]
+  timeoutInMinutes: 240
+  continueOnError: false
+  pool: sonic-ubuntu-1c
+  steps:
+    - template: .azure-pipelines/impacted_area_testing/calculate-instance-numbers.yml
+      parameters:
+        TOPOLOGY: dualtor
+        BUILD_BRANCH: $(BUILD_BRANCH)
+        # 30 mins for preparing testbed, 30 mins for pre-test and 20 mins for post-test
+        PREPARE_TIME: 80
+
+    - template: .azure-pipelines/run-test-elastictest-template.yml
+      parameters:
+        TOPOLOGY: dualtor
+        PTF_IMAGE_TAG: $(set_ptf_image_tag)
+        SCRIPTS: $(SCRIPTS)
+        MIN_WORKER: $(INSTANCE_NUMBER)
+        MAX_WORKER: $(INSTANCE_NUMBER)
+        COMMON_EXTRA_PARAMS: "--disable_loganalyzer "
+        KVM_IMAGE_BRANCH: $(BUILD_BRANCH)
         MGMT_BRANCH: $(BUILD_BRANCH)
 ```
 
 ### Steps to Add a New PR Checker
-Before adding a new topology for testing, please contact with `sonicelastictest@microsoft.com` that suitable VM instances are available to set up the corresponding testbed. 
+Before adding a new topology for testing, please contact with `sonicelastictest@microsoft.com` that suitable VM instances are available to set up the corresponding testbed.
 Otherwise, there is a risk that the testbed cannot be locked during testing due to the lack of appropriate resources.
 
 **1. Update Test Scripts with Topology Marks**
 
 Each test script includes a pytest mark to specify supported topologies. For your new PR checker, ensure the relevant test scripts include the new topology mark:
 
-Example: 
+Example:
 ```
-pytestmark = [    
+pytestmark = [
     pytest.mark.topology('t0', 't1-multi-asic', '<topology_name>')
 ]
 ```
@@ -66,7 +66,7 @@ This mapping is used for Kusto query conditions.
 
 Follow these steps to add a new job for your new PR checker in sonic-mgmt/azure-pipelines.yml:
 1. **job & displayName** Set:
-   + **job**: impacted_area_<topology_name>_elastictest 
+   + **job**: impacted_area_<topology_name>_elastictest
    + **displayName**: impacted-area-kvmtest-<topology_name> by Elastictest
 
 2. **dependsOn**:
@@ -75,7 +75,7 @@ This field lists the other jobs that your job depends on. Generally, you do not 
 3. **condition**:
 This condition determines whether the PR checker should run in the current test cycle. In Impact Area-Based PR testing, only test scripts relevant to the changes are executed, so some PR checkers may not be required. Modify the condition as follows:
 ```buildoutcfg
-contains(dependencies.get_impacted_area.outputs['SetVariableTask.PR_CHECKERS'], '<topology_name>_checker')  
+contains(dependencies.get_impacted_area.outputs['SetVariableTask.PR_CHECKERS'], '<topology_name>_checker')
 ```
 4. **variables**:
 This section defines variables used by the job. These variables are typically inherited from other jobs, so no changes are needed here.
@@ -119,4 +119,3 @@ Use another template (`.azure-pipelines/run-test-elastictest-template.yml`) to t
 
 By following these steps, you can successfully add a new PR checker for your new topology and ensure it runs in the Impacted Area-based PR testing when relevant changes are made.
 If you have any questions or need further assistance, please feel free to contact `sonicelastictest@microsoft.com`.
-

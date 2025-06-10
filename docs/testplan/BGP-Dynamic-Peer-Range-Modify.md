@@ -9,7 +9,7 @@
 The goal of this test is to validate that the modification of subnet size for dynamic BGP neighbors is supported via bgpcfgd. The ip_range field in the config DB schema stores the subnet from which BGP connections are accepted.
 
 ### Scope
-The test is targeting a running SONIC system with fully functioning configuration. The purpose of the test is to test for BGP expected behavior when ip_range is modified for dynamic BGP neighbors. The IP range can be modified by adding a new IP range, deleting an IP range, increasing/decreasing the size of existing range. 
+The test is targeting a running SONIC system with fully functioning configuration. The purpose of the test is to test for BGP expected behavior when ip_range is modified for dynamic BGP neighbors. The IP range can be modified by adding a new IP range, deleting an IP range, increasing/decreasing the size of existing range.
 
 ### Testbed
 The test could run on t0 testbed in virtual switch environment.
@@ -97,4 +97,3 @@ To remove the previously added ip range:
 |Perform deletion/addition of an ip range 20 times |Stress testing|Peers from the ip range should go down on deletion and come back up on addition. No core dumps generated. Static peers should not flap. Peers from other dynamic ranges should not flap.|
 |Delete the entire dynamic peer group |Validate Deleting dynamic peer|All the peers from the dynamic peer group should be removed. Static peers should not flap|
 |Perform deletion/addition of the entire dynamic peer group 20 times |Stress testing|Peers from the dynamic peer group should go down on deletion and come back up on addition. No core dumps generated. Static peers should not flap|
-
