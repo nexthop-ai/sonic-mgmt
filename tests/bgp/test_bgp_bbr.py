@@ -239,15 +239,12 @@ def setup(duthosts, rand_one_dut_hostname, tbinfo, nbrhosts):
     tor1's peer_addr is nothing but DUT's interface IP. Sending with DUT's IP as nexthop
     will be treated as martian route and it will be dropped.  Even if we use
     allow-martian-nexthop feature, it will be received by DUT, but it will  not
-    be installed in FIB and advertised to other neighbors.  Hence both DUT check
-    and other_vms check will fail. Hence, exabgp ip is used as nexthop.
+    be installed in FIB and advertised to other neighbors.  This will lead both DUT check
+    and other_vms check to fail. Hence, exabgp ip is used as nexthop.
     '''
-    # bbr_route = Route(BBR_PREFIX, neigh_peer_map[tor1 ]['peer_addr'], aspath)
-    # bbr_route_v6 = Route(BBR_PREFIX_V6, neigh_peer_map[tor1]['peer_addr_v6'], aspath)
-    # bbr_route_dual_dut_asn = Route(BBR_PREFIX, neigh_peer_map[tor1]['peer_addr'], aspath_dual_dut_asn)
-    # bbr_route_v6_dual_dut_asn = Route(BBR_PREFIX_V6, neigh_peer_map[tor1]['peer_addr_v6'], aspath_dual_dut_asn)
     bbr_route = Route(BBR_PREFIX, nhipv4, aspath)
     bbr_route_v6 = Route(BBR_PREFIX_V6, nhipv6, aspath)
+
     bbr_route_dual_dut_asn = Route(BBR_PREFIX, nhipv4, aspath_dual_dut_asn)
     bbr_route_v6_dual_dut_asn = Route(BBR_PREFIX_V6, nhipv6, aspath_dual_dut_asn)
 

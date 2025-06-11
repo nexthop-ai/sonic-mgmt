@@ -95,6 +95,7 @@ function validate_parameters()
 function setup_environment()
 {
     SCRIPT=$0
+    PYTEST_EXEC="python3 -m pytest"
     FULL_PATH=$(realpath ${SCRIPT})
     SCRIPT_PATH=$(dirname ${FULL_PATH})
     BASE_PATH=$(dirname ${SCRIPT_PATH})
@@ -296,8 +297,8 @@ function prepare_dut()
 {
     echo "=== Preparing DUT for subsequent tests ==="
     echo "prepare_dut: BEG: $(date)"
-    echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
-    python3 -m pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    echo Running: ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
     local ret_code=$?
     echo "prepare_dut: END: $(date)"
     return ${ret_code}
@@ -307,8 +308,8 @@ function cleanup_dut()
 {
     echo "=== Cleaning up DUT after tests ==="
     echo "cleanup_dut: BEG: $(date)"
-    echo Running: python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
-    python3 -m pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    echo Running: ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
     local ret_code=$?
     echo "cleanup_dut: END: $(date)"
     return ${ret_code}
@@ -318,8 +319,8 @@ function run_group_tests()
 {
     echo "=== Running tests in groups ==="
     echo "run_group_tests: BEG: $(date)"
-    echo Running: python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
-    python3 -m pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
+    echo Running: ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
+    ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
     local ret_code=$?
     echo "run_group_tests: END: $(date)"
     return ${ret_code}
@@ -382,6 +383,26 @@ function run_individual_tests()
 
 setup_environment
 
+for arg in "$@"; do
+    if [[ "$arg" == "--enable-debug" ]]; then
+        if [[ -z $SONIC_MGMT_DEBUG_PORT ]]; then
+            echo "*********************************[WARNING]*********************************"
+            echo "This container was not setup with --enable-debug option. Please re-setup this container with --enable-debug option"
+            echo "Please re-run without '--enable-debug' option to continue."
+            echo "*********************************[WARNING]*********************************"
+            exit 1
+        fi
+
+        if [[ "$arg" != "${@: -1}" ]]; then
+            echo "Please put '--enable-debug' as the last option of your './run_tests.sh' command to avoid conflicts with pytest and run_tests options"
+            echo "Example: ./run_tests.sh ... --enable-debug"
+            exit 1
+        fi
+
+        PYTEST_EXEC="python3 -m debugpy --listen 0.0.0.0:$SONIC_MGMT_DEBUG_PORT --wait-for-client -m pytest"
+        set -- "${@/$arg/}" # remove this option so getopts can process the rest
+    fi
+done
 
 while getopts "h?a:b:c:C:d:e:Ef:F:H:i:I:k:l:m:n:oOp:q:rs:S:t:u:x" opt; do
     case ${opt} in

@@ -90,6 +90,12 @@ class MultiAsicSonicHost(object):
         ):
             service_list.append("mux")
 
+        if "dhcp_relay" in config_facts["FEATURE"] and config_facts["FEATURE"]["dhcp_relay"]["state"] == "enabled":
+            service_list.append("dhcp_relay")
+
+        if "dhcp_server" in config_facts["FEATURE"] and config_facts["FEATURE"]["dhcp_server"]["state"] == "enabled":
+            service_list.append("dhcp_server")
+
         if self.get_facts().get("modular_chassis"):
             # Update the asic service based on feature table state and asic flag
             for service in list(self.sonichost.DEFAULT_ASIC_SERVICES):
@@ -512,7 +518,7 @@ class MultiAsicSonicHost(object):
         """
         services = [feature]
 
-        if (feature in self.sonichost.DEFAULT_ASIC_SERVICES):
+        if (feature in self.sonichost.DEFAULT_ASIC_SERVICES) or feature in ["bmp"]:
             services = []
             for asic in self.asics:
                 service_name = asic.get_docker_name(feature)
@@ -809,6 +815,17 @@ class MultiAsicSonicHost(object):
         if duthost.is_multi_asic:
             container_name += str(asic_id)
         self.shell("sudo docker cp {}:{} {}".format(container_name, src, dst))
+
+    def is_critical_processes_running_per_asic_or_host(self, service):
+        duthost = self.sonichost
+        if duthost.is_multi_asic:
+            for asic in self.asics:
+                docker_name = asic.get_docker_name(service)
+                if not duthost.critical_processes_running(docker_name):
+                    return False
+            return True
+        else:
+            return duthost.critical_processes_running(service)
 
     def is_service_fully_started_per_asic_or_host(self, service):
         """This function tell if service is fully started base on multi-asic/single-asic"""
