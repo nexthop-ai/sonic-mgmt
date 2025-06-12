@@ -308,6 +308,11 @@ function add_topo_ptf
       ansible_options+=" -e eos_batch_size=1"
   fi
 
+  server_count=1
+  if [ -n "$servers" ]; then
+    server_count=$(python -c "from __future__ import print_function; print(len(eval(\"$servers\")))")
+  fi
+
   for i in $(seq 0 $(($server_count-1)))
   do
     if [ -n "$servers" ]; then
