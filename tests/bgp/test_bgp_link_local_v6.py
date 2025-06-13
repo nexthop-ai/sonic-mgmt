@@ -1,6 +1,7 @@
 """
 Test BGP functionality using IPv6 link-local addresses for peering.
 """
+import ipaddress
 import json
 import logging
 import pytest
@@ -8,7 +9,6 @@ from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.devices.eos import EosHost
 from tests.common.devices.sonic import SonicHost
-from tests.common.config_reload import config_reload
 from tests.common.gu_utils import (
     generate_tmpfile,
     delete_tmpfile,
@@ -33,12 +33,23 @@ def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=False)
         json_patch = [
             {
                 "op": "add",
-                "path": f"/BGP_NEIGHBOR/{interface}",
+                "path": f"/BGP_NEIGHBOR/default|{interface}",
                 "value": {
                     "asn": str(peer_asn),
-                    "local_addr": {interface},
                     "name": interface,
-                    "peer_type": "dynamic"
+                    "peer_type": "external",
+                    "admin_status": "up",
+                    "peer_group_name": "PEER_V6"
+                }
+            },
+            {
+                "op": "add",
+                "path": f"/BGP_NEIGHBOR_AF/default|{interface}|ipv6_unicast",
+                "value": {
+                    "admin_status": "up",
+                    "afi_safi": "ipv6_unicast",
+                    "neighbor": interface,
+                    "vrf_name": "default"
                 }
             }
         ]
@@ -51,6 +62,16 @@ def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=False)
             expect_op_success(host, output)
         finally:
             delete_tmpfile(host, tmpfile)
+
+        # 'v6only' is not supported only through vtysh
+        commands = [
+            "configure terminal",
+            f"router bgp {local_asn}",
+            f"neighbor {interface} interface v6only",
+            "end"
+        ]
+        host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
+
     else:
         # Use existing vtysh commands for non-DUT or when FRR management is disabled
         commands = [
@@ -64,6 +85,47 @@ def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=False)
 
         commands.append("end")
 
+        if isinstance(host, EosHost):
+            host.run_command_list(commands)
+        elif isinstance(host, dict) and 'host' in host:
+            host['host'].command("vtysh -c '" + "' -c '".join(commands) + "'")
+        else:
+            host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
+
+
+def unconfigure_bgp_link_local(host, local_asn, interface, is_dut=False):
+    """
+    Unconfigure BGP link-local peering
+    """
+    if is_dut and host.get_frr_mgmt_framework_config():
+        # Use JSON patch for DUT when FRR management framework is enabled
+        json_patch = [
+            {
+                "op": "remove",
+                "path": f"/BGP_NEIGHBOR/default|{interface}"
+            },
+            {
+                "op": "remove",
+                "path": f"/BGP_NEIGHBOR_AF/default|{interface}|ipv6_unicast"
+            }
+        ]
+
+        json_patch = format_json_patch_for_multiasic(duthost=host, json_data=json_patch, is_asic_specific=True)
+        tmpfile = generate_tmpfile(host)
+
+        try:
+            # Ignore the output, if the test failed, it might not have the config for removal
+            apply_patch(host, json_data=json_patch, dest_file=tmpfile)
+        finally:
+            delete_tmpfile(host, tmpfile)
+    else:
+        # Use existing vtysh commands for non-DUT or when FRR management is disabled
+        commands = [
+            "configure terminal",
+            f"router bgp {local_asn}",
+            f"no neighbor {interface}",
+            "end"
+        ]
         if isinstance(host, EosHost):
             host.run_command_list(commands)
         elif isinstance(host, dict) and 'host' in host:
@@ -105,89 +167,27 @@ def check_bgp_session_state(host, neighbor_addr, interface):
     return False
 
 
-def get_first_ipv6_ethernet_interface(duthost):
+def get_existing_ipv6_bgp_neighbor(mg_facts):
     """
-    Get the first Ethernet interface that has IPv6 enabled and is up
-    Returns tuple of (interface_name, success)
+    Get the first IPv6 BGP neighbor and returns a tuple of
+    (interface_name, bgp_neighbor) information from topology facts.
     """
     try:
-        ipv6_interfaces = duthost.show_and_parse("show ipv6 interfaces")
-
-        for iface_info in ipv6_interfaces:
-            interface = iface_info["interface"]
-            if interface.startswith("Ethernet") and iface_info["admin/oper"] == "up/up":
-                return interface, True
-
-        return None, False
+        for bgp_neighbor in mg_facts.get('minigraph_bgp', []):
+            if ipaddress.ip_address(bgp_neighbor['addr']).version != 6:
+                continue
+            for dut_interface, neighbor in mg_facts.get('minigraph_neighbors', {}).items():
+                if neighbor['name'] == bgp_neighbor['name']:
+                    return dut_interface, bgp_neighbor
+        return None, {}
     except Exception as e:
         logger.error(f"Failed to get IPv6 interface information: {str(e)}")
-        return None, False
+        return None, {}
 
 
-def cleanup_bgp_config(duthost, peer_host, peer_name):
+def bgp_link_local_setup(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
     """
-    Cleanup configuration by performing config reload on both DUT and affected peer
-    """
-    logger.info("Cleaning up configuration with config reload")
-
-    # Cleanup DUT configuration
-    try:
-        config_reload(duthost, config_source='config_db', wait=60)
-        logger.info("Successfully reloaded DUT configuration")
-    except Exception as e:
-        logger.error(f"Failed to reload DUT configuration: {str(e)}")
-
-    # Cleanup peer configuration
-    try:
-        if isinstance(peer_host, dict) and 'host' in peer_host:
-            host = peer_host['host']
-        else:
-            host = peer_host
-
-        config_reload(host, config_source='config_db', wait=60, is_dut=False)
-        logger.info(f"Successfully reloaded peer {peer_name} configuration")
-    except Exception as e:
-        logger.error(f"Failed to reload peer {peer_name} configuration: {str(e)}")
-
-
-def deactivate_global_bgp_neighbor(host, asn, neighbor_addr, is_dut=False):
-    """
-    Deactivate a global BGP neighbor configuration
-    """
-    logger.info(f"Deactivating global BGP neighbor {neighbor_addr}")
-
-    if is_dut and host.get_frr_mgmt_framework_config():
-        # Use JSON patch for DUT when FRR management framework is enabled
-        json_patch = [
-            {
-                "op": "replace",
-                "path": f"/BGP_NEIGHBOR/{neighbor_addr}/admin_status",
-                "value": "down"
-            }
-        ]
-        tmpfile = generate_tmpfile(host)
-        try:
-            output = apply_patch(host, json_data=json_patch, dest_file=tmpfile)
-            expect_op_success(host, output)
-        finally:
-            delete_tmpfile(host, tmpfile)
-    else:
-        commands = [
-            "configure terminal",
-            f"router bgp {asn}",
-            "address-family ipv6 unicast",
-            f"no neighbor {neighbor_addr} activate",
-            "end"
-        ]
-        if isinstance(host, dict) and 'host' in host:
-            host['host'].command("vtysh -c '" + "' -c '".join(commands) + "'")
-        else:
-            host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
-
-
-def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
-    """
-    Test BGP peering over IPv6 link-local address.
+    Setup BGP link-local configuration before test
     """
     # Skip if neighbors are not sonic hosts
     for nbr in nbrhosts.values():
@@ -195,40 +195,16 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
             pytest.skip("Test requires sonic neighbors")
 
     duthost = duthosts[rand_one_dut_hostname]
-
-    # Get first available IPv6 Ethernet interface
-    dut_interface, success = get_first_ipv6_ethernet_interface(duthost)
-    pytest_assert(success and dut_interface,
-                  "Failed to find an Ethernet interface with IPv6 enabled and up")
-
-    # Log testbed information for debugging
-    logger.info(f"Testing with DUT: {duthost.hostname}")
-    logger.info(f"Available neighbor hosts: {list(nbrhosts.keys())}")
-    logger.info(f"Selected DUT interface: {dut_interface}")
-
-    config_facts = duthost.get_running_config_facts()
-    dut_asn = config_facts['DEVICE_METADATA']['localhost']['bgp_asn']
-
-    # Get peer ASN and host from minigraph
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
-    bgp_neighbors = mg_facts.get('minigraph_bgp', [])
 
-    peer_asn = None
-    peer_name = None
-    for neighbor in bgp_neighbors:
-        if neighbor['name'] in nbrhosts:
-            peer_asn = neighbor['asn']
-            peer_name = neighbor['name']
-            break
-
-    pytest_assert(peer_asn is not None, "Could not determine peer ASN")
-    pytest_assert(peer_name is not None, "Could not find peer name")
-
-    logger.info(f"Selected peer: {peer_name} (ASN: {peer_asn})")
+    # Find (any) existing IPv6 BGP neighbor to transform as
+    # interface neighbor for link-local test
+    dut_interface, bgp_neighbor = get_existing_ipv6_bgp_neighbor(mg_facts)
+    pytest_assert(bgp_neighbor and dut_interface,
+                  "Failed to find an Ethernet interface with IPv6 peer configured")
 
     # Get the corresponding peer interface
     peer_interfaces = mg_facts['minigraph_neighbors']
-
     peer_interface = None
     if dut_interface in peer_interfaces:
         peer_data = peer_interfaces[dut_interface]
@@ -238,66 +214,145 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
     pytest_assert(peer_interface,
                   f"Failed to find peer interface corresponding to DUT interface {dut_interface}")
 
+    return (dut_interface, peer_interface, bgp_neighbor)
+
+
+def bgp_link_local_teardown(duthost, nbrhosts, dut_interface, peer_interface, bgp_neighbor):
+    '''
+    Cleanup and restore the original configuration
+    '''
+    config_facts = duthost.get_running_config_facts()
+    dut_asn = config_facts['DEVICE_METADATA']['localhost']['bgp_asn']
+    peer_name = bgp_neighbor['name']
+
+    logger.info(f"Cleanup BGP link-local neighbor configurations on {duthost} {peer_name}")
+    unconfigure_bgp_link_local(duthost, dut_asn, dut_interface, is_dut=True)
+    unconfigure_bgp_link_local(nbrhosts[peer_name]['host'], bgp_neighbor['asn'],
+                               peer_interface, is_dut=False)
+    update_global_bgp_neighbor(duthost, bgp_neighbor['addr'], activate=True, check_output=False)
+    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'],
+                               activate=True, check_output=False)
+
+
+@pytest.fixture
+def bgp_link_local_setup_teardown(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
+    '''
+    Fixture to setup and do the cleanup for the link-local test
+    '''
+    # Setup
+    dut_interface, peer_interface, bgp_neighbor = bgp_link_local_setup(duthosts, rand_one_dut_hostname,
+                                                                       nbrhosts, tbinfo)
+    # Run the test
+    yield (dut_interface, peer_interface, bgp_neighbor)
+
+    # Cleanup
+    duthost = duthosts[rand_one_dut_hostname]
+    bgp_link_local_teardown(duthost, nbrhosts, dut_interface, peer_interface, bgp_neighbor)
+
+
+def update_global_bgp_neighbor(host, neighbor_addr, activate=True, check_output=True):
+    """
+    Activate / Deactivate a global BGP neighbor configuration
+    """
+    neighbor_addr = neighbor_addr.lower()
+    logger.info(f"{'' if activate else 'de'}activating global BGP neighbor {neighbor_addr}")
+
+    if host.get_frr_mgmt_framework_config():
+        neighbor_addr = "default|" + neighbor_addr
+    # Use JSON patch for DUT when FRR management framework is enabled
+    json_patch = [
+        {
+            "op": "replace",
+            "path": f"/BGP_NEIGHBOR/{neighbor_addr}/admin_status",
+            "value": "up" if activate else "down"
+        }
+    ]
+    tmpfile = generate_tmpfile(host)
+    try:
+        output = apply_patch(host, json_data=json_patch, dest_file=tmpfile)
+        if check_output:
+            expect_op_success(host, output)
+    finally:
+        delete_tmpfile(host, tmpfile)
+
+
+def get_received_prefixes(duthost, neighbor):
+    '''
+    Get the received prefix-count from the specified neighbor
+    '''
+    dut_cmd = f"show bgp ipv6 unicast neighbor {neighbor} prefix-count json"
+    logger.info(f"Checking DUT received prefixes with command: {dut_cmd}")
+
+    dut_neighbor_info = json.loads(duthost.shell(f"vtysh -c '{dut_cmd}'")['stdout'])
+    logger.info(f"DUT neighbor info: {json.dumps(dut_neighbor_info, indent=2)}")
+
+    dut_received_prefixes = int(dut_neighbor_info.get('pfxCounter', 0))
+    logger.info(f"DUT received {dut_received_prefixes} prefixes from peer")
+
+    return dut_received_prefixes
+
+
+def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo, bgp_link_local_setup_teardown):
+    """
+    Test BGP peering over IPv6 link-local address.
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+
+    # Get first available IPv6 Ethernet interface
+    dut_interface, peer_interface, bgp_neighbor = bgp_link_local_setup_teardown
+    peer_name = bgp_neighbor['name']
+
+    # Log testbed information for debugging
+    logger.info(f"Testing with DUT: {duthost.hostname}")
+    logger.info(f"Selected DUT interface: {dut_interface}")
+    logger.info(f"Selected neighbor: {bgp_neighbor}, interface: {peer_interface}")
+
+    config_facts = duthost.get_running_config_facts()
+    dut_asn = config_facts['DEVICE_METADATA']['localhost']['bgp_asn']
+
     logger.info(f"Selected peer interface: {peer_interface}")
 
-    try:
-        # Find and deactivate the global BGP neighbor for our test peer
-        for neighbor in bgp_neighbors:
-            if neighbor['name'] == peer_name and ':' in neighbor['addr']:  # IPv6 peer we're testing
-                logger.info(f"Deactivating global BGP neighbor for test peer {peer_name}")
-                deactivate_global_bgp_neighbor(duthost, dut_asn, neighbor['addr'], is_dut=True)
-                deactivate_global_bgp_neighbor(nbrhosts[peer_name], neighbor['asn'],
-                                               neighbor['peer_addr'], is_dut=False)
-                break
+    received_prefixes = get_received_prefixes(duthost, bgp_neighbor['addr'])
+    logger.info(f"Deactivating global BGP neighbor for test peer {peer_name}")
+    update_global_bgp_neighbor(duthost, bgp_neighbor['addr'], activate=False)
+    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'], activate=False)
 
-        # Configure BGP on DUT
-        logger.info(f"Configuring BGP on DUT (interface: {dut_interface})")
-        configure_bgp_link_local(duthost, dut_asn, peer_asn, dut_interface, is_dut=True)
+    # Configure BGP on DUT
+    logger.info(f"Configuring BGP on DUT (interface: {dut_interface})")
+    configure_bgp_link_local(duthost, dut_asn, bgp_neighbor['asn'], dut_interface, is_dut=True)
 
-        # Configure BGP on peer
-        logger.info(f"Configuring BGP on peer (interface: {peer_interface})")
-        configure_bgp_link_local(nbrhosts[peer_name], peer_asn, dut_asn, peer_interface, is_dut=False)
+    # Configure BGP on peer
+    logger.info(f"Configuring BGP on peer (interface: {peer_interface})")
+    configure_bgp_link_local(nbrhosts[peer_name], bgp_neighbor['asn'], dut_asn, peer_interface, is_dut=False)
 
-        # Wait for BGP session to establish on DUT
-        logger.info("Waiting for BGP session to establish on DUT...")
-        dut_established = wait_until(30, 1, 0, lambda: check_bgp_session_state(duthost, None, dut_interface))
-        logger.info(f"DUT BGP session established: {dut_established}")
+    # Wait for BGP session to establish on DUT
+    logger.info("Waiting for BGP session to establish on DUT...")
+    dut_established = wait_until(30, 1, 0, lambda: check_bgp_session_state(duthost, None, dut_interface))
+    logger.info(f"DUT BGP session established: {dut_established}")
 
-        # Wait for BGP session to establish on peer
-        logger.info("Waiting for BGP session to establish on peer...")
-        peer_established = wait_until(
-            30, 1, 0,
-            lambda: check_bgp_session_state(
-                nbrhosts[peer_name],
-                None,
-                peer_interface
-            )
+    # Wait for BGP session to establish on peer
+    logger.info("Waiting for BGP session to establish on peer...")
+    peer_established = wait_until(
+        30, 1, 0,
+        lambda: check_bgp_session_state(
+            nbrhosts[peer_name],
+            None,
+            peer_interface
         )
-        logger.info(f"Peer BGP session established: {peer_established}")
+    )
+    logger.info(f"Peer BGP session established: {peer_established}")
 
-        pytest_assert(dut_established, f"BGP session failed to establish on DUT (interface {dut_interface})")
-        pytest_assert(peer_established, f"BGP session failed to establish on peer (interface {peer_interface})")
+    pytest_assert(dut_established, f"BGP session failed to establish on DUT (interface {dut_interface})")
+    pytest_assert(peer_established, f"BGP session failed to establish on peer (interface {peer_interface})")
 
-        # Verify route exchange
-        def check_received_prefixes():
-            dut_cmd = f"show bgp ipv6 unicast neighbor {dut_interface} prefix-count json"
-            logger.info(f"Checking DUT received prefixes with command: {dut_cmd}")
-
-            dut_neighbor_info = json.loads(duthost.shell(f"vtysh -c '{dut_cmd}'")['stdout'])
-            logger.info(f"DUT neighbor info: {json.dumps(dut_neighbor_info, indent=2)}")
-
-            dut_received_prefixes = int(dut_neighbor_info.get('pfxCounter', 0))
-            logger.info(f"DUT received {dut_received_prefixes} prefixes from peer")
-
-            return dut_received_prefixes > 0
-
-        logger.info("Waiting for DUT to receive prefixes from peer...")
-        pytest_assert(
-            wait_until(30, 5, 0, check_received_prefixes),
-            "No prefixes received on DUT from peer after 60 seconds"
-        )
-
-    finally:
-        # Config reload will restore original configuration
-        cleanup_bgp_config(duthost, nbrhosts[peer_name], peer_name)
-        logger.info("Cleanup completed")
+    # Verify route exchange
+    logger.info("Waiting for DUT to receive prefixes from peer...")
+    pytest_assert(wait_until(60, 5, 0,
+                             lambda: get_received_prefixes(duthost, dut_interface) == received_prefixes),
+                  f"Expected {received_prefixes} prefixes received on DUT from peer after 60 seconds")
+    # Verify the bash command for received routes from the peer
+    if duthost.get_frr_mgmt_framework_config():
+        bash_cmd = f"show ipv6 bgp neighbors {dut_interface} received-routes"
+        vtysh_cmd = f"vtysh -c 'show bgp ipv6 neighbors {dut_interface} received-routes'"
+        pytest_assert(duthost.shell(bash_cmd)['stdout'] == duthost.shell(vtysh_cmd)['stdout'],
+                      "received-routes command output mismatch")
