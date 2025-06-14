@@ -13,7 +13,7 @@ jobs:
     uses: nexthop-ai/nh/.github/workflows/update-submodule-pointer.yml@main
     with:
       superproject_repo: nexthop-ai/nh
-      submodule_repo: nexthop-ai/sonic-mgmt
+      submodule_repo: ${{ github.repository }}
       submodule_path: sonic-mgmt
     secrets:
       GH_TOKEN: ${{ secrets.RABBIT_NEXTHOP_PAT }}
