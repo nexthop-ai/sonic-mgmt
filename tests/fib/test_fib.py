@@ -696,19 +696,13 @@ def test_vxlan_hash(add_default_route_to_dut, duthost, duthosts,                
 @pytest.fixture(params=["ipv4-ipv4", "ipv4-ipv6", "ipv6-ipv6", "ipv6-ipv4"])
 def nvgre_ipver(request):
     return request.param
-<<<<<<< HEAD
-def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                          # noqa F811
-                     hash_keys, ptfhost, nvgre_ipver, tbinfo, mux_server_url,             # noqa F811
-                     ignore_ttl, single_fib_for_duts, duts_running_config_facts,          # noqa F811
-                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                      # noqa F811
-=======
+
 def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                            # noqa F811
                     hash_keys, ptfhost, nvgre_ipver, tbinfo, mux_server_url,                # noqa F811
                     ignore_ttl, single_fib_for_duts, duts_running_config_facts,             # noqa F811
-                    duts_minigraph_facts, request,                                          # noqa F811
+                    duts_minigraph_facts, ecmp_inner_header_hash_supported, request,        # noqa F811
                     setup_active_active_ports, active_active_ports,                         # noqa F811
                     mux_status_from_nic_simulator):                                         # noqa F811
->>>>>>> upstream/master
 
     fib_files = fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, duts_minigraph_facts,
                                             tbinfo, request)
