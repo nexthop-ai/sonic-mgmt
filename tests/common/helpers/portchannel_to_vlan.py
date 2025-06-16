@@ -420,6 +420,7 @@ def setup_po2vlan(duthosts, ptfhost, rand_one_dut_hostname, rand_selected_dut, p
     if "bgp_asn" not in cfg_facts["DEVICE_METADATA"]["localhost"]:
         yield
         return
+    ptf_lag_map = None
     # --------------------- Setup -----------------------
     ptf_lag_map = None
     try:
