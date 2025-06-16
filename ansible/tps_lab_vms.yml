@@ -21,6 +21,7 @@ all:
     servers:
       vars:
         topologies:
+          - t0
           - t1-8
           - t1-62
           - t2-single-node-max

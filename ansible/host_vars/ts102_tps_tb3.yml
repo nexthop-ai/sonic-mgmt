@@ -2,4 +2,4 @@ mgmt_bridge: br1503
 mgmt_prefixlen: 24
 mgmt_gw: 10.249.3.1
 mgmt_gw_v6: fd00:3::1
-external_port:
+external_port: ethtest1
