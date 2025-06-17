@@ -17,6 +17,11 @@ function show_help_and_exit()
     exit $1
 }
 
+function apt_install_noninteractive()
+{
+    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y "$@"
+}
+
 DEL_EXISTED_BRIDGE=false
 BRIDGE_NAME="br1"
 BRIDGE_IP="10.250.0.1/24"
@@ -66,21 +71,21 @@ echo
 echo "STEP 2: Checking for bridge-utils package..."
 if ! command -v brctl; then
     echo "brctl not found, installing bridge-utils"
-    apt-get install -y bridge-utils
+    apt_install_noninteractive bridge-utils
 fi
 echo
 
 echo "STEP 3: Checking for net-tools package..."
 if ! command -v ifconfig; then
     echo "ifconfig not found, install net-tools"
-    apt-get install -y net-tools
+    apt_install_noninteractive net-tools
 fi
 echo
 
 echo "STEP 4: Checking for ethtool package..."
 if ! command -v ethtool; then
     echo "ethtool not found, install ethtool"
-    apt-get install -y ethtool
+    apt_install_noninteractive ethtool
 fi
 echo
 
