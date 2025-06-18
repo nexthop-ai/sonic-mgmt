@@ -841,14 +841,8 @@ def test_ecmp_group_member_flap(
     num_asic = duthosts[0].num_asics()
     asic_ns = ""
     if num_asic > 1:
-<<<<<<< HEAD
-        asic_ns = "-n asic{}".format(nh_dut_ports[0][0])
-    port_index_to_shut = 0
-    logging.info("Shutting down port {}".format(nh_dut_ports[0][1]))
-=======
         asic_ns = "-n asic{}".format(nh_dut_ports[port_index_to_shut][0])
     logging.info("Shutting down port {}".format(nh_dut_ports[port_index_to_shut][1]))
->>>>>>> upstream/master
     duthosts[0].shell("sudo config interface {} shutdown {}".format(asic_ns, nh_dut_ports[port_index_to_shut][1]))
 
     time.sleep(10)  # Allow time for the state to stabilize
