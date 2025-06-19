@@ -33,6 +33,7 @@ l2_l3:
     - "x86_64-nokia.*"
     - "x86_64-micas_m2*"
     - "x86_64-nexthop*"
+    - "x86_64-ufispace*"
 
 acl_l2:
     - "x86_64-mlnx"
