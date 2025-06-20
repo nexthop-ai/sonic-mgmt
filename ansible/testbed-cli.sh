@@ -148,12 +148,7 @@ function read_yaml
 
   tb_line=${tb_lines[0]}
   line_arr=($1)
-<<<<<<< HEAD
-
-  for attr in group-name topo ptf_image_name ptf ptf_ip ptf_ipv6 ptf_extra_mgmt_ip netns_mgmt_ip server vm_base dut inv_name auto_recover fanout comment;
-=======
-  for attr in group-name topo ptf_image_name ptf ptf_ip ptf_ipv6 ptf_extra_mgmt_ip netns_mgmt_ip server vm_base dut inv_name auto_recover comment servers upstream_neighbor_groups;
->>>>>>> upstream/master
+  for attr in group-name topo ptf_image_name ptf ptf_ip ptf_ipv6 ptf_extra_mgmt_ip netns_mgmt_ip server vm_base dut inv_name auto_recover fanout comment servers upstream_neighbor_groups;
   do
     value=$(python -c "from __future__ import print_function; tb=eval(\"$tb_line\"); print(tb.get('$attr', None))")
     [ "$value" == "None" ] && value=
@@ -176,15 +171,10 @@ function read_yaml
   dut=${line_arr[11]}
   duts=$(python -c "from __future__ import print_function; print(','.join(eval(\"$dut\")))")
   inv_name=${line_arr[12]}
-<<<<<<< HEAD
   auto_recover=${line_arr[13]}
   fanout=${line_arr[14]}
-=======
   servers=${line_arr[15]}
   upstream_neighbor_groups=${line_arr[16]}
-  # Remove the dpu duts by the keyword 'dpu' in the dut name
-  duts=$(echo $duts | sed "s/,[^,]*dpu[^,]*//g")
->>>>>>> upstream/master
 }
 
 function read_file
