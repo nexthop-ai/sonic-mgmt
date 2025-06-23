@@ -16,9 +16,11 @@ all:
           hosts:
             dvc116:
               ansible_host: 10.60.1.133
+              sonic_config_template: dvc116_fanout.j2
               os: sonic
             dvc106:
               ansible_host: 10.60.1.106
+              sonic_config_template: dvc106_fanout.j2
               os: sonic
               hwsku: ACS-SN5600
 
@@ -113,7 +115,7 @@ sonic_nh_4010:
   vars:
     hwsku: NH-4010
   hosts:
-    ge101:
+    gold103:
       ansible_host: 10.249.1.2
       ansible_hostv6: fd00:1::2
       ansible_ssh_user: admin

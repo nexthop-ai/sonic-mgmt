@@ -3,3 +3,5 @@ mgmt_prefixlen: 24
 mgmt_gw: 10.249.3.1
 mgmt_gw_v6: fd00:3::1
 external_port: ethtest1
+
+vm_console_base: 7300
