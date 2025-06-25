@@ -3,3 +3,5 @@ mgmt_prefixlen: 24
 mgmt_gw: 10.249.1.1
 mgmt_gw_v6: fd00:1::1
 external_port: enp181s0f0
+
+vm_console_base: 7100

@@ -33,7 +33,7 @@
 
 - conf-name: tps_tb3-t1-8
   group-name: tps_tb3
-  topo: t1-8
+  topo: t1-8_tps_tb3
   ptf_image_name: docker-ptf
   ptf: ptf_tps_tb3
   ptf_ip: 10.249.3.3/24

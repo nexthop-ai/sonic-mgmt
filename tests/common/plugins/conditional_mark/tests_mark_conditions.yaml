@@ -1171,9 +1171,9 @@ generic_config_updater/test_multiasic_linkcrc.py:
 
 generic_config_updater/test_pfcwd_interval.py:
   skip:
-    reason: "This test can only support mellanox platforms"
+    reason: "This test can only support mellanox and NextHop platforms"
     conditions:
-      - "asic_type not in ['mellanox']"
+      - "asic_type not in ['mellanox'] and hwsku not in broadcom_th5_hwskus"
 
 generic_config_updater/test_pfcwd_status.py:
   skip:

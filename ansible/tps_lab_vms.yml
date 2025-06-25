@@ -22,6 +22,8 @@ all:
       vars:
         topologies:
           - t0
+          - t1
+          - t2
           - t1-8
           - t1-62
           - t2-single-node-max
