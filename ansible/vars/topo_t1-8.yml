@@ -6,38 +6,38 @@ topology:
       vm_offset: 0
     ARISTA02T2:
       vlans:
-        - 2
+        - 1
       vm_offset: 1
     ARISTA03T2:
       vlans:
-        - 4
+        - 2
       vm_offset: 2
     ARISTA04T2:
       vlans:
-        - 6
+        - 3
       vm_offset: 3
     ARISTA01T0:
       vlans:
-        - 8
+        - 4
       vm_offset: 4
     ARISTA02T0:
       vlans:
-        - 10
+        - 5
       vm_offset: 5
     ARISTA03T0:
       vlans:
-        - 12
+        - 6
       vm_offset: 6
     ARISTA04T0:
       vlans:
-        - 14
+        - 7
       vm_offset: 7
 
 configuration_properties:
   common:
     dut_asn: 65100
     dut_type: LeafRouter
-    nhipv4: 10.10.243.254
+    nhipv4: 10.10.246.254
     nhipv6: FC0A::FF
     podset_number: 200
     tor_number: 4
@@ -68,7 +68,7 @@ configuration:
         ipv4: 10.0.0.1/31
         ipv6: fc00::2/126
     bp_interface:
-      ipv4: 10.10.243.1/24
+      ipv4: 10.10.246.1/24
       ipv6: fc0a::2/64
 
   ARISTA02T2:
@@ -89,7 +89,7 @@ configuration:
         ipv4: 10.0.0.3/31
         ipv6: fc00::6/126
     bp_interface:
-      ipv4: 10.10.243.2/24
+      ipv4: 10.10.246.2/24
       ipv6: fc0a::5/64
 
   ARISTA03T2:
@@ -110,7 +110,7 @@ configuration:
         ipv4: 10.0.0.5/31
         ipv6: fc00::a/126
     bp_interface:
-      ipv4: 10.10.243.3/24
+      ipv4: 10.10.246.3/24
       ipv6: fc0a::6/64
 
   ARISTA04T2:
@@ -131,9 +131,8 @@ configuration:
         ipv4: 10.0.0.7/31
         ipv6: fc00::e/126
     bp_interface:
-      ipv4: 10.10.243.4/24
+      ipv4: 10.10.246.4/24
       ipv6: fc0a::9/64
-
 
   ARISTA01T0:
     properties:
@@ -159,7 +158,7 @@ configuration:
         ipv4: 10.0.0.33/31
         ipv6: fc00::42/126
     bp_interface:
-      ipv4: 10.10.243.17/24
+      ipv4: 10.10.246.17/24
       ipv6: fc0a::22/64
 
   ARISTA02T0:
@@ -181,7 +180,7 @@ configuration:
         ipv4: 10.0.0.35/31
         ipv6: fc00::46/126
     bp_interface:
-      ipv4: 10.10.243.18/24
+      ipv4: 10.10.246.18/24
       ipv6: fc0a::25/64
 
   ARISTA03T0:
@@ -208,7 +207,7 @@ configuration:
         ipv4: 10.0.0.37/31
         ipv6: fc00::4a/126
     bp_interface:
-      ipv4: 10.10.243.19/24
+      ipv4: 10.10.246.19/24
       ipv6: fc0a::26/64
 
   ARISTA04T0:
@@ -230,5 +229,5 @@ configuration:
         ipv4: 10.0.0.39/31
         ipv6: fc00::4e/126
     bp_interface:
-      ipv4: 10.10.243.20/24
+      ipv4: 10.10.246.20/24
       ipv6: fc0a::29/64

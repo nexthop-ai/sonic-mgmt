@@ -9,7 +9,7 @@
   server: server_ts107_tps_tb1
   vm_base: VM0100
   dut:
-    - ge101
+    - gold103
   inv_name: tps_lab
   fanout: dvc106
   auto_recover: 'False'
