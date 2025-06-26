@@ -134,20 +134,34 @@ bfd/test_bfd_traffic.py:
 #######################################
 bgp/test_bgp_allow_list.py:
   skip:
-    reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported."
+    reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported. BGP_ALLOWED_PREFIXES is not supported in unified management framework."
     conditions_logical_operator: or
     conditions:
       - "'t1' not in topo_type"
       - "platform in ['x86_64-8111_32eh_o-r0', 'x86_64-8122_64eh_o-r0', 'x86_64-8122_64ehf_o-r0']"
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_bbr.py:
   skip:
-    reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported."
+    reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported. BGP_BBR is not supported in unified management framework."
     conditions_logical_operator: or
     conditions:
       - "'t1' not in topo_type"
       - "platform in ['x86_64-8111_32eh_o-r0', 'x86_64-8122_64eh_o-r0', 'x86_64-8122_64ehf_o-r0']"
       - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-mgmt/issues/17598"
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_bbr_default_state.py:
+  skip:
+    reason: "BGP_BBR is not supported in unified management framework"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_dual_asn.py:
+  skip:
+    reason: "BGP_PEER_RANGE is not supported in unified management framework"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_gr_helper.py:
   skip:
@@ -164,6 +178,12 @@ bgp/test_bgp_multipath_relax.py:
     conditions:
       - "'backend' in topo_name"
       - "'t1-isolated' in topo_name"
+
+bgp/test_bgp_operation_in_ro.py::test_bgp_operations_in_ro:
+  skip:
+    reason: "Not supported before release 202503."
+    conditions:
+      - "release in ['201811', '201911', '202012', '202205', '202211', '202305', '202311', '202405', '202411']"
 
 bgp/test_bgp_port_disable.py:
   skip:
@@ -201,9 +221,11 @@ bgp/test_bgp_slb.py::test_bgp_slb_neighbor_persistence_across_advanced_reboot:
 
 bgp/test_bgp_speaker.py:
   skip:
-    reason: "Not supported on topology backend."
+    reason: "Not supported on topology backend or BGP_PEER_RANGE is not supported in unified management framework."
+    conditions_logical_operator: or
     conditions:
       - "'backend' in topo_name"
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_suppress_fib.py:
   skip:
@@ -215,13 +237,27 @@ bgp/test_bgp_suppress_fib.py:
 
 bgp/test_bgpmon.py:
   skip:
-    reason: "Not supported on T2 topology or topology backend"
+    reason: "Not supported on T2 topology or topology backend or BGP_MONITORS is not supported in unified management framework."
+    conditions_logical_operator: or
     conditions:
       - "'backend' in topo_name or 't2' in topo_name"
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgpmon_v6.py:
+  skip:
+    reason: "BGP_MONITORS is not supported in unified management framework"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgpmon_v6.py::test_bgpmon_no_ipv6_resolve_via_default:
   skip:
     reason: "Not applicable for passive bgpmon_v6"
+
+bgp/test_startup_tsa_tsb_service.py:
+  skip:
+    reason: "TSA/TSB/TSC is not supported in unified management framework"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_startup_tsa_tsb_service.py::test_tsa_tsb_service_with_supervisor_abnormal_reboot:
   skip:
@@ -246,6 +282,12 @@ bgp/test_startup_tsa_tsb_service.py::test_user_init_tsb_on_sup_while_service_run
     reason: "Not supported on T2 single node topology"
     conditions:
       - "'t2_single_node' in topo_name"
+
+bgp/test_traffic_shift.py:
+  skip:
+    reason: "TSA/TSB/TSC is supported in unified management framework"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_traffic_shift.py::test_load_minigraph_with_traffic_shift_away:
   skip:
