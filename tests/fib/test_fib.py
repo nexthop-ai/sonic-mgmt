@@ -885,8 +885,6 @@ def test_ecmp_group_member_flap(
         is_python3=True
     )
 
-    filtered_ports.pop()
-
     # --- Bring the port back up and verify ---
     logging.info("Bringing the uplink port back up.")
 
