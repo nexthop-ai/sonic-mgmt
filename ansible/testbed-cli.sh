@@ -173,8 +173,9 @@ function read_yaml
   inv_name=${line_arr[12]}
   auto_recover=${line_arr[13]}
   fanout=${line_arr[14]}
-  servers=${line_arr[15]}
-  upstream_neighbor_groups=${line_arr[16]}
+  comment=${line_arr[15]}
+  servers=${line_arr[16]}
+  upstream_neighbor_groups=${line_arr[17]}
 }
 
 function read_file
