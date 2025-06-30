@@ -7,6 +7,7 @@ import pytest
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.config_reload import config_reload
+from tests.common.devices.eos import EosHost
 from tests.common.gu_utils import (
     generate_tmpfile,
     delete_tmpfile,
@@ -78,6 +79,113 @@ def configure_community_route_map(host, route_map_name="COMM_LOCAL_PREF", commun
         host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
 
 
+def configure_peer_community_route_map(host, route_map_name="SET_COMMUNITY", community="1234:5678",
+                                       dut_addr=None, peer_asn=None):
+    """
+    Configure route-map on peer to set community on outbound routes to DUT
+    """
+    logger.info(f"Configuring peer route-map {route_map_name} to set community {community} with peer ASN {peer_asn}")
+
+    # Get the actual host object if it's wrapped in NeighborDevice
+    actual_host = host
+    if isinstance(host, dict) and 'host' in host:
+        # NeighborDevice is a dict with 'host' key containing the actual host object
+        actual_host = host['host']
+    elif hasattr(host, 'host'):
+        actual_host = host.host
+
+    # Check if this is an EOS host
+    if isinstance(actual_host, EosHost):
+        # EOS configuration - split into two parts to ensure route-map exists before applying
+        # First, create the route-map using parents parameter
+        logger.info(f"Creating route-map {route_map_name} on EOS peer")
+        actual_host.eos_config(
+            lines=[f"set community {community}"],
+            parents=[f"route-map {route_map_name} permit 10"]
+        )
+
+        # Verify route-map was created
+        try:
+            result = actual_host.eos_command(commands=[f"show route-map {route_map_name}"])
+            logger.info(f"Route-map verification: {result}")
+        except Exception as e:
+            logger.warning(f"Could not verify route-map: {e}")
+
+        # Then, apply it to the BGP neighbor using parents parameter
+        actual_host.eos_config(
+            lines=[
+                f"neighbor {dut_addr} route-map {route_map_name} out",
+                f"neighbor {dut_addr} send-community",  # EOS syntax: just "send-community"
+            ],
+            parents=[f"router bgp {peer_asn}"]
+        )
+    else:
+        # Sonic/FRR configuration
+        commands = [
+            "configure terminal",
+            f"route-map {route_map_name} permit 10",
+            f"set community {community}",
+            "exit",
+            f"router bgp {peer_asn}",
+            f"neighbor {dut_addr} route-map {route_map_name} out",
+            f"neighbor {dut_addr} send-community both",  # FRR syntax: "send-community both"
+            "end"
+        ]
+        logger.info(f"Configuring Sonic peer with ASN {peer_asn}, commands: {commands}")
+        actual_host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
+
+
+def cleanup_peer_community_route_map(host, route_map_name="SET_COMMUNITY", dut_addr=None, peer_asn=None):
+    """
+    Remove route-map configuration from peer
+    """
+    logger.info(f"Cleaning up peer route-map {route_map_name} with peer ASN {peer_asn}")
+
+    # Get the actual host object if it's wrapped in NeighborDevice
+    actual_host = host
+    if isinstance(host, dict) and 'host' in host:
+        # NeighborDevice is a dict with 'host' key containing the actual host object
+        actual_host = host['host']
+    elif hasattr(host, 'host'):
+        actual_host = host.host
+
+    # Check if this is an EOS host
+    if isinstance(actual_host, EosHost):
+        # EOS configuration - split cleanup into two parts
+        # First, remove BGP neighbor configuration using parents parameter
+        logger.info("Removing BGP neighbor config on EOS peer")
+        try:
+            actual_host.eos_config(
+                lines=[
+                    f"no neighbor {dut_addr} route-map {route_map_name} out",
+                    f"no neighbor {dut_addr} send-community",  # EOS syntax: just "send-community"
+                ],
+                parents=[f"router bgp {peer_asn}"]
+            )
+        except Exception as e:
+            logger.warning(f"Failed to remove BGP neighbor config: {e}")
+
+        # Then, remove the route-map
+        logger.info("Removing route-map on EOS peer")
+        try:
+            actual_host.eos_config(lines=[f"no route-map {route_map_name}"])
+        except Exception as e:
+            logger.warning(f"Failed to remove route-map: {e}")
+    else:
+        # Sonic/FRR configuration
+        commands = [
+            "configure terminal",
+            f"router bgp {peer_asn}",
+            f"no neighbor {dut_addr} route-map {route_map_name} out",
+            f"no neighbor {dut_addr} send-community both",  # FRR syntax: "send-community both"
+            "exit",
+            f"no route-map {route_map_name}",
+            "end"
+        ]
+        logger.info(f"Cleaning up Sonic peer with ASN {peer_asn}, commands: {commands}")
+        actual_host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
+
+
 def get_multi_path_routes(host, peer_addr):
     """
     Get routes that are learned from multiple peers, including the specified peer
@@ -122,9 +230,10 @@ def test_bgp_community_local_pref(duthosts, rand_one_dut_hostname, nbrhosts, tbi
 
     Test steps:
     1. Find routes that are learned from multiple peers
-    2. Configure route-map on DUT to match existing communities and set local-pref to 0
-    3. Apply route-map to target peer
-    4. Verify routes are still being learned from other peers with original local preference
+    2. Configure route-map on remote peer to set a specific community on outbound routes
+    3. Configure route-map on DUT to match that community and set local-pref to 0
+    4. Apply route-map to target peer
+    5. Verify routes are still being learned from other peers with original local preference
 
     Expected results:
     - Routes from the target peer should have local preference 0
@@ -143,58 +252,87 @@ def test_bgp_community_local_pref(duthosts, rand_one_dut_hostname, nbrhosts, tbi
     # Find a suitable peer
     peer_name = None
     peer_addr = None
+    peer_host = None
+    peer_asn = None
     for neighbor in bgp_neighbors:
         if neighbor['name'] in nbrhosts:
             peer_name = neighbor['name']
             peer_addr = neighbor['addr']
+            peer_host = nbrhosts[peer_name]
+            peer_asn = neighbor['asn']  # Get the peer's ASN from minigraph
             break
 
     pytest_assert(peer_name is not None, "Could not find suitable peer")
+    logger.info(f"Selected peer: {peer_name} (ASN: {peer_asn}, Address: {peer_addr})")
 
     # Get multi-path routes that include our target peer
     multi_path_routes = get_multi_path_routes(duthost, peer_addr)
     pytest_assert(multi_path_routes, "No multi-path routes found")
 
     test_route = multi_path_routes[0]
-    logger.info(f"Using multi-path route {test_route['prefix']} for testing")
 
-    # Get existing communities from the peer's routes
-    # Use the get_route method from SonicHost to get route information
-    route_info = duthost.get_route(test_route['prefix'])
+    # Use a specific community that we will configure on the peer
+    test_community = "1234:5678"
 
-    # Find path from our target peer and get its communities
-    peer_path = None
-    for path in route_info.get('paths', []):
-        nexthops = path.get('nexthops', [])
-        if nexthops and any(nh.get('ip') == peer_addr for nh in nexthops):
-            peer_path = path
+    # Get DUT's interface IP address that connects to this specific peer
+    dut_addr = None
+    for neighbor in bgp_neighbors:
+        if neighbor['name'] == peer_name:
+            dut_addr = neighbor.get('local_addr')
+            if dut_addr:
+                logger.info(f"Found DUT local address {dut_addr} for peer {peer_name}")
             break
 
-    pytest_assert(peer_path is not None, f"Could not find path from peer {peer_addr}")
+    if not dut_addr:
+        # Fallback: try to find the interface IP from minigraph interfaces
+        # Look for the interface that connects to this peer
+        import ipaddress
+        interfaces = mg_facts.get('minigraph_interfaces', []) + mg_facts.get('minigraph_portchannel_interfaces', [])
+        for interface in interfaces:
+            # Check if this interface subnet contains the peer address
+            try:
+                interface_network = ipaddress.ip_network(f"{interface['addr']}/{interface['prefixlen']}", strict=False)
+                peer_ip = ipaddress.ip_address(peer_addr)
+                if peer_ip in interface_network:
+                    dut_addr = interface['addr']
+                    logger.info(f"Found DUT interface address {dut_addr} for peer {peer_addr} via subnet matching")
+                    break
+            except Exception as e:
+                logger.debug(f"Failed to check interface {interface.get('addr', 'unknown')}: {e}")
+                continue
 
-    # Get community from the path - handle the specific format
-    communities = peer_path.get('community', {})
-    community = communities['list'][0] if communities and 'list' in communities else None
+        if not dut_addr:
+            logger.error("Could not determine DUT interface address for peer configuration")
+            pytest_assert(False, f"Could not determine DUT interface address for peer {peer_name} ({peer_addr})")
 
-    pytest_assert(community is not None, f"No communities found in routes from peer {peer_addr}")
-    logger.info(f"Using existing community {community} for route-map")
+    peer_route_map_name = "SET_COMMUNITY"
+    dut_route_map_name = "COMM_LOCAL_PREF"
+
+    logger.info("Configuration summary: ")
+    logger.info(f"  Peer: {peer_name} (ASN: {peer_asn}, Address: {peer_addr})")
+    logger.info(f"  DUT interface address for peer: {dut_addr}")
+    logger.info(f"  Test community: {test_community}")
 
     try:
-        # Configure route-map to match existing community
-        route_map_name = "COMM_LOCAL_PREF"
-        configure_community_route_map(duthost, route_map_name, community, is_dut=True)
+        # Step 1: Configure route-map on peer to set community on outbound routes
+        configure_peer_community_route_map(peer_host, peer_route_map_name, test_community, dut_addr, peer_asn)
 
-        # Apply route-map to peer
+        # Step 2: Configure route-map on DUT to match community and set local preference
+        configure_community_route_map(duthost, dut_route_map_name, test_community, is_dut=True)
+
+        # Step 3: Apply route-map to peer on DUT
         if duthost.get_frr_mgmt_framework_config():
             json_patch = [
                 {
                     "op": "add",
-                    "path": f"/BGP_NEIGHBOR/{peer_addr}",
+                    "path": f"/BGP_NEIGHBOR/default|{peer_addr}",
                     "value": {
-                        "route_map_in": route_map_name
+                        "route_map_in": dut_route_map_name
                     }
                 }
             ]
+
+            json_patch = format_json_patch_for_multiasic(duthost=duthost, json_data=json_patch, is_asic_specific=True)
             tmpfile = generate_tmpfile(duthost)
             try:
                 output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
@@ -206,7 +344,7 @@ def test_bgp_community_local_pref(duthosts, rand_one_dut_hostname, nbrhosts, tbi
                 "configure terminal",
                 f"router bgp {dut_asn}",
                 "address-family ipv4 unicast",
-                f"neighbor {peer_addr} route-map {route_map_name} in",
+                f"neighbor {peer_addr} route-map {dut_route_map_name} in",
                 "end"
             ]
             duthost.shell("vtysh -c '" + "' -c '".join(commands) + "'")
@@ -270,5 +408,11 @@ def test_bgp_community_local_pref(duthosts, rand_one_dut_hostname, nbrhosts, tbi
             pytest.fail("Route path verification failed")
 
     finally:
-        # Config reload will restore original configuration
+        # Clean up peer configuration first
+        try:
+            cleanup_peer_community_route_map(peer_host, peer_route_map_name, dut_addr, peer_asn)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup peer configuration: {e}")
+
+        # Config reload will restore original configuration on DUT
         config_reload(duthost, config_source='config_db', wait=60)
