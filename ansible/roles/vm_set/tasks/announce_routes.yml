@@ -127,5 +127,9 @@
       ptf_ip: "{{ ptf_host_ip }}"
       dut_interfaces: "{{ dut_interfaces | default('') }}"
       upstream_neighbor_groups: "{{ upstream_neighbor_groups | default(0) | int }}"
+<<<<<<< HEAD
+=======
+      downstream_neighbor_groups: "{{ downstream_neighbor_groups | default(0) | int }}"
+>>>>>>> upstream/master
     delegate_to: localhost
   when: exabgp_action == 'start'

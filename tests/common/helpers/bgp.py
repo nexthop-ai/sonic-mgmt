@@ -28,8 +28,11 @@ def run_bgp_facts(duthost, enum_asic_index):
     sonic_db_cmd = "sonic-db-cli {}".format("-n " + namespace if namespace else "")
     for k, v in list(bgp_facts['bgp_neighbors'].items()):
         # Verify bgp sessions are established
-        assert v['state'] == 'established'
+        assert v['state'] == 'established', (
+            "BGP session not established for neighbor. Expected 'established', got '{}'."
+        ).format(v['state'])
         # Verify local ASNs in bgp sessions
+<<<<<<< HEAD
         assert v['local AS'] == int(config_facts['DEVICE_METADATA']['localhost']['bgp_asn'].encode().decode("utf-8"))
         if duthost.get_frr_mgmt_framework_config():
             # bgpmon is part of bgpcfgd and not applicable for frr mgmt
@@ -44,6 +47,33 @@ def run_bgp_facts(duthost, enum_asic_index):
                                       module_ignore_errors=False)['stdout_lines']
             assert state_fact[0] == "Established"
             assert peer_type[0] == "i-BGP" if v['remote AS'] == v['local AS'] else "e-BGP"
+=======
+        assert v['local AS'] == int(config_facts['DEVICE_METADATA']['localhost']['bgp_asn'].encode().decode("utf-8")), (
+            "Local AS mismatch for neighbor. Expected '{}', got '{}'."
+        ).format(
+            int(config_facts['DEVICE_METADATA']['localhost']['bgp_asn'].encode().decode("utf-8")),
+            v['local AS']
+        )
+        # Check bgpmon functionality by validate STATE DB contains this neighbor as well
+        state_fact = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "state"'
+                                   .format(sonic_db_cmd, k), module_ignore_errors=False)['stdout_lines']
+        peer_type = duthost.shell('{} STATE_DB HGET "NEIGH_STATE_TABLE|{}" "peerType"'
+                                  .format(sonic_db_cmd, k),
+                                  module_ignore_errors=False)['stdout_lines']
+        assert state_fact[0] == "Established", (
+            "BGP neighbor state in STATE_DB is not 'Established' for neighbor. "
+            "Expected: 'Established', got: '{}'."
+        ).format(
+            state_fact[0] if state_fact else "No state found"
+        )
+        assert peer_type[0] == ("i-BGP" if v['remote AS'] == v['local AS'] else "e-BGP"), (
+            "BGP peer type mismatch for neighbor. "
+            "Expected '{}', got '{}'."
+        ).format(
+            "i-BGP" if v['remote AS'] == v['local AS'] else "e-BGP",
+            peer_type[0] if peer_type else "No peer type found"
+        )
+>>>>>>> upstream/master
 
     # In multi-asic, would have 'BGP_INTERNAL_NEIGHBORS' and possibly no 'BGP_NEIGHBOR' (ebgp) neighbors.
     nbrs_in_cfg_facts = {}
@@ -55,9 +85,21 @@ def run_bgp_facts(duthost, enum_asic_index):
 
     for k, v in list(neighbors.items()):
         # Compare the bgp neighbors name with config db bgp neighbors name
-        assert v['name'] == bgp_facts['bgp_neighbors'][k]['description']
+        assert v['name'] == bgp_facts['bgp_neighbors'][k]['description'], (
+            "BGP neighbor name mismatch for neighbor. "
+            "Expected '{}', got '{}'."
+        ).format(
+            v['name'],
+            bgp_facts['bgp_neighbors'][k]['description']
+        )
         # Compare the bgp neighbors ASN with config db
-        assert int(v['asn'].encode().decode("utf-8")) == bgp_facts['bgp_neighbors'][k]['remote AS']
+        assert int(v['asn'].encode().decode("utf-8")) == bgp_facts['bgp_neighbors'][k]['remote AS'], (
+            "BGP remote AS number mismatch for neighbor. "
+            "Expected remote AS: '{}', got: '{}'."
+        ).format(
+            int(v['asn'].encode().decode("utf-8")),
+            bgp_facts['bgp_neighbors'][k]['remote AS']
+        )
 
 
 def get_bgp_neighbors_from_config_facts(duthost, config_facts, vrf_name="default"):
@@ -195,7 +237,11 @@ class BGPNeighbor(object):
         url = "http://%s:%d" % (self.ptfip, self.port)
         resp = requests.post(url, data={"commands": msg}, proxies={"http": None, "https": None})
         logging.debug("teardown session return: %s" % resp)
-        assert resp.status_code == 200
+        assert resp.status_code == 200, (
+            "Expected HTTP 200 from exabgp API, but got {}."
+        ).format(
+            resp.status_code
+        )
 
         self.ptfhost.exabgp(name=self.name, state="stopped")
         if not self.is_passive:
@@ -219,7 +265,11 @@ class BGPNeighbor(object):
         url = "http://%s:%d" % (self.ptfip, self.port)
         resp = requests.post(url, data={"commands": msg}, proxies={"http": None, "https": None})
         logging.debug("announce return: %s", resp)
-        assert resp.status_code == 200
+        assert resp.status_code == 200, (
+            "Expected HTTP 200 from exabgp API, but got {}."
+        ).format(
+            resp.status_code
+        )
 
     def withdraw_route(self, route):
         if "aspath" in route:
@@ -231,7 +281,11 @@ class BGPNeighbor(object):
         url = "http://%s:%d" % (self.ptfip, self.port)
         resp = requests.post(url, data={"commands": msg}, proxies={"http": None, "https": None})
         logging.debug("withdraw return: %s", resp)
-        assert resp.status_code == 200
+        assert resp.status_code == 200, (
+            "Expected HTTP 200 from exabgp API, but got {}."
+        ).format(
+            resp.status_code
+        )
 
     def announce_routes_batch(self, routes):
         commands = []
@@ -253,7 +307,11 @@ class BGPNeighbor(object):
         url = "http://%s:%d" % (self.ptfip, self.port)
         resp = requests.post(url, data={"commands": full_cmd}, proxies={"http": None, "https": None})
         logging.debug("announce return: %s", resp)
-        assert resp.status_code == 200
+        assert resp.status_code == 200, (
+            "Expected HTTP 200 from exabgp API, but got {}."
+        ).format(
+            resp.status_code
+        )
 
     def withdraw_routes_batch(self, routes):
         commands = []
@@ -275,4 +333,8 @@ class BGPNeighbor(object):
         url = "http://%s:%d" % (self.ptfip, self.port)
         resp = requests.post(url, data={"commands": full_cmd}, proxies={"http": None, "https": None})
         logging.debug("announce return: %s", resp)
-        assert resp.status_code == 200
+        assert resp.status_code == 200, (
+            "Expected HTTP 200 from exabgp API, but got {}."
+        ).format(
+            resp.status_code
+        )
