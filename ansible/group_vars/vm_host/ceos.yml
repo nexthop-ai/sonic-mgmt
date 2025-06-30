@@ -6,6 +6,5 @@ ceos_image: ceosimage:4.32.5M-1
 # The ceos_image_url can be a string as single URL or a list of strings as multiple URLs. If it is a list, the code
 # logic will automatically try each URL in the list
 ceos_image_url:
-  - "http://example1.com/cEOS64-lab-4.32.5M.tar"
-  - "http://example2.com/cEOS64-lab-4.32.5M.tar"
+  - "http://ts105:8001/cEOS64-lab-4.32.5M.tar"
 skip_ceos_image_downloading: false
