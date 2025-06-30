@@ -497,20 +497,12 @@ def setup_active_active_ports(
 
     return
 
-<<<<<<< HEAD
-def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noqa F811
-              hash_keys, ptfhost, ipver, toggle_all_simulator_ports_to_rand_selected_tor_m,     # noqa F811
-              updated_tbinfo, mux_server_url, mux_status_from_nic_simulator, ignore_ttl,        # noqa F811
-              single_fib_for_duts, duts_running_config_facts, duts_minigraph_facts,             # noqa F811
-              setup_active_active_ports, active_active_ports, request):                         # noqa F811
-=======
 
 def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noqa: F811
               hash_keys, ptfhost, ipver, toggle_all_simulator_ports_to_rand_selected_tor_m,     # noqa: F811
               updated_tbinfo, mux_server_url, mux_status_from_nic_simulator, ignore_ttl,        # noqa: F811
               single_fib_for_duts, duts_running_config_facts, duts_minigraph_facts,             # noqa: F811
               setup_active_active_ports, active_active_ports, request):                         # noqa: F811
->>>>>>> upstream/master
 
     if 'dualtor' in updated_tbinfo['topo']['name']:
         wait(30, 'Wait some time for mux active/standby state to be stable after toggled mux state')
@@ -560,19 +552,12 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
 
 # The test case is to verify src-ip, dst-ip, src-port, dst-port and ip-proto of inner_frame in a IPinIP packet are
 # used as hash keys
-<<<<<<< HEAD
-def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa F811
-                     hash_keys, ptfhost, ipver, tbinfo, mux_server_url,             # noqa F811
-                     ignore_ttl, single_fib_for_duts, duts_running_config_facts,    # noqa F811
-                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                # noqa F811
-=======
 
 
 def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa: F811
                      hash_keys, ptfhost, ipver, tbinfo, mux_server_url,             # noqa: F811
                      ignore_ttl, single_fib_for_duts, duts_running_config_facts,    # noqa: F811
-                     duts_minigraph_facts, request):                                # noqa: F811
->>>>>>> upstream/master
+                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):                                # noqa: F811
     # Only run this test on T1 or T0 (including dualtor) topologies
     pytest_require(tbinfo['topo']['type'] in ['t1', 't0'], "The test case runs on T1 or T0 topology")
     logging.info(f"Topology type: {tbinfo['topo']['type']}")
@@ -722,22 +707,13 @@ def test_vxlan_hash(add_default_route_to_dut, duthost, duthosts,                
 def nvgre_ipver(request):
     return request.param
 
-<<<<<<< HEAD
-def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                            # noqa F811
-                    hash_keys, ptfhost, nvgre_ipver, tbinfo, mux_server_url,                # noqa F811
-                    ignore_ttl, single_fib_for_duts, duts_running_config_facts,             # noqa F811
-                    duts_minigraph_facts, ecmp_inner_header_hash_supported, request,        # noqa F811
-                    setup_active_active_ports, active_active_ports,                         # noqa F811
-                    mux_status_from_nic_simulator):                                         # noqa F811
-=======
 
 def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                            # noqa: F811
                     hash_keys, ptfhost, nvgre_ipver, tbinfo, mux_server_url,                # noqa: F811
                     ignore_ttl, single_fib_for_duts, duts_running_config_facts,             # noqa: F811
-                    duts_minigraph_facts, request,                                          # noqa: F811
+                    duts_minigraph_facts, ecmp_inner_header_hash_supported, request,        # noqa: F811
                     setup_active_active_ports, active_active_ports,                         # noqa: F811
                     mux_status_from_nic_simulator):                                         # noqa: F811
->>>>>>> upstream/master
 
     fib_files = fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, duts_minigraph_facts,
                                             tbinfo, request)

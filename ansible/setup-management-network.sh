@@ -21,11 +21,6 @@ function apt_install_noninteractive()
 {
     DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y "$@"
 }
-<<<<<<< HEAD
-=======
-
-DEL_EXISTED_BRIDGE=false
->>>>>>> upstream/master
 
 DEL_EXISTED_BRIDGE=false
 BRIDGE_NAME="br1"
