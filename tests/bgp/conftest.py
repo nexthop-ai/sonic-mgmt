@@ -29,6 +29,7 @@ from tests.common.devices.sonic import SonicHost
 from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
 
 logger = logging.getLogger(__name__)
+_original_dut_frr_mgmt_modes = None
 
 
 def check_results(results):
@@ -45,6 +46,151 @@ def check_results(results):
     if failed_results:
         logger.error('failed_results => {}'.format(json.dumps(failed_results, indent=2)))
         pt_assert(False, 'Some processes for updating nbr hosts configuration returned failed results')
+
+
+def _check_if_module_skipped_for_mode(request, frr_mgmt_config):
+    try:
+        module_name = request.module.__name__
+        # Extract module path from the file path (relative to tests directory)
+        fspath_str = str(request.fspath)
+        if '/tests/' in fspath_str:
+            module_path = fspath_str.split('/tests/')[-1]
+        else:
+            module_path = module_name.replace('.', '/') + '.py'
+
+        # Check if this module has skip conditions for frr_mgmt_config
+        session = request.session
+        config = session.config
+        # Get cached conditions from conditional_mark plugin
+        conditions = config.cache.get('TESTS_MARK_CONDITIONS', None)
+        if not conditions:
+            return False
+
+        found_conditions = None
+        # Search through the list of condition dictionaries
+        for condition_dict in conditions:
+            condition_entry = list(condition_dict.keys())[0]
+            if condition_entry == module_path or module_path.startswith(condition_entry):
+                found_conditions = condition_dict[condition_entry]
+                break
+
+        if found_conditions and 'skip' in found_conditions:
+            skip_conditions = found_conditions['skip'].get('conditions', [])
+            # Check if any condition mentions frr_mgmt_config
+            for condition in skip_conditions:
+                if isinstance(condition, str) and 'frr_mgmt_config' in condition:
+                    if frr_mgmt_config == 'true' and "frr_mgmt_config == 'true'" in condition:
+                        logger.info(f"Module {module_path} is marked to skip for frr_mgmt_config='true'")
+                        return True
+                    elif frr_mgmt_config == 'false' and "frr_mgmt_config == 'false'" in condition:
+                        logger.info(f"Module {module_path} is marked to skip for frr_mgmt_config='false'")
+                        return True
+
+        return False
+
+    except Exception as e:
+        logger.warning(f"Could not determine module skip status for frr_mgmt_config='{frr_mgmt_config}': {e}")
+        return False
+
+
+@pytest.fixture(scope='module', autouse=True, params=[
+    {'frr_mgmt_config': 'false', 'routing_config_mode': 'separated', 'mode_name': 'legacy-mode'},
+    {'frr_mgmt_config': 'true', 'routing_config_mode': 'unified', 'mode_name': 'unified-mode'}
+], ids=['legacy-mode', 'unified-mode'])
+def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
+    global _original_dut_frr_mgmt_modes
+    duthost = duthosts[rand_one_dut_hostname]
+    config_params = request.param
+    test_routing_cfg_mode = config_params['routing_config_mode']
+    test_frr_mgmt_mode = config_params['frr_mgmt_config']
+
+    logger.info(f"{'=' * 30} Testing in {config_params['mode_name'].upper()} mode {'=' * 30}")
+
+    # Check if module is marked to be skipped for this mode to avoid unnecessary switching
+    if _check_if_module_skipped_for_mode(request, test_frr_mgmt_mode):
+        logger.info(f"Skipping mode switch to {config_params['mode_name']} - \
+                    module marked to skip for {test_frr_mgmt_mode} mode")
+        pytest.skip(f"Module is marked to skip for {config_params['mode_name']} mode")
+        return
+
+    # Helper function to get current configuration
+    def get_current_frr_mgmt_modes():
+        routing_mode = duthost.shell("redis-cli -n 4 HGET \"DEVICE_METADATA|localhost\" \
+                                    \"docker_routing_config_mode\"")['stdout'].strip()
+        frr_mgmt_output = duthost.shell("redis-cli -n 4 HGET \"DEVICE_METADATA|localhost\" \
+                                       \"frr_mgmt_framework_config\"")['stdout'].strip()
+        frr_mgmt_mode = 'true' if frr_mgmt_output == 'true' else 'false'
+        logger.info(f"Current dut routing_cfg_mode: {routing_mode}, frr_mgmt_mode: {frr_mgmt_mode}")
+        return routing_mode, frr_mgmt_mode
+
+    # Helper function to execute migration command
+    def execute_migration(routing_cfg_mode, frr_mgmt_mode, operation_name="Migration"):
+        cmd = f"sudo /usr/local/bin/frr_unified_cfg_mgmt_migrator.py --routing_config_mode='{routing_cfg_mode}' \
+              --frr_mgmt_config='{frr_mgmt_mode}' --config_reload='true'"
+
+        logger.info(f"Executing {operation_name.lower()} command: {cmd}")
+        output = duthost.shell(cmd, module_ignore_errors=True)
+
+        # Log output appropriately
+        if output.get('stdout'):
+            logger.info(f"{operation_name} output: {output['stdout']}")
+        if output.get('stderr'):
+            logger.warning(f"{operation_name} stderr: {output['stderr']}")
+
+        # Check for failure
+        if output.get('rc', 0) != 0:
+            logger.error(f"{operation_name} failed with return code {output.get('rc', 'unknown')}")
+            if output.get('stderr'):
+                logger.error(f"{operation_name} error: {output['stderr']}")
+            return False
+
+        # Wait for BGP sessions to come up
+        config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+        bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
+
+        if not wait_until(300, 10, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
+            logger.error(f"Not all BGP sessions are up after {operation_name.lower()}")
+            return False
+
+        logger.info(f"All BGP sessions are up after {operation_name.lower()}")
+        return True
+
+    # Get current configuration
+    dut_routing_cfg_mode, dut_frr_mgmt_mode = get_current_frr_mgmt_modes()
+    # Store original configuration only once
+    if _original_dut_frr_mgmt_modes is None:
+        _original_dut_frr_mgmt_modes = {
+            'routing_config_mode': dut_routing_cfg_mode,
+            'frr_mgmt_config': dut_frr_mgmt_mode
+        }
+
+    if (dut_routing_cfg_mode == test_routing_cfg_mode) and (dut_frr_mgmt_mode == test_frr_mgmt_mode):
+        logger.info(f"DUT already in {config_params['mode_name']} mode - no changes needed")
+    else:
+        # Execute migrator script
+        if not execute_migration(test_routing_cfg_mode, test_frr_mgmt_mode, f"{config_params['mode_name']} switch"):
+            pytest.fail(f"Failed to switch DUT to {config_params['mode_name']} mode")
+
+    yield
+
+    # Only restore after the last mode has been tested
+    if config_params['mode_name'] == 'unified-mode':
+        logger.info(f"{'=' * 30} Restoring original frr mgmt mode {'=' * 30}")
+        # Get current configuration
+        current_routing_mode, current_frr_mgmt_mode = get_current_frr_mgmt_modes()
+
+        # Check if restoration is needed
+        if (current_routing_mode == _original_dut_frr_mgmt_modes['routing_config_mode'] and
+                current_frr_mgmt_mode == _original_dut_frr_mgmt_modes['frr_mgmt_config']):
+            logger.info("DUT already in original frr mgmt config mode - no restoration needed")
+        else:
+            logger.info(f"Restoring DUT to original frr mgmt config mode: {_original_dut_frr_mgmt_modes}")
+            # Execute restoration
+            if not execute_migration(_original_dut_frr_mgmt_modes['routing_config_mode'],
+                                     _original_dut_frr_mgmt_modes['frr_mgmt_config'], "Restoration"):
+                pytest.fail("Failed to restore original frr mgmt config mode")
+
+        logger.info(f"{'=' * 30} Completed restoring frr mgmt config mode {'=' * 30}")
 
 
 @pytest.fixture(scope='module')
