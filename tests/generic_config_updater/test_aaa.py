@@ -244,11 +244,11 @@ def aaa_tc1_add_config(duthost, auth_method):
             "login": "tacacs+,local"
         },
         "authentication": {
-            "debug": "True",
-            "failthrough": "True",
-            "fallback": "True",
+            "debug": "true",
+            "failthrough": "true",
+            "fallback": "true",
             "login": auth_method,
-            "trace": "True"
+            "trace": "true"
         },
         "authorization": {
             "login": "tacacs+,local"
