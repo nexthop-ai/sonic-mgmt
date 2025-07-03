@@ -10,14 +10,50 @@ from grpc_tools import protoc
 from tests.common.helpers.assertions import pytest_require as pyrequire
 from tests.common.helpers.dut_utils import check_container_state
 from tests.gnmi.helper import gnmi_container, apply_cert_config, recover_cert_config, create_ext_conf, create_ca_conf
-from tests.gnmi.helper import GNMI_SERVER_START_WAIT_TIME, check_ntp_sync_status
+from tests.gnmi.helper import GNMI_SERVER_START_WAIT_TIME, check_ntp_sync_status, is_mgmt_vrf_enabled
 from tests.common.gu_utils import create_checkpoint, rollback
 from tests.common.helpers.gnmi_utils import GNMIEnvironment
 from tests.common.helpers.ntp_helper import setup_ntp_context
+from tests.common.utilities import DEFAULT_VRF_NAME, MGMT_VRF_NAME
 
 
 logger = logging.getLogger(__name__)
 SETUP_ENV_CP = "test_setup_checkpoint"
+
+VRF_SCENARIOS = [
+    {"name": "default_1", "vrf": None, "description": "Default (no VRF)"},
+    {"name": "default_2", "vrf": DEFAULT_VRF_NAME, "description": "Default (explicit 'default')"},
+    {"name": "mgmt", "vrf": MGMT_VRF_NAME, "description": "Management VRF"},
+    {"name": "custom", "vrf": "Vrf-FOO", "description": "Custom VRF (Vrf-FOO)"}
+]
+
+
+@pytest.fixture(scope="module", params=VRF_SCENARIOS, ids=lambda scenario: f"vrf_{scenario['name']}")
+def vrf_config(request):
+    return request.param
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_vrf_configuration(duthosts, rand_one_dut_hostname, vrf_config):
+    """
+    This fixture runs before setup_gnmi_server to ensure VRF config is in place.
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+    vrf_name = vrf_config.get("vrf")
+    mgmt_vrf_enabled = is_mgmt_vrf_enabled(duthost)
+
+    try:
+        if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
+            duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "true"')
+        elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
+            duthost.shell(f'sonic-db-cli CONFIG_DB hset "VRF|{vrf_name}" "NULL" "NULL"')
+        yield vrf_config
+
+    finally:
+        if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
+            duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "false"')
+        elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
+            duthost.shell(f'sonic-db-cli CONFIG_DB del "VRF|{vrf_name}"', module_ignore_errors=True)
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -36,6 +72,7 @@ def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
     duthost = duthosts[rand_one_dut_hostname]
     for file in ["gnmi_cli", "gnmi_set", "gnmi_get", "gnoi_client"]:
         duthost.shell("docker cp %s:/usr/sbin/%s /tmp" % (gnmi_container(duthost), file))
+        duthost.shell("chmod +x /tmp/%s" % file)
         ret = duthost.fetch(src="/tmp/%s" % file, dest=".")
         gnmi_bin = ret.get("dest", None)
         shutil.copyfile(gnmi_bin, "gnmi/%s" % file)
@@ -133,7 +170,7 @@ def create_revoked_cert_and_crl(localhost, ptfhost):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
+def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config, setup_vrf_configuration):
     '''
     Create GNMI client certificates
     '''
@@ -224,7 +261,7 @@ def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
     ptfhost.copy(src='gnmiclient.key', dest='/root/')
 
     create_checkpoint(duthost, SETUP_ENV_CP)
-    apply_cert_config(duthost)
+    apply_cert_config(duthost, vrf_config.get("vrf"))
 
     yield
     # Delete all created certs
