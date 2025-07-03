@@ -2,7 +2,7 @@ import time
 import logging
 import pytest
 import json
-from tests.common.utilities import wait_until
+from tests.common.utilities import MGMT_VRF_NAME, wait_until
 from tests.common.helpers.gnmi_utils import GNMIEnvironment
 from tests.common.helpers.ntp_helper import NtpDaemon, get_ntp_daemon_in_use   # noqa: F401
 
@@ -76,7 +76,12 @@ def del_gnmi_client_common_name(duthost, cname):
     duthost.shell('sudo sonic-db-cli CONFIG_DB del "GNMI_CLIENT_CERT|{}"'.format(cname), module_ignore_errors=True)
 
 
-def apply_cert_config(duthost):
+def is_mgmt_vrf_enabled(duthost):
+    res = duthost.shell('sudo sonic-db-cli CONFIG_DB HGET "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled"')["stdout"]
+    return res == "true"
+
+
+def apply_cert_config(duthost, vrf_name=None):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     # Get subtype
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
@@ -104,6 +109,8 @@ def apply_cert_config(duthost):
     dut_command += "--enable_crl=true "
     if subtype == 'SmartSwitch':
         dut_command += "--zmq_address=tcp://127.0.0.1:8100 "
+    if vrf_name:
+        dut_command += "--vrf %s " % vrf_name
     dut_command += "--ca_crt /etc/sonic/telemetry/gnmiCA.pem -gnmi_native_write=true -v=10 >/root/gnmi.log 2>&1 &\""
     duthost.shell(dut_command)
 
@@ -354,13 +361,21 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count):
     ip = duthost.mgmt_ip
     port = env.gnmi_port
     interval = interval_ms / 1000.0
-    # Run gnmi_cli in gnmi container as workaround
-    cmd = "docker exec %s gnmi_cli -client_types=gnmi -a %s:%s " % (env.gnmi_container, ip, port)
+
+    # For mgmt VRF we need to use the DUT's gnmi_cli binary
+    # since ip vrf exec needs elevated privileges and gnmi
+    # docker container doesn't have it
+    if is_mgmt_vrf_enabled(duthost):
+        logger.info("Using gnmi_cli on DUT for VRF-aware execution")
+        cmd = f"sudo ip vrf exec {MGMT_VRF_NAME} /tmp/gnmi_cli "
+    else:
+        logger.info("Using gnmi_cli in container (default behavior)")
+        cmd = f"docker exec {env.gnmi_container} gnmi_cli "
+    cmd += "-client_types=gnmi -a %s:%s " % (ip, port)
     cmd += "-client_crt /etc/sonic/telemetry/gnmiclient.crt "
     cmd += "-client_key /etc/sonic/telemetry/gnmiclient.key "
     cmd += "-ca_crt /etc/sonic/telemetry/gnmiCA.pem "
     cmd += "-logtostderr "
-    # Use sonic-db as default origin
     cmd += '-origin=sonic-db '
     cmd += '-query_type=polling '
     cmd += '-polling_interval %us -count %u ' % (int(interval), count)

@@ -76,7 +76,7 @@ def wait_bgp_neighbor(duthost):
                   "Not all BGP sessions are established on DUT")
 
 
-def test_gnmi_configdb_incremental_01(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_incremental_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write, incremental config for configDB
     Toggle interface admin status
@@ -117,7 +117,7 @@ def test_gnmi_configdb_incremental_01(duthosts, rand_one_dut_hostname, ptfhost):
     wait_bgp_neighbor(duthost)
 
 
-def test_gnmi_configdb_incremental_02(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_incremental_02(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write, incremental config for configDB
     GNMI set request with invalid path
@@ -156,7 +156,7 @@ test_data_metadata = [
 
 
 @pytest.mark.parametrize('test_data', test_data_metadata)
-def test_gnmi_configdb_polling_01(duthosts, rand_one_dut_hostname, ptfhost, test_data):
+def test_gnmi_configdb_polling_01(duthosts, rand_one_dut_hostname, ptfhost, test_data, vrf_config):
     '''
     Verify GNMI subscribe API, streaming onchange mode
     Subscribe polling mode
@@ -169,7 +169,7 @@ def test_gnmi_configdb_polling_01(duthosts, rand_one_dut_hostname, ptfhost, test
 
 
 @pytest.mark.parametrize('test_data', test_data_metadata)
-def test_gnmi_configdb_streaming_sample_01(duthosts, rand_one_dut_hostname, ptfhost, test_data):
+def test_gnmi_configdb_streaming_sample_01(duthosts, rand_one_dut_hostname, ptfhost, test_data, vrf_config):
     '''
     Verify GNMI subscribe API, streaming onchange mode
     Subscribe streaming sample mode
@@ -182,7 +182,7 @@ def test_gnmi_configdb_streaming_sample_01(duthosts, rand_one_dut_hostname, ptfh
 
 
 @pytest.mark.parametrize('test_data', test_data_metadata)
-def test_gnmi_configdb_streaming_onchange_01(duthosts, rand_one_dut_hostname, ptfhost, test_data):
+def test_gnmi_configdb_streaming_onchange_01(duthosts, rand_one_dut_hostname, ptfhost, test_data, vrf_config):
     '''
     Verify GNMI subscribe API, streaming onchange mode
     Subscribe streaming onchange mode
@@ -212,7 +212,7 @@ def test_gnmi_configdb_streaming_onchange_01(duthosts, rand_one_dut_hostname, pt
     assert msg.count("bgp_asn") >= exp_cnt, test_data["name"] + ": " + msg
 
 
-def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI subscribe API, streaming onchange mode
     Subscribe table, and verify gnmi output has table key
@@ -247,7 +247,7 @@ def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, pt
         assert "bgp_asn" in result["localhost"], "Invalid result: " + match
 
 
-def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write, full config for configDB
     Toggle interface admin status
@@ -301,7 +301,7 @@ def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost):
     wait_bgp_neighbor(duthost)
 
 
-def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write, full config replace for configDB
     Toggle interface admin status
@@ -354,7 +354,7 @@ def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost)
     wait_bgp_neighbor(duthost)
 
 
-def test_gnmi_configdb_set_authenticate(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_set_authenticate(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write with authentication
     '''
@@ -406,7 +406,7 @@ def test_gnmi_configdb_set_authenticate(duthosts, rand_one_dut_hostname, ptfhost
     add_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
 
 
-def test_gnmi_configdb_get_authenticate(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_get_authenticate(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native read with authentication
     '''
@@ -453,7 +453,7 @@ def test_gnmi_configdb_get_authenticate(duthosts, rand_one_dut_hostname, ptfhost
     add_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
 
 
-def test_gnmi_configdb_subscribe_authenticate(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_configdb_subscribe_authenticate(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native read with authentication
     '''
