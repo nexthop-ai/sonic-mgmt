@@ -274,6 +274,9 @@ def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_c
 
     # Rollback configuration
     rollback(duthost, SETUP_ENV_CP)
+    # Save the configuration
+    cmd = "config save -y"
+    duthost.shell(cmd, module_ignore_errors=True)
     recover_cert_config(duthost)
 
 
