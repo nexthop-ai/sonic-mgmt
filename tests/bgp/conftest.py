@@ -144,11 +144,14 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
                 logger.error(f"{operation_name} error: {output['stderr']}")
             return False
 
-        # Wait for BGP sessions to come up
         config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
         bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
 
-        if not wait_until(300, 10, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
+        # Wait for BGP sessions to come up giving an initial delay for bgp to start. Without the
+        # delay, the wait_until loop can start checking before bgp has even started and we would see
+        # annoying "bgpd is not running" errors in the logs.
+        initial_delay = 10
+        if not wait_until(300, 10, initial_delay, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
             logger.error(f"Not all BGP sessions are up after {operation_name.lower()}")
             return False
 
