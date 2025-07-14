@@ -8,6 +8,7 @@ function show_help_and_exit()
     echo "    -a <True|False>: specify if auto-recover is allowed (default: True)"
     echo "    -b <master_id> : specify name of k8s master group used in k8s inventory, format: k8s_vms{msetnumber}_{servernumber}"
     echo "    -c <testcases> : specify test cases to execute (default: none, executed all matched)"
+    echo "    -C <filter>    : specify test filter expression (mapped to pytest -k option)"
     echo "    -d <dut name>  : specify comma-separated DUT names (default: DUT name associated with testbed in testbed file)"
     echo "    -e <parameters>: specify extra parameter(s) (default: none)"
     echo "    -E             : exit for any error (default: False)"
@@ -211,10 +212,6 @@ function setup_test_options()
         fi
     done
 
-    if [[ ! -z $TEST_FILTER ]]; then
-        PYTEST_COMMON_OPTS="${PYTEST_COMMON_OPTS} -k ${TEST_FILTER}"
-    fi
-
     if [[ -d ${LOG_PATH} ]]; then
         rm -rf ${LOG_PATH}
     fi
@@ -319,8 +316,13 @@ function run_group_tests()
 {
     echo "=== Running tests in groups ==="
     echo "run_group_tests: BEG: $(date)"
-    echo Running: ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
-    ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
+    if [[ ! -z $TEST_FILTER ]]; then
+        echo Running: ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -k "'${TEST_FILTER}'"
+        ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear -k "${TEST_FILTER}"
+    else
+        echo Running: ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
+        ${PYTEST_EXEC} ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} --cache-clear
+    fi
     local ret_code=$?
     echo "run_group_tests: END: $(date)"
     return ${ret_code}
@@ -344,8 +346,13 @@ function run_individual_tests()
             TEST_LOGGING_OPTIONS="--log-file ${LOG_PATH}/${test_dir}/${test_name}.log --junitxml=${LOG_PATH}/${test_dir}/${test_name}.xml"
         fi
 
-        echo Running: python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
-        python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} ${CACHE_CLEAR}
+        if [[ ! -z $TEST_FILTER ]]; then
+            echo Running: python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -k "'${TEST_FILTER}'"
+            python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} ${CACHE_CLEAR} -k "${TEST_FILTER}"
+        else
+            echo Running: python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
+            python3 -m pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} ${CACHE_CLEAR}
+        fi
         local ret_code=$?
 
         # Clear pytest cache for the first run
