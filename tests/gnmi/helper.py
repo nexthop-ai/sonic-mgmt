@@ -469,15 +469,30 @@ def gnoi_reboot(duthost, method, delay, message):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     ip = duthost.mgmt_ip
     port = env.gnmi_port
-    # Run gnoi_client in gnmi container as workaround
-    cmd = "docker exec %s gnoi_client -target %s:%s " % (env.gnmi_container, ip, port)
+    mvrf_active = is_mgmt_vrf_enabled(duthost)
+    # For mgmt VRF we need to use the DUT's gnoi_client binary
+    # since ip vrf exec needs elevated privileges and gnmi
+    # docker container doesn't have it
+    if mvrf_active:
+        logger.info("Using gnmi_cli on DUT for VRF-aware execution")
+        cmd = f"sudo ip vrf exec {MGMT_VRF_NAME} /tmp/gnoi_client "
+    else:
+        logger.info("Using gnmi_cli in container (default behavior)")
+        cmd = f"docker exec {env.gnmi_container} gnoi_client "
+    cmd += "-target %s:%s " % (ip, port)
     cmd += "-cert /etc/sonic/telemetry/gnmiclient.crt "
     cmd += "-key /etc/sonic/telemetry/gnmiclient.key "
     cmd += "-ca /etc/sonic/telemetry/gnmiCA.pem "
     cmd += "-logtostderr -rpc Reboot "
     cmd += '-jsonin "{\\\"method\\\":%d, \\\"delay\\\":%d, \\\"message\\\":\\\"%s\\\"}"' % (method, delay, message)
     output = duthost.shell(cmd, module_ignore_errors=True)
-    if output['stderr']:
+
+    # When rebooting from DUT directly, since the gnoi client is isolated from
+    # the container lifecycle, it will panic and fail with EOF error even after
+    # the reboot is successful.
+    # This behaviour has nothing to do with mvrf, and can be observed whenever
+    # the client is run directly from the DUT.
+    if output['stderr'] and output['stdout'] != "System Reboot":
         logger.error(output['stderr'])
         return -1, output['stderr']
     else:

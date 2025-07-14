@@ -26,11 +26,43 @@ VRF_SCENARIOS = [
     {"name": "mgmt", "vrf": MGMT_VRF_NAME, "description": "Management VRF"},
     {"name": "custom", "vrf": "Vrf-FOO", "description": "Custom VRF (Vrf-FOO)"}
 ]
+DEFAULT_SNMP_PORT = 161
 
 
 @pytest.fixture(scope="module", params=VRF_SCENARIOS, ids=lambda scenario: f"vrf_{scenario['name']}")
 def vrf_config(request):
     return request.param
+
+
+def configure_snmp_with_vrf(duthost, agent_ip, vrf_name):
+    """
+    Configures SNMP agent address with VRF.
+    Misconfigured snmp agent address causes snmpd and snmp-subagent to fail
+    during startup.
+    While the GNMI tests do not depend directly on SNMP, some tests fail while
+    waiting for all critical processes to be up and running.
+    """
+    output = duthost.shell(
+        f'sudo sonic-db-cli CONFIG_DB KEYS "SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|*"'
+    )
+    output = output['stdout'].split("|")
+    if len(output) < 4:
+        duthost.shell(
+            f'sonic-db-cli CONFIG_DB HSET '
+            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{DEFAULT_SNMP_PORT}|{vrf_name}" '
+            f'"agent_ip" "{agent_ip}" "port" "{DEFAULT_SNMP_PORT}" "vrf_name" "{vrf_name}"'
+        )
+    else:
+        port = output[2]
+        duthost.shell(
+            f'sonic-db-cli CONFIG_DB DEL '
+            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{port}|{output[3]}"'
+        )
+        duthost.shell(
+            f'sonic-db-cli CONFIG_DB HSET '
+            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{port}|{vrf_name}" '
+            f'"agent_ip" "{agent_ip}" "port" "{port}" "vrf_name" "{vrf_name}"'
+        )
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -45,6 +77,8 @@ def setup_vrf_configuration(duthosts, rand_one_dut_hostname, vrf_config):
     try:
         if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
             duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "true"')
+            configure_snmp_with_vrf(duthost, duthost.mgmt_ip, vrf_name)
+            configure_snmp_with_vrf(duthost, duthost.mgmt_ipv6, vrf_name)
         elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
             duthost.shell(f'sonic-db-cli CONFIG_DB hset "VRF|{vrf_name}" "NULL" "NULL"')
         yield vrf_config
@@ -52,6 +86,9 @@ def setup_vrf_configuration(duthosts, rand_one_dut_hostname, vrf_config):
     finally:
         if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
             duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "false"')
+            duthost.shell('sonic-db-cli CONFIG_DB hdel "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled"')
+            configure_snmp_with_vrf(duthost, duthost.mgmt_ip, "")
+            configure_snmp_with_vrf(duthost, duthost.mgmt_ipv6, "")
         elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
             duthost.shell(f'sonic-db-cli CONFIG_DB del "VRF|{vrf_name}"', module_ignore_errors=True)
 
