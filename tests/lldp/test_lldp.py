@@ -89,11 +89,7 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
         neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
         assert neighbor in v
         # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
-        if request.config.getoption("--neighbor_type") == 'eos':
-            assert v[neighbor]['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
-        else:
-            # Dealing with KVM that advertises port description
-            assert v[neighbor]['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
+        assert v[neighbor]['port']['id']['value'] == config_facts['DEVICE_NEIGHBOR'][k]['port']
 
 
 def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_duts,
@@ -136,7 +132,7 @@ def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_
         if request.config.getoption("--neighbor_type") == 'eos':
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=eos['snmp_rocommunity'])[
                 'ansible_facts']
-            neighbor_interface = v[neighbor]['port']['ifname']
+            neighbor_interface = v[neighbor]['port']['id']['value']
         else:
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=sonic['snmp_rocommunity'])[
                 'ansible_facts']
