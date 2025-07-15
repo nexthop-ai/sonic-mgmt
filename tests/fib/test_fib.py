@@ -145,7 +145,7 @@ def map_ptf_ports_to_dut_port(ptf_ports, all_dut_port_indices):
     return ethernet_ports_with_asic
 
 
-def filter_ports(all_port_indices, tbinfo):
+def filter_ports(all_port_indices, tbinfo, is_chassis):
     """
     Filter PTF ports that need to be skipped while picking up src_port for ptf traffic test.
 
@@ -160,8 +160,7 @@ def filter_ports(all_port_indices, tbinfo):
 
     # Note: this filteration is useful for multilinecard DUTs to make sure incoming traffic is
     # landing on a different linecard; NA for pizza boxes
-
-    if tbinfo['topo']['type'] != 't2':
+    if tbinfo['topo']['type'] != 't2' or not is_chassis:
         return []
 
     # Collect all port indices (keys) from all_port_indices
@@ -550,6 +549,7 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
         is_python3=True
     )
 
+
 # The test case is to verify src-ip, dst-ip, src-port, dst-port and ip-proto of inner_frame in a IPinIP packet are
 # used as hash keys
 
@@ -806,7 +806,8 @@ def test_ecmp_group_member_flap(
 
     all_port_indices = get_all_ptf_port_indices_from_mg_facts(duts_minigraph_facts[upstream_lc])
     nh_dut_ports = map_ptf_ports_to_dut_port(nh_ptf_ports, all_port_indices)
-    filtered_ports = filter_ports(all_port_indices, tbinfo)
+    is_chassis = duthosts[0].get_facts().get("modular_chassis")
+    filtered_ports = filter_ports(all_port_indices, tbinfo, is_chassis)
 
     logging.info("nh_dut_ports: {}".format(nh_dut_ports))
     logging.info("filtered_ports: {}".format(filtered_ports))
