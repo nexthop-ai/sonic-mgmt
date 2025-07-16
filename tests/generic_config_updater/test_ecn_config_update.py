@@ -133,33 +133,16 @@ def ensure_application_of_updated_config(duthost, fields, new_values):
     )
 
 
-<<<<<<< HEAD
-def ecn_config(duthost):
-    """Get ECN configuration data"""
-    ecn_data = duthost.shell('sonic-db-cli CONFIG_DB hgetall "WRED_PROFILE|AZURE_LOSSLESS"')['stdout']
-    ecn_data = ast.literal_eval(ecn_data) if ecn_data else {}
-    return ecn_data
-
-
-@pytest.fixture(scope="module")
-def check_ecn_config_exists(duthost):
-    """Check ECN configuration exists for the tests to run"""
-    ecn_data = ecn_config(duthost)
-    if not ecn_data:
-        pytest.skip("Base ECN configuration does not exist / not supported")
-    return ecn_data
-=======
 def get_wred_profiles(duthost):
     wred_profiles = duthost.shell("sonic-db-cli CONFIG_DB keys 'WRED_PROFILE|*' | cut -d '|' -f 2")["stdout"]
     wred_profiles = wred_profiles.split('\n')
     return wred_profiles
->>>>>>> upstream/master
 
 
 @pytest.mark.parametrize("configdb_field", ["green_min_threshold", "green_max_threshold", "green_drop_probability",
                          "green_min_threshold,green_max_threshold,green_drop_probability"])
 @pytest.mark.parametrize("operation", ["replace"])
-def test_ecn_config_updates(duthost, ensure_dut_readiness, check_ecn_config_exists, configdb_field, operation):
+def test_ecn_config_updates(duthost, ensure_dut_readiness, configdb_field, operation):
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {} created for json patch of field: {} and operation: {}"
                 .format(tmpfile, configdb_field, operation))
@@ -169,14 +152,6 @@ def test_ecn_config_updates(duthost, ensure_dut_readiness, check_ecn_config_exis
     if not wred_profiles:
         pytest.skip("No WRED profiles found in CONFIG_DB, skipping test.")
     json_patch = list()
-<<<<<<< HEAD
-    values = list()
-    ecn_data = ecn_config(duthost)
-
-    for field in configdb_field.split(','):
-        value = int(ecn_data[field]) + 1
-        values.append(str(value))
-=======
     # new_values is a dictionary from WRED profile name to its field-value mapping (with new values)
     # for the fields in configdb_field.
     new_values = {}
@@ -188,7 +163,6 @@ def test_ecn_config_updates(duthost, ensure_dut_readiness, check_ecn_config_exis
         for field in fields:
             value = int(ecn_data[field]) + 1
             new_values[wred_profile][field] = value
->>>>>>> upstream/master
 
             logger.info("value to be added to json patch: {}, operation: {}, field: {}"
                         .format(value, operation, field))
