@@ -423,11 +423,7 @@ for arg in "$@"; do
     fi
 done
 
-<<<<<<< HEAD
-while getopts "h?a:b:c:C:d:e:Ef:F:H:i:I:k:l:m:n:oOp:q:rs:S:t:u:x" opt; do
-=======
-while getopts "h?a:b:Bc:C:d:e:Ef:F:H:i:I:k:l:m:n:oOp:q:rs:S:t:ux:w" opt; do
->>>>>>> upstream/master
+while getopts "h?a:b:c:C:d:e:Ef:F:H:i:I:k:l:m:n:oOp:q:rs:S:t:u:x:w" opt; do
     case ${opt} in
         h|\? )
             show_help_and_exit 0
