@@ -414,8 +414,8 @@ class LabGraph(object):
                 "peerport": l1_port,
             }
 
-        logging.debug(f"Found L1 links from L1 switches to devices: {from_l1_links}")
-        logging.debug(f"Found L1 links from devices to L1 switches: {to_l1_links}")
+        logging.debug("Found L1 links from L1 switches to devices: {}".format(from_l1_links))
+        logging.debug("Found L1 links from devices to L1 switches: {}".format(to_l1_links))
 
         self.graph_facts["from_l1_links"] = from_l1_links
         self.graph_facts["to_l1_links"] = to_l1_links
@@ -444,12 +444,15 @@ class LabGraph(object):
                 l1_end_device = to_l1_links[end_device][end_port]["peerdevice"]
                 if l1_start_device != l1_end_device:
                     logging.debug("Found L1 connected port pairs not using the same L1 device: "
-                                  f"{start_device}:{start_port} <-> {end_device}:{end_port} "
-                                  f"on L1 devices {l1_start_device} and {l1_end_device}")
+                                  "{}:{} <-> {}:{} "
+                                  "on L1 devices {} and {}".format(
+                                      start_device, start_port, end_device, end_port,
+                                      l1_start_device, l1_end_device))
                     continue
 
-                logging.debug(f"Found L1 cross connect: {start_device}:{start_port} <->"
-                              f" {end_device}:{end_port} on L1 device {l1_start_device}")
+                logging.debug("Found L1 cross connect: {}:{} <->"
+                              " {}:{} on L1 device {}".format(
+                                  start_device, start_port, end_device, end_port, l1_start_device))
 
                 if l1_start_device not in l1_cross_connects:
                     l1_cross_connects[l1_start_device] = {}
