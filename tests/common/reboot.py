@@ -281,7 +281,8 @@ def check_dshell_ready(duthost):
 def reboot(duthost, localhost, reboot_type='cold', delay=10,
            timeout=0, wait=0, wait_for_ssh=True, wait_warmboot_finalizer=False, warmboot_finalizer_timeout=0,
            reboot_helper=None, reboot_kwargs=None, return_after_reconnect=False,
-           safe_reboot=False, check_intf_up_ports=False, wait_for_bgp=False,  wait_for_ibgp=True):
+           safe_reboot=False, check_intf_up_ports=False, wait_for_bgp=False,  wait_for_ibgp=True,
+           power_on_helper=None, power_on_kwargs=None, skip_console_log=False):
     """
     reboots DUT
     :param duthost: DUT host object
@@ -301,6 +302,9 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
     :param wait_for_bgp: arguments to wait for BGP after reboot
     :param wait_for_ibgp: True to wait for all iBGP connections to come up after device reboot. This
                           parameter is only used when `wait_for_bgp` is True
+    :param power_on_helper: helper function to execute after dut powers on, e.g. to set IP address
+    :param power_on_kwargs: arguments to pass to the power_on_helper
+    :param skip_console_log: skip collecting console log
     :return:
     """
     assert not (safe_reboot and return_after_reconnect)
@@ -338,10 +342,12 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
         logger.info('Fetching reboot cause history before rebooting')
         prev_reboot_cause_history = duthost.show_and_parse("show reboot-cause history")
 
-    wait_conlsole_connection = 5
-    console_thread_res = pool.apply_async(
-        collect_console_log, args=(duthost, localhost, timeout + wait_conlsole_connection))
-    time.sleep(wait_conlsole_connection)
+    if not skip_console_log:
+        wait_conlsole_connection = 5
+        console_thread_res = pool.apply_async(
+            collect_console_log, args=(duthost, localhost, timeout + wait_conlsole_connection))
+        time.sleep(wait_conlsole_connection)
+
     # Perform reboot
     if duthost.get_facts().get("is_smartswitch"):
         reboot_res, dut_datetime = reboot_smartswitch(duthost, reboot_type)
@@ -354,14 +360,19 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
     # Release event to proceed poweron for PDU.
     power_on_event.set()
 
+    if power_on_helper:
+        logger.info('Executing power on helper')
+        power_on_helper(power_on_kwargs)
+
     # if wait_for_ssh flag is False, do not wait for dut to boot up
     if not wait_for_ssh:
         return
     try:
         wait_for_startup(duthost, localhost, delay, timeout)
     except Exception as err:
-        logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
-        pool.terminate()
+        if not skip_console_log:
+            logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
+            pool.terminate()
         raise Exception(f"dut not start: {err}")
 
     if return_after_reconnect:
