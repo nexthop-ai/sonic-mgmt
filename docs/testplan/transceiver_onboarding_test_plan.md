@@ -101,25 +101,9 @@ These tests do not require traffic and are standalone, designed to run on a Devi
 1. A file `transceiver_dut_info.csv` (located in `ansible/files/transceiver_inventory` directory) should be present to describe the metadata of the transceiver connected to every port of each DUT. Following should be the format of the file
 
     ```csv
-<<<<<<< HEAD
-    vendor_pn,active_firmware,inactive_firmware,cmis_rev,vendor_name,vdm_supported,cdb_backgroundmode_supported,dual_bank_supported
-    <vendor_pn_1>,<active_firmware_version_1>,<inactive_firmware_version_1>,<cmis_revision_1>,<vendor_name_1>,<True or False>,<True or False>,<True or False>
-    <vendor_pn_2>,<active_firmware_version_2>,<inactive_firmware_version_2>,<cmis_revision_2>,<vendor_name_2>,<True or False>,<True or False>,<True or False>
-    # Add more vendor part numbers as needed
-    ```
-
-2. A file `transceiver_dut_info.csv` (located in `ansible/files/transceiver_inventory` directory) should be present to describe the metadata of the transceiver and the corresponding DUT. Following should be the format of the file
-
-    ```csv
-    dut_name,physical_port,vendor_pn,vendor_sn,vendor_date,vendor_oui,vendor_rev
-    dut_name_1,port_1,vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
-    dut_name_1,port_2,vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
-
-=======
     dut_name,physical_port,vendor_pn,normalized_vendor_pn,vendor_sn,vendor_date,vendor_oui,vendor_rev
     dut_name_1,port_1,vendor_part_number,normalized_vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
     dut_name_1,port_2,vendor_part_number,normalized_vendor_part_number,serial_number,vendor_date_code,vendor_oui,revision_number
->>>>>>> upstream/master
     # Add more DUTs as needed
     ```
 
@@ -133,13 +117,8 @@ These tests do not require traffic and are standalone, designed to run on a Devi
     - `vendor_rev`: The vendor revision number.
 
     Functionality to parse the above files and store the data in a dictionary should be implemented in the test framework. This dictionary should act as a source of truth for the test cases.
-<<<<<<< HEAD
-    The vendor_part_number from `transceiver_dut_info.csv` file should be used to fetch the common attributes of the transceiver from `transceiver_common_attributes.csv` file for a given port.
-    If any non-string value is planned to be added to the dictionary, the `convert_row_types` function should be modified to convert the relevant value to the appropriate datatype.
-=======
     The `normalized_vendor_pn` from `transceiver_dut_info.csv` file should be used to fetch the common attributes of the transceiver from `transceiver_common_attributes.csv` file for a given port.
     > Note: If any non-string value is planned to be added to the dictionary, the `convert_row_types` function should be modified to convert the relevant value to the appropriate datatype.
->>>>>>> upstream/master
 
     Example of an dictionary created by parsing the above files
 
