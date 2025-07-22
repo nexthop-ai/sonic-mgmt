@@ -1,4 +1,13 @@
 #######################################
+#####     platform_tests          #####
+#######################################
+platform_tests:
+  skip:
+    reason: "Unsupported platform tests"
+    conditions:
+      - "platform in ['x86_64-ufispace_s9620_32e-r0']"
+
+#######################################
 #####             api             #####
 #######################################
 platform_tests/api:
