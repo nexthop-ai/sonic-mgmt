@@ -97,7 +97,7 @@ def configure_allow_as_in(duthost, neighbor_ip, allow_as_in, namespace=None):
         logger.info("Defaulting to using config_db (GCU) due to error")
 
     if is_frr_mgmt_enabled:
-        # Use JSON-PATCH for GCU configurations when FRR management framework is enabled
+        # Use JSON-PATCH for GCU configurations when FRR management framework is enabled (unified mode)
         logger.info("Using JSON-PATCH for GCU configuration")
         try:
             # Create JSON patch structure
@@ -134,7 +134,7 @@ def configure_allow_as_in(duthost, neighbor_ip, allow_as_in, namespace=None):
             logger.error(f"Failed to configure using config_db: {e}")
             return False
     else:
-        # Use vtysh for configuration when FRR management framework is disabled
+        # Use vtysh for configuration when FRR management framework is disabled (legacy mode)
         logger.debug("Using vtysh for configuration")
         try:
             # Configure using vtysh
@@ -162,13 +162,10 @@ def configure_allow_as_in(duthost, neighbor_ip, allow_as_in, namespace=None):
         logger.error("BGP service is not running")
         return False
 
-    # Verify the configuration was applied
-    cmd = f"vtysh {namespace_prefix} -c 'show running-config | grep allowas-in'"
-    duthost.shell(cmd, module_ignore_errors=True)
-
     # Wait for the configuration to take effect
     logger.info("Waiting for configuration to take effect...")
     time.sleep(30)
+
     return True
 
 
@@ -197,7 +194,10 @@ def verify_route_accepted(duthost, prefix, expected_present=True, namespace=None
 
     # Check if the route is in the BGP table
     namespace_prefix = f"-n {namespace}" if namespace else ""
-    cmd = f"vtysh {namespace_prefix} -c 'show {ip_version} bgp {prefix}'"
+    if ip_version == "ipv6":
+        cmd = f"vtysh {namespace_prefix} -c 'show bgp ipv6 unicast {prefix}'"
+    else:
+        cmd = f"vtysh {namespace_prefix} -c 'show ip bgp {prefix}'"
     result = duthost.shell(cmd, module_ignore_errors=True)
 
     route_present = "BGP routing table entry for" in result['stdout']
@@ -240,7 +240,7 @@ def check_route_with_own_as(duthost, prefix, own_as, expected_accepted=True, nam
 
     # Use different command format for IPv6
     if ip_version == "ipv6":
-        cmd = f"vtysh {namespace_prefix} -c 'show ipv6 bgp {prefix} json'"
+        cmd = f"vtysh {namespace_prefix} -c 'show bgp ipv6 unicast {prefix} json'"
     else:
         cmd = f"vtysh {namespace_prefix} -c 'show ip bgp {prefix} json'"
 
@@ -329,60 +329,6 @@ def check_route_with_own_as(duthost, prefix, own_as, expected_accepted=True, nam
         return not expected_accepted
 
 
-def find_routes_with_own_as(duthost, own_as, ip_version="ip", namespace=None):
-    """
-    Find routes with the DUT's own AS in the AS_PATH
-
-    Args:
-        duthost: DUT host object
-        own_as: The DUT's own AS number
-        ip_version: IP version ("ip" for IPv4, "ipv6" for IPv6)
-        namespace: Namespace to use (optional)
-
-    Returns:
-        list: List of prefixes with the DUT's own AS in the AS_PATH
-    """
-    logger.info(f"Finding routes with AS {own_as} in the AS_PATH")
-
-    # Get BGP routes
-    namespace_prefix = f"-n {namespace}" if namespace else ""
-
-    # Use different command format for IPv6
-    if ip_version == "ipv6":
-        cmd = f"vtysh {namespace_prefix} -c 'show ipv6 bgp'"
-    else:
-        cmd = f"vtysh {namespace_prefix} -c 'show ip bgp'"
-
-    # Add module_ignore_errors=True to handle potential command errors gracefully
-    result = duthost.shell(cmd, module_ignore_errors=True)
-
-    # If command failed, return empty list
-    if result['rc'] != 0:
-        logger.warning(f"Command '{cmd}' failed: {result['stdout']} {result['stderr']}")
-        return []
-
-    # Parse the output to find routes with the DUT's own AS in the AS_PATH
-    routes_with_own_as = []
-    for line in result['stdout'].splitlines():
-        if str(own_as) in line:
-            # Extract the prefix from the line
-            parts = line.split()
-            if len(parts) > 1:
-                prefix = parts[0]
-                # Verify it's a valid prefix
-                try:
-                    if ip_version == "ip":
-                        ipaddress.IPv4Network(prefix)
-                    else:
-                        ipaddress.IPv6Network(prefix)
-                    routes_with_own_as.append(prefix)
-                except ValueError:
-                    # Not a valid prefix, skip
-                    pass
-
-    return routes_with_own_as
-
-
 @pytest.fixture(scope='module')
 def setup_exabgp(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, localhost, nbrhosts):
     """
@@ -405,15 +351,17 @@ def setup_exabgp(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, localhost, nb
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
     dut_asn = mg_facts['minigraph_bgp_asn']
 
-    # Get the loopback IP address
-    lo_addr = mg_facts['minigraph_lo_interfaces'][0]['addr']
-
-    # Get IPv6 loopback address if available
+    lo_addr = None
     lo_addr_v6 = None
-    for lo_intf in mg_facts['minigraph_lo_interfaces']:
-        if 'addr6' in lo_intf:
-            lo_addr_v6 = lo_intf['addr6']
-            break
+    for iface in mg_facts.get('minigraph_lo_interfaces', []):
+        try:
+            ip = ipaddress.ip_address(iface['addr'])
+            if ip.version == 4:
+                lo_addr = str(ip)
+            elif ip.version == 6:
+                lo_addr_v6 = str(ip)
+        except (ValueError, KeyError):
+            logger.warning(f"Skipping invalid loopback interface entry: {iface}")
 
     # Get BGP neighbors from minigraph
     bgp_neighbors = mg_facts.get('minigraph_bgp', [])
@@ -425,30 +373,34 @@ def setup_exabgp(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, localhost, nb
     # Find a suitable neighbor based on topology
     test_neighbor_name = None
     test_neighbor_ip = None
+    test_neighbor_ipv6 = None
 
-    # For t1 topologies, prefer T2 neighbors
-    # For t0 topologies, prefer T1 neighbors
+    # First try to find a neighbor based on topology preference
     for neighbor in bgp_neighbors:
-        if neighbor['name'] in nbrhosts:
-            # Check if the neighbor name matches our topology preference
-            if ('t1' in topo_name.lower() and 'T2' in neighbor['name']) or \
-               ('t0' in topo_name.lower() and 'T1' in neighbor['name']):
-                test_neighbor_name = neighbor['name']
-                test_neighbor_ip = neighbor['addr']
-                logger.info(f"Found preferred neighbor {test_neighbor_name} with IP {test_neighbor_ip}")
-                break
+        if ('t1' in topo_name.lower() and 'T2' in neighbor['name']) or \
+           ('t0' in topo_name.lower() and 'T1' in neighbor['name']):
+            test_neighbor_name = neighbor['name']
+            logger.info(f"Found preferred neighbor name: {test_neighbor_name}")
+            break
 
-    # If no preferred neighbor found, use any available neighbor
+    # If no preferred neighbor found, pick the first available one
+    if not test_neighbor_name and bgp_neighbors:
+        test_neighbor_name = bgp_neighbors[0]['name']
+        logger.info(f"Using first available neighbor name: {test_neighbor_name}")
+
     if not test_neighbor_name:
-        for neighbor in bgp_neighbors:
-            if neighbor['name'] in nbrhosts:
-                test_neighbor_name = neighbor['name']
-                test_neighbor_ip = neighbor['addr']
-                logger.info(f"Using available neighbor {test_neighbor_name} with IP {test_neighbor_ip}")
-                break
-
-    if not test_neighbor_ip:
         pytest.skip("Could not find any suitable BGP neighbor for testing")
+
+    for neighbor in bgp_neighbors:
+        if neighbor.get('name') == test_neighbor_name:
+            try:
+                ip = ipaddress.ip_address(neighbor['addr'])
+                if ip.version == 4:
+                    test_neighbor_ip = str(ip)
+                elif ip.version == 6:
+                    test_neighbor_ipv6 = str(ip)
+            except (ValueError, KeyError):
+                logger.warning(f"Skipping invalid neighbor IP for {test_neighbor_name}: {neighbor.get('addr')}")
 
     # Get the neighbor's ASN
     test_neighbor_asn = None
@@ -522,6 +474,7 @@ def setup_exabgp(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, localhost, nb
         'dut_asn': dut_asn,
         'test_neighbor_name': test_neighbor_name,
         'test_neighbor_ip': test_neighbor_ip,
+        'test_neighbor_ipv6': test_neighbor_ipv6,
         'ipv4_prefix': TEST_PREFIX_V4,
         'ipv6_prefix': TEST_PREFIX_V6 if ipv6_ready else None,
         'ipv6_ready': ipv6_ready,
@@ -568,6 +521,14 @@ def setup_exabgp(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, localhost, nb
             configure_allow_as_in(duthost, test_neighbor_ip, ALLOW_AS_IN_FALSE)
         except Exception as e:
             logger.error(f"Failed to reset allow_as_in configuration: {e}")
+
+        # Reset IPv6 neighbor configuration if it exists
+        if test_neighbor_ipv6:
+            logger.info(f"Resetting allow_as_in=false for IPv6 neighbor {test_neighbor_ipv6}")
+            try:
+                configure_allow_as_in(duthost, test_neighbor_ipv6, ALLOW_AS_IN_FALSE)
+            except Exception as e:
+                logger.error(f"Failed to reset IPv6 allow_as_in configuration: {e}")
 
         # No need to remove routes since we're using existing routes
     except Exception as e:
@@ -658,7 +619,7 @@ def test_bgp_allow_as_in_ipv6(setup_exabgp):
     """
     duthost = setup_exabgp['duthost']
     dut_asn = setup_exabgp['dut_asn']
-    test_neighbor_ip = setup_exabgp['test_neighbor_ip']
+    test_neighbor_ipv6 = setup_exabgp['test_neighbor_ipv6']
     ipv6_prefix = setup_exabgp['ipv6_prefix']
     ipv6_ready = setup_exabgp['ipv6_ready']
     ptfip = setup_exabgp['ptfip']
@@ -670,9 +631,13 @@ def test_bgp_allow_as_in_ipv6(setup_exabgp):
     if not ipv6_ready or not ipv6_prefix or not lo_addr_v6:
         pytest.skip("IPv6 is not configured or ready")
 
-    # Configure allow_as_in to true for the neighbor
-    logger.info(f"Configuring allow_as_in=true for neighbor {test_neighbor_ip}")
-    configure_allow_as_in(duthost, test_neighbor_ip, ALLOW_AS_IN_TRUE)
+    # Skip if IPv6 neighbor is not found
+    if not test_neighbor_ipv6:
+        pytest.skip("IPv6 neighbor not found")
+
+    # Configure allow_as_in to true for the IPv6 neighbor
+    logger.info(f"Configuring allow_as_in=true for IPv6 neighbor {test_neighbor_ipv6}")
+    configure_allow_as_in(duthost, test_neighbor_ipv6, ALLOW_AS_IN_TRUE)
 
     # Re-announce the route with multiple instances of own AS to ensure it's a strong test
     logger.info("Re-announcing the route with own AS in AS_PATH")
