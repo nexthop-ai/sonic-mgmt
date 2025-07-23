@@ -1,5 +1,5 @@
 Hostname,ManagementIp,HwSku,Type,Protocol,Os
-gold103,10.249.1.2/24,NH-4010,DevSonic,,sonic
+gold157,10.249.1.2/24,NH-4010,DevSonic,,sonic
 dvc106,10.60.1.106/24,ACS-SN5600,FanoutLeaf,,sonic
 dvc117,10.249.3.2/24,Accton-AS9716-32D,DevSonic,,sonic
 ts107_tps_tb1,10.20.16.18/24,TestServ,server,,ubuntu

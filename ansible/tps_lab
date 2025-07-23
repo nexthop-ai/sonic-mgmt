@@ -115,7 +115,7 @@ sonic_nh_4010:
   vars:
     hwsku: NH-4010
   hosts:
-    gold103:
+    gold157:
       ansible_host: 10.249.1.2
       ansible_hostv6: fd00:1::2
       ansible_ssh_user: admin

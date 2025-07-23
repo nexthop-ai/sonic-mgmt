@@ -1,5 +1,5 @@
 StartDevice,StartPort,EndDevice,Console_type,Console_menu_type,Proxy,BaudRate
-con104,31,gold103,ssh_to_port,,,115200
+con104,31,gold157,ssh_to_port,,,115200
 con104,29,dvc117,ssh_to_port,,,115200
 con104,28,dvc116,ssh_to_port,,,115200
 con104,26,dvc115,ssh_to_port,,,115200
