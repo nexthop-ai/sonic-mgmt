@@ -1587,20 +1587,6 @@ generic_config_updater/test_pg_headroom_update.py:
 #######################################
 #####           gnmi              #####
 #######################################
-gnmi/test_gnmi_configdb.py:
-  skip:
-    reason: "This feature is not supported for multi asic. Skipping these test for T2 and multi asic."
-    conditions_logical_operator: or
-    conditions:
-      - "'t2' in topo_name"
-      - "is_multi_asic==True"
-
-gnmi/test_gnmi_configdb.py::test_gnmi_configdb_full_01:
-  skip:
-    reason: "The test refers to a stale implementation of GNOI.System.Reboot."
-    conditions:
-      - "https://github.com/sonic-net/sonic-mgmt/issues/17436"
-
 gnmi/test_gnoi_killprocess.py:
   skip:
     reason: "Test noisy due to restart issue not relevant to GNOI. Disabling them to rewrite."
@@ -1612,6 +1598,20 @@ gnmi/test_gnoi_system_reboot.py::test_gnoi_system_reboot_warm:
     conditions:
       - "topo_type not in ['t0']"
       - "topo_name in ['dualtor', 'dualtor-56', 'dualtor-120', 'dualtor-aa', 'dualtor-aa-56', 'dualtor-aa-64-breakout']"
+
+gnmi/vrf_aware_tests/test_gnmi_configdb.py:
+  skip:
+    reason: "This feature is not supported for multi asic. Skipping these test for T2 and multi asic."
+    conditions_logical_operator: or
+    conditions:
+      - "'t2' in topo_name"
+      - "is_multi_asic==True"
+
+gnmi/vrf_aware_tests/test_gnmi_configdb.py::test_gnmi_configdb_full_01:
+  skip:
+    reason: "The test refers to a stale implementation of GNOI.System.Reboot."
+    conditions:
+      - "https://github.com/sonic-net/sonic-mgmt/issues/17436"
 
 #######################################
 #####           hash              #####

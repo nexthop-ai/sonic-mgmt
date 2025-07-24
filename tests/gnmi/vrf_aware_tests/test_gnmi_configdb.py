@@ -5,10 +5,10 @@ import pytest
 import re
 import time
 
-from .helper import gnmi_set, gnmi_get, gnoi_reboot
-from .helper import gnmi_subscribe_polling
-from .helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
-from .helper import add_gnmi_client_common_name
+from tests.gnmi.helper import gnmi_set, gnmi_get, gnoi_reboot
+from tests.gnmi.helper import gnmi_subscribe_polling
+from tests.gnmi.helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
+from tests.gnmi.helper import add_gnmi_client_common_name
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.platform.processes_utils import wait_critical_processes

@@ -22,9 +22,6 @@ SETUP_ENV_CP = "test_setup_checkpoint"
 
 VRF_SCENARIOS = [
     {"name": "default_1", "vrf": None, "description": "Default (no VRF)"},
-    {"name": "default_2", "vrf": DEFAULT_VRF_NAME, "description": "Default (explicit 'default')"},
-    {"name": "mgmt", "vrf": MGMT_VRF_NAME, "description": "Management VRF"},
-    {"name": "custom", "vrf": "Vrf-FOO", "description": "Custom VRF (Vrf-FOO)"}
 ]
 DEFAULT_SNMP_PORT = 161
 
