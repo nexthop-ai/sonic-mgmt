@@ -419,6 +419,8 @@ def check_results(results):
 
 def get_route_communities(host, route_data, prefix):
     if isinstance(host, EosHost):
+        if 'stdout' in route_data:
+            route_data = route_data['stdout'][0]
         return (route_data['vrfs']['default']['bgpRouteEntries'][prefix]
                 ['bgpRoutePaths'][0]['routeDetail']['communityList'])
     elif isinstance(host, SonicHost):
@@ -530,9 +532,13 @@ def check_routes_on_neighbors(nbrhosts, setup, permit=True):
             for prefix in prefixes:
                 prefix_result = {'failed': False, 'prefix': prefix, 'reasons': []}
                 route_data = nbr_host.get_route(prefix)
-                communityList = get_route_communities(nbr_host, route_data, prefix)
-                logging.info('{} route_data: {}'.format(nbr_host.hostname, route_data))
-                logging.info('{} communityList: {}'.format(nbr_host.hostname, communityList))
+                if not check_route_exists(nbr_host, route_data, prefix):
+                    communityList = []
+                    logging.info('{} route {} not found, skipping community check'.format(nbr_host.hostname, prefix))
+                else:
+                    communityList = get_route_communities(nbr_host, route_data, prefix)
+                    logging.info('{} route_data: {}'.format(nbr_host.hostname, route_data))
+                    logging.info('{} communityList: {}'.format(nbr_host.hostname, communityList))
 
                 if permit:
                     # All routes should be forwarded

@@ -3,6 +3,7 @@
 import logging
 import pytest
 import json
+from tests.common.devices.sonic import SonicHost
 
 from tests.common.helpers.assertions import pytest_assert
 # Constants
@@ -45,6 +46,8 @@ def load_remove_neighbors_allow_list(nbrhosts, bgp_allow_list_setup):     # noqa
         value['default_action'] = 'permit'
 
     for nbr_name, nbr_info in nbrhosts.items():
+        if not isinstance(nbr_info['host'], SonicHost):
+            continue
         logging.info('apply_allow_list on nbr: {}'.format(nbr_name))
         nbr_info['host'].copy(content=json.dumps(ALLOW_LIST, indent=3), dest=ALLOW_LIST_PREFIX_JSON_FILE)
         nbr_info['host'].shell('sonic-cfggen {} -j {} -w'
@@ -53,6 +56,8 @@ def load_remove_neighbors_allow_list(nbrhosts, bgp_allow_list_setup):     # noqa
     yield
 
     for nbr_name, nbr_info in nbrhosts.items():
+        if not isinstance(nbr_info['host'], SonicHost):
+            continue
         allow_list_keys = nbr_info['host'].shell('sonic-db-cli {} CONFIG_DB keys "BGP_ALLOWED_PREFIXES*"'
                                                  .format('-n ' + namespace if namespace else ''))['stdout_lines']
         for key in allow_list_keys:
