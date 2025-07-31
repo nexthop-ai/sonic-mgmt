@@ -55,7 +55,7 @@ class QosBase:
     SUPPORTED_T1_TOPOS = ["t1-lag", "t1-64-lag", "t1-56-lag", "t1-backend", "t1-28-lag", "t1-32-lag", "t1-48-lag",
                           "t1-isolated-d28u1", "t1-isolated-v6-d28u1", "t1-isolated-d56u2", "t1-isolated-v6-d56u2",
                           "t1-isolated-d56u1-lag", "t1-isolated-v6-d56u1-lag",
-                          "t1-isolated-d448u15-lag", "t1-isolated-v6-d448u15-lag"]
+                          "t1-isolated-d448u15-lag", "t1-isolated-v6-d448u15-lag", "t1-8"]
     SUPPORTED_PTF_TOPOS = ['ptf32', 'ptf64']
     SUPPORTED_ASIC_LIST = ["pac", "gr", "gr2", "gb", "td2", "th", "th2", "spc1", "spc2", "spc3", "spc4", "spc5",
                            "td3", "th3", "j2c+", "jr2", "th5"]
@@ -2760,7 +2760,6 @@ class QosSaiBase(QosBase):
         if request.config.getoption("--neighbor_type") == "sonic":
             yield
             return
-
         if ('platform_asic' in dutTestParams["basicParams"] and
                 dutTestParams["basicParams"]["platform_asic"] == "broadcom-dnx"):
             dst_dut = get_src_dst_asic_and_duts['dst_dut']

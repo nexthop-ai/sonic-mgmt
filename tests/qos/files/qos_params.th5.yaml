@@ -3,6 +3,8 @@ qos_params:
         topo-t0-standalone: &topo-t0-standalone
             cell_size: 254
             hdrm_pool_wm_multiplier: 1
+            800000_300m:
+                pkts_num_leak_out: 0
             200000_5m:
                 hdrm_pool_size:
                     dscps:
@@ -200,3 +202,5 @@ qos_params:
         topo-t0-standalone-256: *topo-t0-standalone
         topo-t0-standalone-32:  *topo-t0-standalone
         topo-lt2-p32o64:  *topo-t0-standalone
+        topo-any:  *topo-t0-standalone
+        topo-t1-8:  *topo-t0-standalone

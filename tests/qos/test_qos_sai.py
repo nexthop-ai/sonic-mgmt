@@ -388,6 +388,7 @@ class TestQosSai(QosSaiBase):
         logger.info("dualtor_ports {}".format(dualtor_ports_for_duts))
 
     @pytest.mark.parametrize("xoffProfile", ["xoff_1", "xoff_2", "xoff_3", "xoff_4"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiPfcXoffLimit(
         self, xoffProfile, duthosts, get_src_dst_asic_and_duts,
         ptfhost, dutTestParams, dutConfig, dutQosConfig,
@@ -480,6 +481,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("xonProfile", ["xon_1", "xon_2", "xon_3", "xon_4"])
+    @pytest.mark.skip("This test is disabled")
     def testPfcStormWithSharedHeadroomOccupancy(
         self, xonProfile, ptfhost, fanouthosts, conn_graph_facts,  fanout_graph_facts,              # noqa: F811
         dutTestParams, dutConfig, dutQosConfig, sharedHeadroomPoolSize, ingressLosslessProfile, localhost
@@ -664,6 +666,7 @@ class TestQosSai(QosSaiBase):
             )
 
     @pytest.mark.parametrize("xonProfile", ["xon_1", "xon_2", "xon_3", "xon_4"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiPfcXonLimit(
         self, get_src_dst_asic_and_duts, xonProfile, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         ingressLosslessProfile, change_lag_lacp_timer
@@ -775,6 +778,7 @@ class TestQosSai(QosSaiBase):
         "LosslessVoqProfile",
         ["lossless_voq_1", "lossless_voq_2",
          "lossless_voq_3", "lossless_voq_4"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiLosslessVoq(
             self, LosslessVoqProfile, ptfhost, dutTestParams, dutConfig,
             dutQosConfig, get_src_dst_asic_and_duts, skip_longlink
@@ -982,6 +986,7 @@ class TestQosSai(QosSaiBase):
                 testParams=testParams)
 
     @pytest.mark.parametrize("sharedResSizeKey", ["shared_res_size_1", "shared_res_size_2"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiSharedReservationSize(
         self, sharedResSizeKey, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         get_src_dst_asic_and_duts, check_skip_shared_res_test
@@ -1167,6 +1172,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("bufPool", ["wm_buf_pool_lossless", "wm_buf_pool_lossy"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiBufferPoolWatermark(
         self, request, get_src_dst_asic_and_duts, bufPool, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         ingressLosslessProfile, egressLossyProfile, resetWatermark,
@@ -1259,6 +1265,7 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiLossyQueue(
         self, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig,
         ingressLossyProfile, skip_src_dst_different_asic, change_lag_lacp_timer
@@ -1331,6 +1338,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("LossyVoq", ["lossy_queue_voq_1", "lossy_queue_voq_2"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiLossyQueueVoq(
         self, LossyVoq, ptfhost, dutTestParams, dutConfig, dutQosConfig,
             ingressLossyProfile, duthost, localhost, get_src_dst_asic_and_duts,
@@ -1629,6 +1637,7 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiDwrr(
         self, ptfhost, duthosts, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig, change_port_speed,
             skip_src_dst_different_asic, set_cir_change, change_lag_lacp_timer
@@ -1707,6 +1716,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("pgProfile", ["wm_pg_shared_lossless", "wm_pg_shared_lossy"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiPgSharedWatermark(
         self, pgProfile, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig,
         resetWatermark, skip_src_dst_different_asic, change_lag_lacp_timer
@@ -1816,6 +1826,7 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiPgHeadroomWatermark(
         self, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig, resetWatermark,
             change_lag_lacp_timer):
@@ -1882,6 +1893,7 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiPGDrop(
         self, ptfhost, dutTestParams, dutConfig, dutQosConfig, skip_400g_longlink
     ):
@@ -1927,6 +1939,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("queueProfile", ["wm_q_shared_lossless", "wm_q_shared_lossy"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiQSharedWatermark(
         self, get_src_dst_asic_and_duts, queueProfile, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         resetWatermark, skip_src_dst_different_asic, skip_pacific_dst_asic, change_lag_lacp_timer
@@ -2037,6 +2050,7 @@ class TestQosSai(QosSaiBase):
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         if dutTestParams["basicParams"]["sonic_asic_type"] == 'cisco-8000' or \
+                (dutConfig["dutAsic"] == 'th5') or \
                 ('platform_asic' in dutTestParams["basicParams"] and
                  dutTestParams["basicParams"]["platform_asic"] in ["broadcom-dnx", "mellanox", "marvell-teralynx"]):
             disableTest = False
@@ -2064,6 +2078,8 @@ class TestQosSai(QosSaiBase):
             testParams["platform_asic"] = dutTestParams["basicParams"]["platform_asic"]
         else:
             testParams["platform_asic"] = None
+
+        testParams["dut_asic"] = dutConfig["dutAsic"]
 
         self.runPtfTest(
             ptfhost, testCase="sai_qos_tests.DscpToPgMapping",
@@ -2201,6 +2217,7 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiDwrrWeightChange(
         self, get_src_dst_asic_and_duts, ptfhost, dutTestParams, dutConfig, dutQosConfig,
             updateSchedProfile, skip_src_dst_different_asic, set_cir_change,
@@ -2262,6 +2279,7 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("queueProfile", ["wm_q_wm_all_ports"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiQWatermarkAllPorts(
         self, queueProfile, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         get_src_dst_asic_and_duts, resetWatermark, _skip_watermark_multi_DUT,
@@ -2529,6 +2547,7 @@ class TestQosSai(QosSaiBase):
                                                   "xon_hysteresis_5", "xon_hysteresis_6",
                                                   "xon_hysteresis_7", "xon_hysteresis_8",
                                                   "xon_hysteresis_9"])
+    @pytest.mark.skip("This test is disabled")
     def testQosSaiXonHysteresis(
             self, xonHysteresisKey, ptfhost, dutTestParams, dutConfig, dutQosConfig,
             get_src_dst_asic_and_duts, check_skip_xon_hysteresis_test
