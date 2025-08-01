@@ -160,12 +160,8 @@ def filter_ports(all_port_indices, tbinfo, is_chassis):
 
     # Note: this filteration is useful for multilinecard DUTs to make sure incoming traffic is
     # landing on a different linecard; NA for pizza boxes
-<<<<<<< HEAD
-    if tbinfo['topo']['type'] != 't2' or not is_chassis:
-=======
 
-    if tbinfo['topo']['type'] != 't2' or 't2_single_node' in tbinfo['topo']['name']:
->>>>>>> upstream/master
+    if tbinfo['topo']['type'] != 't2' or 't2_single_node' in tbinfo['topo']['name'] or not is_chassis:
         return []
 
     # Collect all port indices (keys) from all_port_indices
@@ -564,19 +560,12 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
 # used as hash keys
 
 
-<<<<<<< HEAD
-def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,  # noqa: F811
-                     hash_keys, ptfhost, ipver, tbinfo, mux_server_url,             # noqa: F811
-                     ignore_ttl, single_fib_for_duts, duts_running_config_facts,    # noqa: F811
-                     duts_minigraph_facts, ecmp_inner_header_hash_supported, request):  # noqa: F811
-=======
 def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,                                   # noqa: F811
                      hash_keys, ptfhost, ipver, tbinfo, mux_server_url,                             # noqa: F811
                      ignore_ttl, single_fib_for_duts, duts_running_config_facts,                    # noqa: F811
                      duts_minigraph_facts, toggle_all_simulator_ports_to_rand_selected_tor_m,       # noqa: F811
                      mux_status_from_nic_simulator, setup_standby_ports_on_rand_unselected_tor,     # noqa: F811
-                     request):                                                                      # noqa: F811
->>>>>>> upstream/master
+                     ecmp_inner_header_hash_supported, request):                                    # noqa: F811
     # Only run this test on T1 or T0 (including dualtor) topologies
     pytest_require(tbinfo['topo']['type'] in ['t1', 't0'], "The test case runs on T1 or T0 topology")
     logging.info(f"Topology type: {tbinfo['topo']['type']}")
