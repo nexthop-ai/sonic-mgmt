@@ -2,15 +2,10 @@ import time
 import logging
 import pytest
 import json
-<<<<<<< HEAD
 from tests.common.utilities import MGMT_VRF_NAME, wait_until
-from tests.common.helpers.gnmi_utils import GNMIEnvironment
-=======
-from tests.common.utilities import wait_until
 from tests.common.helpers.gnmi_utils import GNMIEnvironment, add_gnmi_client_common_name, del_gnmi_client_common_name, \
                                             dump_gnmi_log, dump_system_status
 from tests.common.helpers.gnmi_utils import gnmi_container   # noqa: F401
->>>>>>> upstream/master
 from tests.common.helpers.ntp_helper import NtpDaemon, get_ntp_daemon_in_use   # noqa: F401
 
 
@@ -22,7 +17,6 @@ GNMI_PORT = 0
 GNMI_SERVER_START_WAIT_TIME = 30
 
 
-<<<<<<< HEAD
 def gnmi_container(duthost):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     return env.gnmi_container
@@ -90,9 +84,6 @@ def is_mgmt_vrf_enabled(duthost):
 
 
 def apply_cert_config(duthost, vrf_name=None):
-=======
-def apply_cert_config(duthost):
->>>>>>> upstream/master
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     # Get subtype
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
