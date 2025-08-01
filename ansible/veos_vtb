@@ -10,11 +10,8 @@ all:
       vars:
         topologies:
           - t1
-<<<<<<< HEAD
           - t1-8
-=======
           - t1-vpp
->>>>>>> upstream/master
           - t1-lag
           - t1-lag-vpp
           - t1-28-lag
