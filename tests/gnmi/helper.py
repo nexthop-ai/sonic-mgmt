@@ -2,8 +2,15 @@ import time
 import logging
 import pytest
 import json
+<<<<<<< HEAD
 from tests.common.utilities import MGMT_VRF_NAME, wait_until
 from tests.common.helpers.gnmi_utils import GNMIEnvironment
+=======
+from tests.common.utilities import wait_until
+from tests.common.helpers.gnmi_utils import GNMIEnvironment, add_gnmi_client_common_name, del_gnmi_client_common_name, \
+                                            dump_gnmi_log, dump_system_status
+from tests.common.helpers.gnmi_utils import gnmi_container   # noqa: F401
+>>>>>>> upstream/master
 from tests.common.helpers.ntp_helper import NtpDaemon, get_ntp_daemon_in_use   # noqa: F401
 
 
@@ -15,6 +22,7 @@ GNMI_PORT = 0
 GNMI_SERVER_START_WAIT_TIME = 30
 
 
+<<<<<<< HEAD
 def gnmi_container(duthost):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     return env.gnmi_container
@@ -82,6 +90,9 @@ def is_mgmt_vrf_enabled(duthost):
 
 
 def apply_cert_config(duthost, vrf_name=None):
+=======
+def apply_cert_config(duthost):
+>>>>>>> upstream/master
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     # Get subtype
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
@@ -202,26 +213,6 @@ def check_system_time_sync(duthost):
     else:
         logger.error("DUT %s: NTP synchronization failed. Please check manually.", duthost)
         return False
-
-
-def gnmi_capabilities(duthost, localhost):
-    env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
-    port = env.gnmi_port
-    # Run gnmi_cli in gnmi container as workaround
-    cmd = "docker exec %s gnmi_cli -client_types=gnmi -a %s:%s " % (env.gnmi_container, ip, port)
-    cmd += "-client_crt /etc/sonic/telemetry/gnmiclient.crt "
-    cmd += "-client_key /etc/sonic/telemetry/gnmiclient.key "
-    cmd += "-ca_crt /etc/sonic/telemetry/gnmiCA.pem "
-    cmd += "-logtostderr -capabilities"
-    output = duthost.shell(cmd, module_ignore_errors=True)
-    if output['stderr']:
-        dump_gnmi_log(duthost)
-        dump_system_status(duthost)
-        verify_tcp_port(localhost, ip, port)
-        return -1, output['stderr']
-    else:
-        return 0, output['stdout']
 
 
 def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list, cert=None):

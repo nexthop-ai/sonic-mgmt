@@ -159,7 +159,7 @@ def load_dut_basic_facts(inv_name, dut_name):
         dict or None: Return the dut basic facts dict or None if something went wrong.
     """
     results = {}
-    logger.info('Getting dut basic facts')
+    logger.info('Getting dut basic facts: {}'.format(dut_name))
     try:
         inv_full_path = os.path.join(os.path.dirname(__file__), '../../../../ansible', inv_name)
         ansible_cmd = 'ansible -m dut_basic_facts -i {} {} -o'.format(inv_full_path, dut_name)
@@ -245,7 +245,7 @@ def load_minigraph_facts(inv_name, dut_name):
         dict or None: Return the minigraph basic facts dict or None if something went wrong.
     """
     results = {}
-    logger.info('Getting minigraph basic facts')
+    logger.info('Getting minigraph basic facts: {}'.format(dut_name))
     try:
         # get minigraph basic faces
         ansible_cmd = "ansible -m minigraph_facts -i ../ansible/{0} {1} -a host={1}".format(inv_name, dut_name)
@@ -277,7 +277,7 @@ def load_config_facts(inv_name, dut_name):
         dict or None: Return the minigraph basic facts dict or None if something went wrong.
     """
     results = {}
-    logger.info('Getting config basic facts')
+    logger.info('Getting config basic facts: {}'.format(dut_name))
     try:
         # get config basic faces
         ansible_cmd = ['ansible', '-m', 'config_facts', '-i', '../ansible/{}'.format(inv_name),
@@ -298,6 +298,10 @@ def load_config_facts(inv_name, dut_name):
                 results['switch_type'] = device_metadata['switch_type']
             else:
                 results['switch_type'] = ""
+            if 'type' in output_fields['DEVICE_METADATA']['localhost']:
+                results['type'] = output_fields['DEVICE_METADATA']['localhost']['type']
+            else:
+                results['type'] = ""
 
             # Extract frr_mgmt_framework_config for conditional skip support
             results['frr_mgmt_config'] = device_metadata.get('frr_mgmt_framework_config', 'false')
@@ -321,7 +325,7 @@ def load_switch_capabilities_facts(inv_name, dut_name):
         dict or None: Return the minigraph basic facts dict or None if something went wrong.
     """
     results = {}
-    logger.info('Getting switch capabilities basic facts')
+    logger.info('Getting switch capabilities basic facts: {}'.format(dut_name))
     try:
         # get switch capabilities basic faces
         ansible_cmd = "ansible -m switch_capabilities_facts -i ../ansible/{} {}".format(inv_name, dut_name)
@@ -350,7 +354,7 @@ def load_console_facts(inv_name, dut_name):
         dict or None: Return the minigraph basic facts dict or None if something went wrong.
     """
     results = {}
-    logger.info('Getting console basic facts')
+    logger.info('Getting console basic facts: {}'.format(dut_name))
     try:
         # get console basic faces
         ansible_cmd = "ansible -m console_facts -i ../ansible/{} {}".format(inv_name, dut_name)
@@ -378,6 +382,7 @@ def load_basic_facts(dut_name, session):
     Returns:
         dict: Dict of facts.
     """
+    logger.info("Loading basic facts for DUT: {}".format(dut_name))
     results = {}
 
     testbed_name = session.config.option.testbed

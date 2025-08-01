@@ -1,27 +1,20 @@
 #!/usr/bin/python
-import csv
 
 from ansible.module_utils.basic import AnsibleModule
 import yaml
 import os
 import logging
 import traceback
-import ipaddress
-import six
-from operator import itemgetter
-from itertools import groupby
-from natsort import natsorted
 
 try:
-    from ansible.module_utils.port_utils import get_port_alias_to_name_map
     from ansible.module_utils.debug_utils import config_module_logging
+    from ansible.module_utils.graph_utils import LabGraph
 except ImportError:
     # Add parent dir for using outside Ansible
     import sys
     sys.path.append('..')
-    from module_utils.port_utils import get_port_alias_to_name_map
     from module_utils.debug_utils import config_module_logging
-
+    from module_utils.graph_utils import LabGraph
 
 config_module_logging('conn_graph_facts')
 
@@ -117,6 +110,7 @@ LAB_GRAPHFILE_PATH = "files/"
 LAB_GRAPH_GROUPS_FILE = "graph_groups.yml"
 
 
+<<<<<<< HEAD
 class LabGraph(object):
 
     SUPPORTED_CSV_FILES = {
@@ -591,6 +585,8 @@ class LabGraph(object):
         return (True, results)
 
 
+=======
+>>>>>>> upstream/master
 def find_graph(hostnames, part=False):
     """Find the graph file for the target device
 
