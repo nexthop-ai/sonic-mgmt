@@ -110,7 +110,6 @@ LAB_GRAPHFILE_PATH = "files/"
 LAB_GRAPH_GROUPS_FILE = "graph_groups.yml"
 
 
-<<<<<<< HEAD
 class LabGraph(object):
 
     SUPPORTED_CSV_FILES = {
@@ -585,8 +584,6 @@ class LabGraph(object):
         return (True, results)
 
 
-=======
->>>>>>> upstream/master
 def find_graph(hostnames, part=False):
     """Find the graph file for the target device
 
