@@ -36,13 +36,6 @@
             <a:Reference i:nil="true"/>
             <a:Value>Profile0</a:Value>
           </a:DeviceProperty>
-<<<<<<< HEAD
-          <a:DeviceProperty>
-            <a:Name>SonicQosProfile</a:Name>
-            <a:Reference i:nil="true"/>
-            <a:Value>BALANCED</a:Value>
-          </a:DeviceProperty>
-=======
 {% if sonic_qos_profile is defined and sonic_qos_profile != "DEFAULT" %}
           <a:DeviceProperty>
             <a:Name>SonicQosProfile</a:Name>
@@ -50,7 +43,6 @@
             <a:Value>{{ sonic_qos_profile }}</a:Value>
           </a:DeviceProperty>
 {% endif %}
->>>>>>> upstream/master
 {% if 't2' in topo %}
 {% if card_type is not defined or card_type != 'supervisor' %}
           <a:DeviceProperty>
