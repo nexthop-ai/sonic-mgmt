@@ -389,12 +389,9 @@ copp/test_copp.py::TestCOPP::test_trap_neighbor_miss:
     conditions_logical_operator: or
     conditions:
       - "(asic_type in ['broadcom'] and release in ['202411'])"
-<<<<<<< HEAD
-=======
       - "(topo_name not in ['t0', 't0-64', 't0-52', 't0-116', 't0-118', 't0-88-o8c80', 't0-isolated-d16u16s1', 't1-isolated-d28u1', 't0-isolated-d32u32s2', 't1-isolated-d56u2'])"
 
 
->>>>>>> upstream/master
 #######################################
 #####            crm              #####
 #######################################
@@ -1603,12 +1600,10 @@ generic_config_updater/test_multiasic_linkcrc.py:
       - "(is_multi_asic is False)"
 
 generic_config_updater/test_pfcwd_interval.py:
-<<<<<<< HEAD
   xfail:
     reason: "This test can only support mellanox and Broadcom TH5 platforms"
     conditions:
       - "asic_type not in ['mellanox'] and hwsku not in group_vars['broadcom_th5_hwskus']"
-=======
   skip:
     reason: "This test can only support mellanox platforms. This test is not run on this hwsku currently"
     conditions_logical_operator: or
@@ -1616,7 +1611,6 @@ generic_config_updater/test_pfcwd_interval.py:
       - "asic_type not in ['mellanox']"
       - hwsku in ['Mellanox-SN5600-C224O8', 'Mellanox-SN5600-C256S1', 'Mellanox-SN5640-C448O16', 'Mellanox-SN5640-C512S2',
                    'Arista-7060X6-64PE-C256S2', 'Arista-7060X6-64PE-C224O8', 'Arista-7060X6-64PE-B-C512S2', 'Arista-7060X6-64PE-B-C448O16']
->>>>>>> upstream/master
 
 generic_config_updater/test_pfcwd_status.py:
   skip:
