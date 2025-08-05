@@ -336,7 +336,7 @@ class LabGraph(object):
                 l1_start_device = to_l1_links[start_device][start_port]["peerdevice"]
                 l1_end_device = to_l1_links[end_device][end_port]["peerdevice"]
                 if l1_start_device != l1_end_device:
-                    logging.debug(f"Found L1 connected port pairs not using the same L1 device: "
+                    logging.debug("Found L1 connected port pairs not using the same L1 device: "
                                   "{}:{} <-> {}:{} "
                                   "on L1 devices {} and {}".format(
                                       start_device, start_port, end_device, end_port,
@@ -409,14 +409,14 @@ class LabGraph(object):
                                 device_vlan_map_list[hostname][port_index] = host_vlan
                                 found_port_for_vlan = True
                             elif not ignore_error:
-                                msg = (f"Did not find port for '{port_name}' in the ports based on "
-                                       f"hwsku '{device['HwSku']}' for host '{hostname}'")
+                                msg = ("Did not find port for '{}' in the ports based on "
+                                       "hwsku '{}' for host '{}'".format(port_name, device['HwSku'], hostname))
                                 logging.error("Sorted port name list: {}".format(sorted_port_name_list))
                                 logging.error("port_vlans of host {}: {}".format(hostname, device_port_vlans[hostname]))
                                 return (False, msg)
                     if not found_port_for_vlan and not ignore_error:
-                        msg = (f"Did not find corresponding link for vlan {host_vlan} in "
-                               f"{device_port_vlans[hostname]} for host {hostname}")
+                        msg = ("Did not find corresponding link for vlan {} in "
+                               "{} for host {}".format(host_vlan, device_port_vlans[hostname], hostname))
                         return (False, msg)
             device_console_link[hostname] = self.graph_facts["console_links"].get(hostname, {})
             device_console_info[hostname] = self.graph_facts["devices"].get(
