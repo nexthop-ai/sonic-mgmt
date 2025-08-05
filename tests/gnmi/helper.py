@@ -17,11 +17,6 @@ GNMI_PORT = 0
 GNMI_SERVER_START_WAIT_TIME = 30
 
 
-def gnmi_container(duthost):
-    env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    return env.gnmi_container
-
-
 def create_ca_conf(crl, filename):
     text = '''
 [ req_ext ]
@@ -45,37 +40,10 @@ IP      = %s
     return
 
 
-def dump_gnmi_log(duthost):
-    env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    dut_command = "docker exec %s cat /root/gnmi.log" % (env.gnmi_container)
-    res = duthost.shell(dut_command, module_ignore_errors=True)
-    logger.info("GNMI log: " + res['stdout'])
-    return res['stdout']
-
-
-def dump_system_status(duthost):
-    env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    dut_command = "docker exec %s ps -efwww" % (env.gnmi_container)
-    res = duthost.shell(dut_command, module_ignore_errors=True)
-    logger.info("GNMI process: " + res['stdout'])
-    dut_command = "docker exec %s date" % (env.gnmi_container)
-    res = duthost.shell(dut_command, module_ignore_errors=True)
-    logger.info("System time: " + res['stdout'] + res['stderr'])
-
-
 def verify_tcp_port(localhost, ip, port):
     command = "ssh  -o ConnectTimeout=3 -v -p %s %s" % (port, ip)
     res = localhost.shell(command, module_ignore_errors=True)
     logger.info("TCP: " + res['stdout'] + res['stderr'])
-
-
-def add_gnmi_client_common_name(duthost, cname, role="gnmi_readwrite"):
-    command = 'sudo sonic-db-cli CONFIG_DB hset "GNMI_CLIENT_CERT|{}" "role@" "{}"'.format(cname, role)
-    duthost.shell(command, module_ignore_errors=True)
-
-
-def del_gnmi_client_common_name(duthost, cname):
-    duthost.shell('sudo sonic-db-cli CONFIG_DB del "GNMI_CLIENT_CERT|{}"'.format(cname), module_ignore_errors=True)
 
 
 def is_mgmt_vrf_enabled(duthost):
