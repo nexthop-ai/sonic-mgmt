@@ -98,6 +98,12 @@ def setup_radius_server(
         dest="{}/mods-config/files/authorize".format(FREE_RADIUS_CONF_DIR),
     )
 
+    # Enable freeRADIUS server to include Message-Authenticator in response
+    ptfhost.copy(
+        src="radius/sites-enabled-default",
+        dest="{}/sites-enabled/default".format(FREE_RADIUS_CONF_DIR),
+    )
+
     try:
         logging.debug("starting freeRADIUS server on ptfhost")
         ptfhost.shell("rm -rf /tmp/freeradius.log")
