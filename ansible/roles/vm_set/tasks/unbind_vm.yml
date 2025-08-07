@@ -17,7 +17,6 @@
     is_vs_chassis: "{{ is_vs_chassis | default(false) }}"
     batch_mode: "{{ batch_mode if batch_mode is defined else omit }}"
   async: 3600
-  throttle: 1
   poll: 0
   register: async_unbind_topology_result_item
   become: yes
