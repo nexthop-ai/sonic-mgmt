@@ -436,7 +436,9 @@ def test_update_saithrift_ptf(request, ptfhost, duthosts, enum_dut_hostname):
     ip_addr = py_saithrift_url.split("/")[2]
     ptfhost.shell("rm -f {}".format(pkg_name))
 
-    if branch_name.startswith("internal-") and branch_name < "internal-202405":
+    if 'Nexthop' in version:
+        pass
+    elif branch_name.startswith("internal-") and branch_name < "internal-202405":
         # For internal branches older than 202405, use the original URL without modification
         pass
     elif branch_name == "master":
