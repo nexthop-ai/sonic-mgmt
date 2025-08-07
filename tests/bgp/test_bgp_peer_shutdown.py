@@ -97,6 +97,7 @@ def common_setup_teardown(
 def constants(is_quagga, setup_interfaces, pytestconfig):
     class _C(object):
         """Dummy class to save test constants."""
+
         def __init__(self):
             self.sleep_interval = None
             self.log_dir = None
@@ -120,7 +121,8 @@ def constants(is_quagga, setup_interfaces, pytestconfig):
 
 def is_neighbor_session_established(duthost, neighbor):
     # handle both multi-asic and single-asic
-    bgp_facts = duthost.bgp_facts(num_npus=duthost.sonichost.num_asics())["ansible_facts"]
+    bgp_facts = duthost.bgp_facts(num_npus=duthost.sonichost.num_asics())[
+        "ansible_facts"]
     return (neighbor.ip in bgp_facts["bgp_neighbors"]
             and bgp_facts["bgp_neighbors"][neighbor.ip]["state"] == "established")
 
@@ -151,7 +153,8 @@ def match_bgp_notification(packet, src_ip, dst_ip, action, bgp_session_down_time
 
 def is_neighbor_session_down(duthost, neighbor):
     # handle both multi-asic and single-asic
-    bgp_neighbors = duthost.bgp_facts(num_npus=duthost.sonichost.num_asics())["ansible_facts"]["bgp_neighbors"]
+    bgp_neighbors = duthost.bgp_facts(num_npus=duthost.sonichost.num_asics())[
+        "ansible_facts"]["bgp_neighbors"]
     return (neighbor.ip in bgp_neighbors and
             bgp_neighbors[neighbor.ip]["admin"] == "down" and
             bgp_neighbors[neighbor.ip]["state"] == "idle")
@@ -159,9 +162,10 @@ def is_neighbor_session_down(duthost, neighbor):
 
 def get_bgp_down_timestamp(duthost, namespace, peer_ip, timestamp_before_teardown):
     # get the bgp session down timestamp from syslog in the format of seconds (with ms precision) since the Unix Epoch
+    # This is done by looking at the ADJCHANGE syslog for this peer
     cmd = (
-        "grep \"[b]gp{}#bgpcfgd: Peer 'default|{}' admin state is set to 'down'\" /var/log/syslog | tail -1"
-    ).format(namespace.split("asic")[1] if namespace else "", peer_ip)
+        f"grep \"bgp#bgpd\\[[0-9]\\+\\]: \\[.*\\] %ADJCHANGE: neighbor {peer_ip}.* " +
+        "in vrf default Down BGP Notification received\" /var/log/frr/bgpd.log | tail -1")
 
     bgp_down_msg_list = duthost.shell(cmd)['stdout'].split()
     if not bgp_down_msg_list:
@@ -169,12 +173,15 @@ def get_bgp_down_timestamp(duthost, namespace, peer_ip, timestamp_before_teardow
 
     try:
         timestamp = " ".join(bgp_down_msg_list[1:4])
-        timestamp_in_sec = float(duthost.shell("date -d \"{}\" +%s.%6N".format(timestamp))['stdout'])
+        timestamp_in_sec = float(duthost.shell(
+            "date -d \"{}\" +%s.%6N".format(timestamp))['stdout'])
     except RunAnsibleModuleFail:
         timestamp = " ".join(bgp_down_msg_list[0:3])
-        timestamp_in_sec = float(duthost.shell("date -d \"{}\" +%s.%6N".format(timestamp))['stdout'])
+        timestamp_in_sec = float(duthost.shell(
+            "date -d \"{}\" +%s.%6N".format(timestamp))['stdout'])
     except Exception as e:
-        logging.error("Error when parsing syslog message timestamp: {}".format(repr(e)))
+        logging.error(
+            "Error when parsing syslog message timestamp: {}".format(repr(e)))
         pytest.fail("Failed to parse syslog message timestamp")
 
     if timestamp_in_sec < timestamp_before_teardown:
@@ -194,6 +201,15 @@ def test_bgp_peer_shutdown(
     n0 = common_setup_teardown
     announced_route = {"prefix": "10.10.100.0/27", "nexthop": n0.ip}
 
+    bgp_log_neighbor_changes_cmd = (
+        "vtysh "
+        "-c 'configure terminal' "
+        "-c 'router bgp %d' "
+        "-c 'bgp log-neighbor-changes'"
+    )
+    bgp_log_neighbor_changes_cmd %= (n0.peer_asn)
+    duthost.shell(bgp_log_neighbor_changes_cmd)
+
     for _ in range(TEST_ITERATIONS):
         try:
             n0.start_session()
@@ -208,11 +224,14 @@ def test_bgp_peer_shutdown(
 
             n0.announce_route(announced_route)
             time.sleep(constants.sleep_interval)
-            announced_route_on_dut_before_shutdown = duthost.get_route(announced_route["prefix"], n0.namespace)
+            announced_route_on_dut_before_shutdown = duthost.get_route(
+                announced_route["prefix"], n0.namespace)
             if not announced_route_on_dut_before_shutdown:
-                pytest.fail("announce route %s from n0 to dut failed" % announced_route["prefix"])
+                pytest.fail("announce route %s from n0 to dut failed" %
+                            announced_route["prefix"])
 
-            timestamp_before_teardown = float(duthost.shell("date +%s.%6N")['stdout'])
+            timestamp_before_teardown = float(
+                duthost.shell("date +%s.%6N")['stdout'])
             # tear down BGP session on n0
             bgp_pcap = BGP_DOWN_LOG_TMPL
             with capture_bgp_packages_to_file(duthost, "any", bgp_pcap, n0.namespace):
@@ -225,7 +244,8 @@ def test_bgp_peer_shutdown(
                 ):
                     pytest.fail("Could not tear down bgp session")
 
-            local_pcap_filename = fetch_and_delete_pcap_file(bgp_pcap, constants.log_dir, duthost, request)
+            local_pcap_filename = fetch_and_delete_pcap_file(
+                bgp_pcap, constants.log_dir, duthost, request)
             bpg_notifications = bgp_notification_packets(local_pcap_filename)
             for bgp_packet in bpg_notifications:
                 logging.debug(
@@ -234,13 +254,17 @@ def test_bgp_peer_shutdown(
                     bgp_packet.show(dump=True),
                 )
 
-                bgp_session_down_time = get_bgp_down_timestamp(duthost, n0.namespace, n0.ip, timestamp_before_teardown)
+                bgp_session_down_time = get_bgp_down_timestamp(
+                    duthost, n0.namespace, n0.ip, timestamp_before_teardown)
                 if not match_bgp_notification(bgp_packet, n0.ip, n0.peer_ip, "cease", bgp_session_down_time):
-                    pytest.fail("BGP notification packet does not match expected values")
+                    pytest.fail(
+                        "BGP notification packet does not match expected values")
 
-            announced_route_on_dut_after_shutdown = duthost.get_route(announced_route["prefix"], n0.namespace)
+            announced_route_on_dut_after_shutdown = duthost.get_route(
+                announced_route["prefix"], n0.namespace)
             if announced_route_on_dut_after_shutdown:
-                pytest.fail("route %s still exists in DUT after BGP shutdown" % announced_route["prefix"])
+                pytest.fail(
+                    "route %s still exists in DUT after BGP shutdown" % announced_route["prefix"])
         finally:
             n0.stop_session()
             duthost.shell("ip route flush %s" % announced_route["prefix"])

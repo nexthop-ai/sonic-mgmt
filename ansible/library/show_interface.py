@@ -118,11 +118,12 @@ class ShowInterfaceModule(object):
 
     def collect_interface_status(self, namespace=None, include_internal_intfs=False, include_inband_intfs=False):
         regex_int_fec = re.compile(
-            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+(rs|fc|N\/A|none)\s+([\w\/]+)\s+(\w+)\s+(\w+)\s+(\w+)')
+            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+(rs|fc|N\/A|none)\s+'
+            r'([\w\/\(\)]+)\s+(\w+)\s+(\w+)\s+(\w+)(?:\s+\S+)*')
         regex_int = re.compile(
-            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+([\w\/]+)\s+(\w+)\s+(\w+)\s+(\w+)')
+            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+([\w\/\(\)]+)\s+(\w+)\s+(\w+)\s+(\w+)(?:\s+\S+)*')
         regex_int_internal = re.compile(
-            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+(rs|N\/A)\s+([\w\-]+)\s+(\w+)\s+(\w+)\s+(\w+)')
+            r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+(rs|N\/A)\s+([\w\-\(\)]+)\s+(\w+)\s+(\w+)\s+(\w+)(?:\s+\S+)*')
         self.int_status = {}
         if self.m_args['interfaces'] is not None:
             for interface in self.m_args['interfaces']:
