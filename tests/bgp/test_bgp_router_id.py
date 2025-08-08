@@ -50,9 +50,13 @@ def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, 
     # Verify router id from DUT itself
     pattern = r"BGP router identifier (\d+\.\d+\.\d+\.\d+)"
     match = re.search(pattern, output)
-    pytest_assert(match, "Cannot get actual BGP router id from [{}]".format(output))
-    pytest_assert(match.group(1) == expected_bgp_router_id,
-                  "BGP router id unexpected, expected: {}, actual: {}".format(expected_bgp_router_id, match.group(1)))
+    pytest_assert(match, (
+        "Cannot get actual BGP router id from [{}]. "
+    ).format(output))
+
+    pytest_assert(match.group(1) == expected_bgp_router_id, (
+        "BGP router id unexpected, expected: {}, actual: {}. "
+    ).format(expected_bgp_router_id, match.group(1)))
 
     # Verify BGP sessions are established
     run_bgp_facts(duthost, enum_asic_index)
@@ -68,7 +72,11 @@ def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, 
             local_ip_map[item["name"]] = item["local_addr"]
 
     for neighbor_name, nbrhost in nbrhosts.items():
-        pytest_assert(neighbor_name in local_ip_map, "Cannot find local ip for {}".format(neighbor_name))
+        pytest_assert(neighbor_name in local_ip_map, (
+            "Cannot find local ip for {}. "
+            "Local IP map: {}"
+        ).format(neighbor_name, local_ip_map))
+
         if neighbor_type == "sonic":
             cmd = "show ip bgp neighbors {}".format(local_ip_map[neighbor_name])
         elif neighbor_type == "eos":
@@ -76,10 +84,13 @@ def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, 
         output = nbrhost["host"].shell(cmd, module_ignore_errors=True)['stdout']
         pattern = r"BGP version 4, remote router ID (\d+\.\d+\.\d+\.\d+)"
         match = re.search(pattern, output)
-        pytest_assert(match, "Cannot get remote BGP router id from [{}]".format(output))
-        pytest_assert(match.group(1) == expected_bgp_router_id,
-                      "BGP router id is unexpected, local: {}, fetch from remote: {}"
-                      .format(expected_bgp_router_id, match.group(1)))
+        pytest_assert(match, (
+            "Cannot get remote BGP router id from [{}]. "
+        ).format(output))
+
+        pytest_assert(match.group(1) == expected_bgp_router_id, (
+            "BGP router id is unexpected, local: {}, fetch from remote: {}. "
+        ).format(expected_bgp_router_id, match.group(1)))
 
 
 @pytest.fixture()
@@ -143,14 +154,24 @@ def test_bgp_router_id_set(duthosts, enum_frontend_dut_hostname, enum_asic_index
     verify_bgp(enum_asic_index, duthost, CUSTOMIZED_BGP_ROUTER_ID, neighbor_type, nbrhosts)
     # Verify Loopback ip has been advertised to neighbor
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+
     bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, cfg_facts)
     for remote_ip in bgp_neighbors.keys():
         if "." not in remote_ip:
             continue
         output = duthost.shell("show ip bgp neighbor {} advertised-routes | grep {}".format(remote_ip, loopback_ip),
                                module_ignore_errors=True)
-        pytest_assert(output["rc"] == 0, "Failed to check whether Loopback ipv4 address has been advertised")
-        pytest_assert(loopback_ip in output["stdout"], "Router advertised unexpected: {}".format(output["stdout"]))
+        pytest_assert(output["rc"] == 0, (
+            "Failed to check whether Loopback ipv4 address has been advertised. "
+            "Return code: {} "
+            "Output: {}"
+        ).format(output["rc"], output))
+
+        pytest_assert(loopback_ip in output["stdout"], (
+            "Router advertised unexpected. "
+            "Expected loopback IP: {} "
+            "Actual output: {}"
+        ).format(loopback_ip, output["stdout"]))
 
 
 def test_bgp_router_id_set_without_loopback(duthosts, enum_frontend_dut_hostname, enum_asic_index, nbrhosts, request,
