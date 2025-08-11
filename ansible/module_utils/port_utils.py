@@ -713,6 +713,15 @@ def get_port_alias_to_name_map(hwsku, asic_name=None):
             port_alias_to_name_map["Port65"] = "Ethernet512"
             port_alias_to_name_map["Port66"] = "Ethernet513"
 
+        elif hwsku == "NH-5010":
+            logical_num = 33
+            for i in range(128, 256, 4):
+                port_alias_to_name_map["Port%d" % logical_num] = "Ethernet%d" % i
+                logical_num += 1
+            # adding placeholder for 100G ports
+            # port_alias_to_name_map["Port65"] = "Ethernet256"
+            # port_alias_to_name_map["Port66"] = "Ethernet261"
+
         else:
             if "Arista-7800" in hwsku:
                 assert False, "Please add port_alias_to_name_map for new modular SKU %s." % hwsku
