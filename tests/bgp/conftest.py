@@ -66,17 +66,22 @@ def _check_if_module_skipped_for_mode(request, frr_mgmt_config):
         if not conditions:
             return False
 
-        found_conditions = None
-        # Search through the list of condition dictionaries
+        matched_entries = []
+        # Search through the list of condition dictionaries and collect ALL matches
         for condition_dict in conditions:
             condition_entry = list(condition_dict.keys())[0]
             if condition_entry == module_path or module_path.startswith(condition_entry):
-                found_conditions = condition_dict[condition_entry]
-                break
+                matched_entries.append(condition_dict[condition_entry])
 
-        if found_conditions and 'skip' in found_conditions:
-            skip_conditions = found_conditions['skip'].get('conditions', [])
-            # Check if any condition mentions frr_mgmt_config
+        if not matched_entries:
+            return False
+
+        # Evaluate all matched 'skip' blocks to see if any explicitly skip for frr_mgmt_config
+        for entry in matched_entries:
+            if 'skip' not in entry:
+                continue
+            skip_block = entry['skip']
+            skip_conditions = skip_block.get('conditions', [])
             for condition in skip_conditions:
                 if isinstance(condition, str) and 'frr_mgmt_config' in condition:
                     if frr_mgmt_config == 'true' and "frr_mgmt_config == 'true'" in condition:
