@@ -380,17 +380,15 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
             dut_console = None
 
     except Exception as err:
-<<<<<<< HEAD
-        if not skip_console_log:
-            logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
-            pool.terminate()
-=======
         if dut_console:
             dut_console.disconnect()
             logger.info('end: collect console log')
-        logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
+        if not skip_console_log:
+            try:
+                logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
+            except Exception as console_err:
+                logger.warning(f'Failed to get console thread result: {console_err}')
         pool.terminate()
->>>>>>> upstream/master
         raise Exception(f"dut not start: {err}")
 
     if return_after_reconnect:
