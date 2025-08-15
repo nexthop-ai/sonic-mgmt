@@ -115,12 +115,21 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
         neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
         assert neighbor in v
         # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
-        assert v[neighbor]['port']['id']['value'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
-            "LLDP neighbor name mismatch. Expected '{}', but got '{}'."
-        ).format(
-            config_facts['DEVICE_NEIGHBOR'][k]['port'],
-            v[neighbor]['port']['id']['value']
-        )
+        if request.config.getoption("--neighbor_type") == 'eos':
+            assert v[neighbor]['port']['id']['value'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
+                "LLDP neighbor port interface name mismatch. Expected '{}', but got '{}'."
+            ).format(
+                config_facts['DEVICE_NEIGHBOR'][k]['port'],
+                v[neighbor]['port']['id']['value']
+            )
+        else:
+            # Dealing with KVM that advertises port description
+            assert v[neighbor]['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
+                "LLDP neighbor port description mismatch. Expected '{}', but got '{}'."
+            ).format(
+                config_facts['DEVICE_NEIGHBOR'][k]['port'],
+                v['port']['descr']
+            )
 
 
 def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_duts,
