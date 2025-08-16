@@ -236,27 +236,10 @@ class TestServices():
         duthost = duthosts[rand_one_dut_hostname]
         # Check if ntp was not in sync with ntp server before enabling mvrf, if yes then setup ntp server on ptf
         if check_ntp_sync:
-<<<<<<< HEAD
-            setup_ntp(ptfhost, duthost, ntp_servers)
-
-        ntp_service = "chrony" if ntp_daemon_in_use == NtpDaemon.CHRONY else "ntpsec"
-
-        # Skip the check for vs platform that doesnt have the ntp support
-        if duthost.facts["asic_type"] == "vs":
-            cmd = f"systemctl is-enabled {ntp_service}"
-            result = execute_dut_command(duthost, cmd)
-            if result['rc'] or result["stdout"] != "enabled":
-                return
-
-        # Run NTP in mgmt VRF
-        ntp_vrf_config_update(duthost, vrf="mgmt")
-        pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
-=======
             with setup_ntp_context(ptfhost, duthost, False):
                 pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
         else:
             pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
->>>>>>> upstream/master
 
     def test_service_acl(self, duthosts, rand_one_dut_hostname, localhost):
         duthost = duthosts[rand_one_dut_hostname]
