@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 GNMI_CONTAINER_NAME = ''
 GNMI_PROGRAM_NAME = ''
 GNMI_PORT = 0
-# Wait 30 seconds after starting GNMI server
-GNMI_SERVER_START_WAIT_TIME = 30
+# Wait 15 seconds after starting GNMI server
+GNMI_SERVER_START_WAIT_TIME = 15
 
 
 def create_ca_conf(crl, filename):
