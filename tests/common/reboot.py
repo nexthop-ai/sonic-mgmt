@@ -385,7 +385,9 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
             logger.info('end: collect console log')
         if not skip_console_log:
             try:
-                logger.error('collecting console log thread result: {} on {}'.format(console_thread_res.get(), hostname))
+                logger.error(
+                    "collecting console log thread result: {} on {}".format(console_thread_res.get(), hostname)
+                )
             except Exception as console_err:
                 logger.warning(f'Failed to get console thread result: {console_err}')
         pool.terminate()
