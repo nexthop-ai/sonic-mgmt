@@ -9,13 +9,13 @@ from grpc_tools import protoc
 
 from tests.common.helpers.assertions import pytest_require as pyrequire
 from tests.common.helpers.dut_utils import check_container_state
-from tests.gnmi.helper import gnmi_container, apply_cert_config, recover_cert_config
-from tests.gnmi.helper import GNMI_SERVER_START_WAIT_TIME, check_ntp_sync_status, is_mgmt_vrf_enabled
+from tests.common.helpers.gnmi_utils import gnmi_container
+from tests.gnmi.helper import apply_cert_config, recover_cert_config
+from tests.gnmi.helper import GNMI_SERVER_START_WAIT_TIME, check_ntp_sync_status
 from tests.common.gu_utils import create_checkpoint, rollback
 from tests.common.helpers.gnmi_utils import GNMIEnvironment, create_revoked_cert_and_crl, \
                                             create_gnmi_certs, delete_gnmi_certs, create_ext_conf
 from tests.common.helpers.ntp_helper import setup_ntp_context
-from tests.common.utilities import DEFAULT_VRF_NAME, MGMT_VRF_NAME
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,6 @@ SETUP_ENV_CP = "test_setup_checkpoint"
 VRF_SCENARIOS = [
     {"name": "default_1", "vrf": None, "description": "Default (no VRF)"},
 ]
-DEFAULT_SNMP_PORT = 161
 
 
 @pytest.fixture(scope="module", params=VRF_SCENARIOS, ids=lambda scenario: f"vrf_{scenario['name']}")
@@ -32,63 +31,13 @@ def vrf_config(request):
     return request.param
 
 
-def configure_snmp_with_vrf(duthost, agent_ip, vrf_name):
-    """
-    Configures SNMP agent address with VRF.
-    Misconfigured snmp agent address causes snmpd and snmp-subagent to fail
-    during startup.
-    While the GNMI tests do not depend directly on SNMP, some tests fail while
-    waiting for all critical processes to be up and running.
-    """
-    output = duthost.shell(
-        f'sudo sonic-db-cli CONFIG_DB KEYS "SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|*"'
-    )
-    output = output['stdout'].split("|")
-    if len(output) < 4:
-        duthost.shell(
-            f'sonic-db-cli CONFIG_DB HSET '
-            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{DEFAULT_SNMP_PORT}|{vrf_name}" '
-            f'"agent_ip" "{agent_ip}" "port" "{DEFAULT_SNMP_PORT}" "vrf_name" "{vrf_name}"'
-        )
-    else:
-        port = output[2]
-        duthost.shell(
-            f'sonic-db-cli CONFIG_DB DEL '
-            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{port}|{output[3]}"'
-        )
-        duthost.shell(
-            f'sonic-db-cli CONFIG_DB HSET '
-            f'"SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|{port}|{vrf_name}" '
-            f'"agent_ip" "{agent_ip}" "port" "{port}" "vrf_name" "{vrf_name}"'
-        )
-
-
 @pytest.fixture(scope="module", autouse=True)
-def setup_vrf_configuration(duthosts, rand_one_dut_hostname, vrf_config):
+def setup_vrf_configuration(vrf_config):
     """
     This fixture runs before setup_gnmi_server to ensure VRF config is in place.
+    It gets overridden in vrf_aware_tests/conftest.py.
     """
-    duthost = duthosts[rand_one_dut_hostname]
-    vrf_name = vrf_config.get("vrf")
-    mgmt_vrf_enabled = is_mgmt_vrf_enabled(duthost)
-
-    try:
-        if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
-            duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "true"')
-            configure_snmp_with_vrf(duthost, duthost.mgmt_ip, vrf_name)
-            configure_snmp_with_vrf(duthost, duthost.mgmt_ipv6, vrf_name)
-        elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
-            duthost.shell(f'sonic-db-cli CONFIG_DB hset "VRF|{vrf_name}" "NULL" "NULL"')
-        yield vrf_config
-
-    finally:
-        if vrf_name == MGMT_VRF_NAME and not mgmt_vrf_enabled:
-            duthost.shell('sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled" "false"')
-            duthost.shell('sonic-db-cli CONFIG_DB hdel "MGMT_VRF_CONFIG|vrf_global" "mgmtVrfEnabled"')
-            configure_snmp_with_vrf(duthost, duthost.mgmt_ip, "")
-            configure_snmp_with_vrf(duthost, duthost.mgmt_ipv6, "")
-        elif vrf_name and vrf_name not in {DEFAULT_VRF_NAME, MGMT_VRF_NAME}:
-            duthost.shell(f'sonic-db-cli CONFIG_DB del "VRF|{vrf_name}"', module_ignore_errors=True)
+    return vrf_config
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -145,7 +94,7 @@ def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_c
         check_container_state(duthost, gnmi_container(duthost), should_be_running=True),
         "Test was not supported on devices which do not support GNMI!")
 
-    create_gnmi_certs(duthost, localhost, ptfhost)
+    create_gnmi_certs(duthost, localhost, ptfhost, dut_ip=vrf_config.get("dut_ip"))
 
     create_checkpoint(duthost, SETUP_ENV_CP)
     apply_cert_config(duthost, vrf_config.get("vrf"))
@@ -163,7 +112,7 @@ def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_c
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
+def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config={}):
     '''
     Create GNMI client certificates
     '''
@@ -204,7 +153,8 @@ def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhos
     localhost.shell(local_command)
 
     # Sign server certificate
-    create_ext_conf(duthost.mgmt_ip, "extfile.cnf")
+    dut_ip = vrf_config.get("dut_ip") or duthost.mgmt_ip
+    create_ext_conf(dut_ip, "extfile.cnf")
     local_command = "openssl x509 \
                         -req \
                         -in gnmiserver.csr \

@@ -1,11 +1,12 @@
 import time
+import ipaddress
 import logging
 import pytest
 import json
-from tests.common.utilities import MGMT_VRF_NAME, wait_until
+from natsort import natsorted
+from tests.common.utilities import wait_until
 from tests.common.helpers.gnmi_utils import GNMIEnvironment, add_gnmi_client_common_name, del_gnmi_client_common_name, \
                                             dump_gnmi_log, dump_system_status
-from tests.common.helpers.gnmi_utils import gnmi_container   # noqa: F401
 from tests.common.helpers.ntp_helper import NtpDaemon, get_ntp_daemon_in_use   # noqa: F401
 
 
@@ -17,33 +18,47 @@ GNMI_PORT = 0
 GNMI_SERVER_START_WAIT_TIME = 15
 
 
-def create_ca_conf(crl, filename):
-    text = '''
-[ req_ext ]
-crlDistributionPoints=URI:%s
-''' % crl
-    with open(filename, 'w') as file:
-        file.write(text)
-    return
+def find_unused_subnet(duthost, ptfhost, pool_cidr="172.16.0.0/12", new_prefix=24):
+    used = []
+    for host in (duthost, ptfhost):
+        out = host.shell("ip -o -f inet addr show")["stdout"]
+        for line in out.splitlines():
+            cidr = line.split()[3]
+            used.append(ipaddress.ip_network(cidr, strict=False))
+    pool = ipaddress.ip_network(pool_cidr)
+    for candidate in pool.subnets(new_prefix=new_prefix):
+        if not any(candidate.overlaps(u) for u in used):
+            return candidate
+    return None
 
 
-def create_ext_conf(ip, filename):
-    text = '''
-[ req_ext ]
-subjectAltName = @alt_names
-[alt_names]
-DNS.1   = hostname.com
-IP      = %s
-''' % ip
-    with open(filename, 'w') as file:
-        file.write(text)
-    return
+def get_intf_vlan(cfg_facts, interface):
+    for vlan_name, vlan_members in cfg_facts.get('VLAN_MEMBER', {}).items():
+        for vlan_member in vlan_members:
+            if vlan_member == interface:
+                vlan_id = int(vlan_name.lstrip('Vlan'))
+                return vlan_id
+    return None
 
 
-def verify_tcp_port(localhost, ip, port):
-    command = "ssh  -o ConnectTimeout=3 -v -p %s %s" % (port, ip)
-    res = localhost.shell(command, module_ignore_errors=True)
-    logger.info("TCP: " + res['stdout'] + res['stderr'])
+def get_available_intf(cfg_facts, exclude_interfaces=['Ethernet0']):
+    port_indices = cfg_facts.get('config_port_indices', {})
+    for dut_intf, ptf_idx in port_indices.items():
+        if dut_intf not in exclude_interfaces:
+            ptf_intf = f"eth{ptf_idx}"
+            return dut_intf, ptf_intf
+    return None, None
+
+
+def get_intfs_pair_with_vlan(duthost, exclude_interfaces=['Ethernet0']):
+    cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+    port_name_list_sorted = natsorted(list(cfg_facts['PORT'].keys()))
+    port_index_map = {}
+    for idx, val in enumerate(port_name_list_sorted):
+        port_index_map[val] = idx
+    cfg_facts['config_port_indices'] = port_index_map
+    dut_intf, ptf_intf = get_available_intf(cfg_facts, exclude_interfaces)
+    return dut_intf, get_intf_vlan(cfg_facts, dut_intf), ptf_intf
 
 
 def is_mgmt_vrf_enabled(duthost):
@@ -80,7 +95,7 @@ def apply_cert_config(duthost, vrf_name=None):
     if subtype == 'SmartSwitch':
         dut_command += "--zmq_address=tcp://127.0.0.1:8100 "
     if vrf_name:
-        dut_command += "--vrf %s " % vrf_name
+        dut_command += "--gnmi_vrf %s " % vrf_name
     dut_command += "--ca_crt /etc/sonic/telemetry/gnmiCA.pem -gnmi_native_write=true -v=10 >/root/gnmi.log 2>&1 &\""
     duthost.shell(dut_command)
 
@@ -103,6 +118,16 @@ def apply_cert_config(duthost, vrf_name=None):
         pytest.fail("Failed to start gnmi server")
 
 
+def check_gnmi_process(duthost):
+    """
+    Make sure there's no GNMI process running.
+    """
+    env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
+    dut_command = "docker exec %s pgrep -f %s" % (env.gnmi_container, env.gnmi_process)
+    output = duthost.shell(dut_command, module_ignore_errors=True)
+    return output['stdout'].strip() == ""
+
+
 def check_gnmi_status(duthost):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     dut_command = "docker exec %s supervisorctl status %s" % (env.gnmi_container, env.gnmi_program)
@@ -112,15 +137,32 @@ def check_gnmi_status(duthost):
 
 def recover_cert_config(duthost):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
+    # Kill the GNMI process
     dut_command = "docker exec %s pkill %s" % (env.gnmi_container, env.gnmi_process)
     duthost.shell(dut_command, module_ignore_errors=True)
-    dut_command = "docker exec %s supervisorctl reload" % (env.gnmi_container)
-    duthost.shell(dut_command, module_ignore_errors=True)
+    wait_until(60, 1, 0, check_gnmi_process, duthost)
+    # Recover all stopped program
+    dut_command = "docker exec %s supervisorctl status" % (env.gnmi_container)
+    output = duthost.shell(dut_command, module_ignore_errors=True)
+    for line in output['stdout_lines']:
+        res = line.split()
+        if len(res) < 3:
+            continue
+        program = res[0]
+        status = res[1]
+        if status == "STOPPED":
+            dut_command = "docker exec %s supervisorctl start %s" % (env.gnmi_container, program)
+            duthost.shell(dut_command, module_ignore_errors=True)
 
     # Remove gnmi client cert common name
     del_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
     del_gnmi_client_common_name(duthost, "test.client.revoked.gnmi.sonic")
-    assert wait_until(300, 3, 0, check_gnmi_status, duthost), "GNMI service failed to start"
+    ret = wait_until(300, 3, 0, check_gnmi_status, duthost)
+    if not ret:
+        dut_command = "tail /var/log/gnmi.log"
+        output = duthost.shell(dut_command, module_ignore_errors=True)
+        logger.error("GNMI service failed to start. GNMI log: {}".format(output['stdout']))
+        pytest.fail("Failed to recover GNMI client cert configuration.")
 
 
 def check_ntp_sync_status(duthost):
@@ -174,7 +216,7 @@ def check_system_time_sync(duthost):
         return False
 
 
-def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list, cert=None):
+def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list, cert=None, ip=None):
     """
     Send GNMI set request with GNMI client
 
@@ -188,7 +230,7 @@ def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list, cert=None
     Returns:
     """
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
     cmd = 'python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
     cmd += '--timeout 30 '
@@ -241,7 +283,7 @@ def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list, cert=None
     return
 
 
-def gnmi_get(duthost, ptfhost, path_list):
+def gnmi_get(duthost, ptfhost, path_list, ip=None):
     """
     Send GNMI get request with GNMI client
 
@@ -254,7 +296,7 @@ def gnmi_get(duthost, ptfhost, path_list):
         msg_list: list for get result
     """
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
     cmd = 'python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
     cmd += '--timeout 30 '
@@ -290,7 +332,7 @@ def gnmi_get(duthost, ptfhost, path_list):
 
 # py_gnmicli does not fully support POLLING mode
 # Use gnmi_cli instead
-def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count):
+def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count, ip=None, vrf_name=None):
     """
     Send GNMI subscribe request with GNMI client
 
@@ -308,16 +350,16 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count):
         logger.error("path_list is None")
         return "", ""
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
     interval = interval_ms / 1000.0
 
-    # For mgmt VRF we need to use the DUT's gnmi_cli binary
+    # For non-default VRF we need to use the DUT's gnmi_cli binary
     # since ip vrf exec needs elevated privileges and gnmi
     # docker container doesn't have it
-    if is_mgmt_vrf_enabled(duthost):
+    if vrf_name:
         logger.info("Using gnmi_cli on DUT for VRF-aware execution")
-        cmd = f"sudo ip vrf exec {MGMT_VRF_NAME} /tmp/gnmi_cli "
+        cmd = f"sudo ip vrf exec {vrf_name} /tmp/gnmi_cli "
     else:
         logger.info("Using gnmi_cli in container (default behavior)")
         cmd = f"docker exec {env.gnmi_container} gnmi_cli "
@@ -336,7 +378,7 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count):
     return output['stdout'], output['stderr']
 
 
-def gnmi_subscribe_streaming_sample(duthost, ptfhost, path_list, interval_ms, count):
+def gnmi_subscribe_streaming_sample(duthost, ptfhost, path_list, interval_ms, count, ip=None):
     """
     Send GNMI subscribe request with GNMI client
 
@@ -354,7 +396,7 @@ def gnmi_subscribe_streaming_sample(duthost, ptfhost, path_list, interval_ms, co
         logger.error("path_list is None")
         return "", ""
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
     cmd = 'python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
     cmd += '--timeout 30 '
@@ -376,7 +418,7 @@ def gnmi_subscribe_streaming_sample(duthost, ptfhost, path_list, interval_ms, co
     return msg, output['stderr']
 
 
-def gnmi_subscribe_streaming_onchange(duthost, ptfhost, path_list, count):
+def gnmi_subscribe_streaming_onchange(duthost, ptfhost, path_list, count, ip=None):
     """
     Send GNMI subscribe request with GNMI client
 
@@ -393,7 +435,7 @@ def gnmi_subscribe_streaming_onchange(duthost, ptfhost, path_list, count):
         logger.error("path_list is None")
         return "", ""
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
     cmd = 'python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
     cmd += '--timeout 120 '
@@ -415,17 +457,16 @@ def gnmi_subscribe_streaming_onchange(duthost, ptfhost, path_list, count):
     return msg, output['stderr']
 
 
-def gnoi_reboot(duthost, method, delay, message):
+def gnoi_reboot(duthost, method, delay, message, ip=None, vrf_name=None):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    ip = duthost.mgmt_ip
+    ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
-    mvrf_active = is_mgmt_vrf_enabled(duthost)
-    # For mgmt VRF we need to use the DUT's gnoi_client binary
+    # For non-default VRF we need to use the DUT's gnoi_client binary
     # since ip vrf exec needs elevated privileges and gnmi
     # docker container doesn't have it
-    if mvrf_active:
+    if vrf_name:
         logger.info("Using gnmi_cli on DUT for VRF-aware execution")
-        cmd = f"sudo ip vrf exec {MGMT_VRF_NAME} /tmp/gnoi_client "
+        cmd = f"sudo ip vrf exec {vrf_name} /tmp/gnoi_client "
     else:
         logger.info("Using gnmi_cli in container (default behavior)")
         cmd = f"docker exec {env.gnmi_container} gnoi_client "
