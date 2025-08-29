@@ -3219,7 +3219,7 @@ qos/test_qos_sai.py::TestQosSai:
     conditions_logical_operator: or
     conditions:
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testIPIPQosSaiDscpToPgMapping:
   skip:
@@ -3229,7 +3229,7 @@ qos/test_qos_sai.py::TestQosSai::testIPIPQosSaiDscpToPgMapping:
       - "asic_type in ['mellanox']"
       - https://github.com/sonic-net/sonic-mgmt/issues/12906
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testPfcStormWithSharedHeadroomOccupancy:
   skip:
@@ -3238,7 +3238,7 @@ qos/test_qos_sai.py::TestQosSai::testPfcStormWithSharedHeadroomOccupancy:
     conditions:
       - "asic_type in ['cisco-8000']"
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiBufferPoolWatermark:
   skip:
@@ -3274,7 +3274,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiDscpQueueMapping:
     conditions:
       - "'backend' in topo_name"
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiDscpToPgMapping:
   skip:
@@ -3283,7 +3283,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiDscpToPgMapping:
     conditions:
       - "'backend' in topo_name"
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiDwrrWeightChange:
   skip:
@@ -3292,7 +3292,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiDwrrWeightChange:
     conditions:
       - "asic_type in ['mellanox']"
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min', 't1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiFullMeshTrafficSanity:
   skip:
@@ -3364,7 +3364,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPGDrop:
     conditions:
       - "asic_type not in ['cisco-8000'] or platform.startswith('x86_64-8122_')"
       - "topo_type in ['m0', 'mx', 'm1']"
-      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8', 'dualor-aa-56']) and asic_type not in ['mellanox']"
+      - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8']) and asic_type not in ['mellanox']"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgHeadroomWatermark:
   skip:
