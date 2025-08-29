@@ -343,7 +343,6 @@ class LabGraph(object):
         self.graph_facts["from_l1_links"] = from_l1_links
         self.graph_facts["to_l1_links"] = to_l1_links
 
-<<<<<<< HEAD
         # Create L1 cross connects
         # If the start and end port of a link are both connected to the same L1 switches,
         # we consider it as a cross connect link.
@@ -387,8 +386,6 @@ class LabGraph(object):
                 l1_cross_connects[l1_start_device][l1_port_pair[0]] = l1_port_pair[1]
         self.graph_facts["l1_cross_connects"] = l1_cross_connects
 
-=======
->>>>>>> upstream/master
     def build_results(self, hostnames, ignore_error=False):
         device_info = {}
         device_conn = {}

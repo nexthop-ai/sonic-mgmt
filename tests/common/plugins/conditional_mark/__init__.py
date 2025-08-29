@@ -19,9 +19,7 @@ from tests.common.utilities import get_duts_from_host_pattern
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONDITIONS_FILE = 'common/plugins/conditional_mark/tests_mark_conditions*.yaml'
-<<<<<<< HEAD
 GROUP_VARS_PATH = '/../../../../ansible/group_vars/sonic/variables'
-=======
 ASIC_NAME_PATH = '/../../../../ansible/group_vars/sonic/variables'
 MARK_CONDITIONS_CONSTANTS = {
     "QOS_SAI_TOPO": ['t0', 't0-64', 't0-116', 't0-118', 't0-35', 't0-56', 't0-80',
@@ -33,7 +31,6 @@ MARK_CONDITIONS_CONSTANTS = {
                      't2', 't2_2lc_36p-masic', 't2_2lc_min_ports-masic',
                      'lt2-p32o64', 'lt2-o128', 'ft2-64']
 }
->>>>>>> upstream/master
 
 
 def pytest_addoption(parser):

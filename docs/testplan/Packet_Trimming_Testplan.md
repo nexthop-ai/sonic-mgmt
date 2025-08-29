@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 1. Document
 Packet Trimming HLD: https://github.com/sonic-net/SONiC/pull/1898
 Packet Trimming Testcase: https://github.com/sonic-net/sonic-mgmt/pull/18051
@@ -6,16 +5,13 @@ Packet Trimming Testcase: https://github.com/sonic-net/sonic-mgmt/pull/18051
 
 
 # 2. Feature Overview
-=======
-# 1. Feature Overview
->>>>>>> upstream/master
 In traditional packet loss handling, when a lossy queue exceeds its buffer threshold, packets are silently dropped without notifying the destination host. While packet recovery can occur via fast retransmission or timeout-based retransmission, the latter method introduces significant latency, degrading application performance.
 
 Packet Trimming is an enhancement mechanism designed to optimize network performance during congestion conditions. It will trim packet to a configured size, and try sending it on a different queue to deliver a packet drop notification to an end host. This speeds up retransmissions and reduces network latency.
 
 
 
-# 2. Packet Flow
+# 3. Packet Flow
 <img src="Img/Packet_Trimming_Process.png" style="float: left;" />
 
 **Notes**:
@@ -42,11 +38,7 @@ Packet Trimming is an enhancement mechanism designed to optimize network perform
 
 
 
-<<<<<<< HEAD
 # 4. Symmetric / Asymmetric DSCP
-=======
-# 3. Symmetric / Asymmetric DSCP
->>>>>>> upstream/master
 ## 1. Symmetric DSCP
 Symmetric DSCP uses the same DSCP value for the trimmed packets sent from different ports. In this case, the receiver cannot identify the source of congestion.
 

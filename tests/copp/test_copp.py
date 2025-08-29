@@ -433,11 +433,8 @@ def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
               "platform": dut.facts["platform"],
               "topo_type": test_params.topo_type,
               "ip_version": ip_version,
-<<<<<<< HEAD
-              "packet_size": packet_size}
-=======
+              "packet_size": packet_size,
               "neighbor_miss_trap_supported": test_params.neighbor_miss_trap_supported}
->>>>>>> upstream/master
 
     dut_ip = dut.mgmt_ip
     device_sockets = ["0-{}@tcp://127.0.0.1:10900".format(test_params.nn_target_port),
