@@ -577,10 +577,12 @@ class LabGraph(object):
 
                 if l1_start_device != l1_end_device:
                     logging.debug(
-                        f"Found L1 connected port pairs not using the "
-                        f"same L1 device: {start_device}:{start_port} <-> "
-                        f"{end_device}:{end_port} on L1 devices "
-                        f"{l1_start_device} and {l1_end_device}")
+                        "Found L1 connected port pairs not using the same L1 device: "
+                        "{}:{} <-> {}:{} on L1 devices {} and {}".format(
+                            start_device, start_port, end_device, end_port,
+                            l1_start_device, l1_end_device
+                        )
+                    )
                     continue
 
                 logging.debug(
