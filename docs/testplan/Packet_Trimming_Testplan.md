@@ -643,13 +643,13 @@ Asymmetric DSCP allows different DSCP values to be used for trimmed packets sent
 ---
 
 ## Test Case 13: Verify Packet Trimming Counter
-**Objective**: Ensure packet trimming counter is correct in different level.  
+**Objective**: Ensure packet trimming counter is correct in different level.
 **Test Steps**
 1. Enable switch/port/queue level counters and set switch level counter poll interval 10 seconds.
 2. Configure packet trimming in global level.
 3. Update the buffer profile setting `packet_discard_action=trim` and apply buffer profile.
-4. Create congestion on queue1 of egress port Ethernet0.  
-   `sonic-db-cli CONFIG_DB hset "SCHEDULER|SCHEDULER_BLOCK_DATA_PLANE" "type" DWRR "weight" 15 "pir" 1`  
+4. Create congestion on queue1 of egress port Ethernet0.
+   `sonic-db-cli CONFIG_DB hset "SCHEDULER|SCHEDULER_BLOCK_DATA_PLANE" "type" DWRR "weight" 15 "pir" 1`
    `sonic-db-cli CONFIG_DB hset 'QUEUE|Ethernet0|1' scheduler SCHEDULER_BLOCK_DATA_PLANE`
 5. Send packets from PTF to DUT to trigger packet trimming on Ethernet0 queue1.
 6. Verify the trimming counters.
@@ -727,7 +727,7 @@ Asymmetric DSCP allows different DSCP values to be used for trimmed packets sent
        "trim_sent": "100"
    }
    ```
-7. Create congestion on queue2 of egress ports Etherent0, then send packets to trigger packet trimming on queue2.  
+7. Create congestion on queue2 of egress ports Etherent0, then send packets to trigger packet trimming on queue2.
    `sonic-db-cli CONFIG_DB hset 'QUEUE|Ethernet0|2' scheduler SCHEDULER_BLOCK_DATA_PLANE`
 8. Verify the trimming counters.
    - Queue level
@@ -813,7 +813,7 @@ Asymmetric DSCP allows different DSCP values to be used for trimmed packets sent
        "trim_sent": "200"
    }
    ```
-9.  Create congestion on queue1 of egress ports Etherent1, then send packets to trigger packet trimming on queue1.  
+9.  Create congestion on queue1 of egress ports Etherent1, then send packets to trigger packet trimming on queue1.
    `sonic-db-cli CONFIG_DB hset 'QUEUE|Ethernet1|1' scheduler SCHEDULER_BLOCK_DATA_PLANE`
 10. Verify the trimming counters.
     - Queue level
@@ -897,7 +897,7 @@ Asymmetric DSCP allows different DSCP values to be used for trimmed packets sent
         "trim_sent": "300"
     }
     ```
-11. Block Ethernet1 queue6, which forward trimming packet, then send 100 packet to Ethernet1 queue1.  
+11. Block Ethernet1 queue6, which forward trimming packet, then send 100 packet to Ethernet1 queue1.
    `sonic-db-cli CONFIG_DB hset 'QUEUE|Ethernet1|6' scheduler SCHEDULER_BLOCK_DATA_PLANE`
 12. Verify the trimming counters.
     - Queue level
