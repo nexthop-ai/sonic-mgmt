@@ -1265,7 +1265,6 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiLossyQueue(
         self, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig,
         ingressLossyProfile, skip_src_dst_different_asic, change_lag_lacp_timer
