@@ -8,7 +8,6 @@ import pytest
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.devices.eos import EosHost
-from tests.common.devices.sonic import SonicHost
 from tests.common.gu_utils import (
     generate_tmpfile,
     delete_tmpfile,
@@ -23,8 +22,10 @@ pytestmark = [
     pytest.mark.topology('t1'),
 ]
 
+peer_group_name = "ipv6_link_local"
 
-def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=False):
+
+def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=True):
     """
     Configure BGP link-local peering
     """
@@ -71,25 +72,55 @@ def configure_bgp_link_local(host, local_asn, peer_asn, interface, is_dut=False)
             "end"
         ]
         host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
-
     else:
-        # Use existing vtysh commands for non-DUT or when FRR management is disabled
-        commands = [
+        # Base commands that are common to all platforms
+        base_commands = [
             "configure terminal",
             f"router bgp {local_asn}",
-            f"neighbor {interface} interface v6only",
-            f"neighbor {interface} remote-as {peer_asn}",
-            "address-family ipv6 unicast",
-            f"neighbor {interface} activate"
         ]
 
-        commands.append("end")
-
         if isinstance(host, EosHost):
-            host.run_command_list(commands)
-        elif isinstance(host, dict) and 'host' in host:
-            host['host'].command("vtysh -c '" + "' -c '".join(commands) + "'")
+            # EOS requires peer-group for interface neighbors
+            neighbor_commands = [
+                f"neighbor {peer_group_name} peer group",
+                f"neighbor {peer_group_name} remote-as {peer_asn}",
+                f"neighbor interface {interface} peer-group {peer_group_name}",
+            ]
+            activate_command = f"neighbor {peer_group_name} activate"
+
+            af_commands = [
+                "address-family ipv6",
+                activate_command,
+            ]
+
+            intf_commands = [
+                f"interface {interface}",
+                "ipv6 enable",
+                "no ipv6 nd ra disabled"
+            ]
+
+            # Execute on EOS
+            commands = base_commands + neighbor_commands + af_commands + intf_commands + ["end"]
+
+            if hasattr(host, 'run_command_list'):
+                host.run_command_list(commands)
+            else:
+                host.eos_config(lines=commands[1:-1], parents=[])
         else:
+            pg_config = "peer-group PEER_V6" if is_dut else ""
+            neighbor_commands = [
+                f"neighbor {interface} interface v6only {pg_config}",
+                f"neighbor {interface} remote-as {peer_asn}",
+            ]
+            activate_command = f"neighbor {interface} activate"
+
+            # Build complete command list
+            commands = base_commands + neighbor_commands + [
+                "address-family ipv6 unicast",
+                activate_command,
+                "end"
+            ]
+
             host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
 
 
@@ -120,16 +151,22 @@ def unconfigure_bgp_link_local(host, local_asn, interface, is_dut=False):
             delete_tmpfile(host, tmpfile)
     else:
         # Use existing vtysh commands for non-DUT or when FRR management is disabled
+        pg_config = "peer-group PEER_V6" if is_dut else ""
         commands = [
             "configure terminal",
             f"router bgp {local_asn}",
-            f"no neighbor {interface}",
+            f"neighbor {interface} interface v6only {pg_config}",
+            "end"
+        ]
+        eos_commands = [
+            "configure terminal",
+            f"router bgp {local_asn}",
+            f"no neighbor interface {interface} peer-group {peer_group_name}",
+            f"no neighbor {peer_group_name} peer group",
             "end"
         ]
         if isinstance(host, EosHost):
-            host.run_command_list(commands)
-        elif isinstance(host, dict) and 'host' in host:
-            host['host'].command("vtysh -c '" + "' -c '".join(commands) + "'")
+            host.run_command_list(eos_commands)
         else:
             host.shell("vtysh -c '" + "' -c '".join(commands) + "'")
 
@@ -138,17 +175,29 @@ def check_bgp_session_state(host, neighbor_addr, interface):
     """
     Check if BGP session is established
     """
-    cmd = "show bgp ipv6 unicast summary json"
     logger.info("Checking BGP session state...")
     if isinstance(host, EosHost):
-        # For EOS neighbors
-        result = json.loads(host.run_command_list([cmd])[0])
-    elif isinstance(host, dict) and 'host' in host:
-        # For Sonic neighbors
-        result = json.loads(host['host'].command(f"vtysh -c '{cmd}'")['stdout'])
-    else:
-        # For DUT
-        result = json.loads(host.shell(f"vtysh -c '{cmd}'")['stdout'])
+        # For EOS neighbors - use EOS JSON format
+        cmd = "show bgp ipv6 unicast summary | json"
+        result = host.run_command(cmd)['stdout']
+        # EOS structure: result[0]['vrfs']['default']['peers']
+        if result and 'vrfs' in result[0] and 'default' in result[0]['vrfs']:
+            peers = result[0]['vrfs']['default'].get('peers', {})
+            logger.info(f"EOS peers found: {list(peers.keys())}")
+
+            # Convert interface name: "Ethernet1" -> "Et1"
+            eos_interface = interface.replace("Ethernet", "Et")
+            # For EOS, check if any peer contains the interface name (e.g., "fe80::...%Et1")
+            for peer_addr, peer_data in peers.items():
+                if f"%{eos_interface}" in peer_addr:  # Check if %Et1 is part of the peer address
+                    logger.info(f"Found EOS peer {peer_addr} for interface {interface} "
+                                f"(EOS format: {eos_interface}): {peer_data}")
+                    return peer_data.get('peerState', '') == 'Established'
+            return False
+        return False
+
+    cmd = "show bgp ipv6 unicast summary json"
+    result = json.loads(host.shell(f"vtysh -c '{cmd}'")['stdout'])
 
     logger.info(f"Checking BGP session state for interface {interface}")
     logger.info(f"BGP summary result: {result}")
@@ -189,11 +238,6 @@ def bgp_link_local_setup(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo):
     """
     Setup BGP link-local configuration before test
     """
-    # Skip if neighbors are not sonic hosts
-    for nbr in nbrhosts.values():
-        if not isinstance(nbr['host'], SonicHost):
-            pytest.skip("Test requires sonic neighbors")
-
     duthost = duthosts[rand_one_dut_hostname]
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
 
@@ -230,7 +274,7 @@ def bgp_link_local_teardown(duthost, nbrhosts, dut_interface, peer_interface, bg
     unconfigure_bgp_link_local(nbrhosts[peer_name]['host'], bgp_neighbor['asn'],
                                peer_interface, is_dut=False)
     update_global_bgp_neighbor(duthost, bgp_neighbor['addr'], activate=True, check_output=False)
-    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'],
+    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'], asn=bgp_neighbor['asn'],
                                activate=True, check_output=False)
 
 
@@ -250,10 +294,23 @@ def bgp_link_local_setup_teardown(duthosts, rand_one_dut_hostname, nbrhosts, tbi
     bgp_link_local_teardown(duthost, nbrhosts, dut_interface, peer_interface, bgp_neighbor)
 
 
-def update_global_bgp_neighbor(host, neighbor_addr, activate=True, check_output=True):
+def update_global_bgp_neighbor(host, neighbor_addr, asn=None, activate=True, check_output=True):
     """
     Activate / Deactivate a global BGP neighbor configuration
     """
+    if isinstance(host, EosHost):
+        # For cEOS, use the provided ASN
+        if asn is None:
+            raise ValueError("ASN must be provided for EOS hosts")
+
+        action_cmd = ("no " if activate else "") + f"neighbor {neighbor_addr} shutdown"
+        host.eos_config(
+            lines=[action_cmd],
+            parents=[f'router bgp {asn}']
+        )
+        return True
+
+    # SONiC logic (keep exact existing logic)
     neighbor_addr = neighbor_addr.lower()
     logger.info(f"{'' if activate else 'de'}activating global BGP neighbor {neighbor_addr}")
 
@@ -315,7 +372,8 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo, 
     received_prefixes = get_received_prefixes(duthost, bgp_neighbor['addr'])
     logger.info(f"Deactivating global BGP neighbor for test peer {peer_name}")
     update_global_bgp_neighbor(duthost, bgp_neighbor['addr'], activate=False)
-    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'], activate=False)
+    update_global_bgp_neighbor(nbrhosts[peer_name]['host'], bgp_neighbor['peer_addr'],
+                               asn=bgp_neighbor['asn'], activate=False)
 
     # Configure BGP on DUT
     logger.info(f"Configuring BGP on DUT (interface: {dut_interface})")
@@ -323,7 +381,7 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo, 
 
     # Configure BGP on peer
     logger.info(f"Configuring BGP on peer (interface: {peer_interface})")
-    configure_bgp_link_local(nbrhosts[peer_name], bgp_neighbor['asn'], dut_asn, peer_interface, is_dut=False)
+    configure_bgp_link_local(nbrhosts[peer_name]['host'], bgp_neighbor['asn'], dut_asn, peer_interface, is_dut=False)
 
     # Wait for BGP session to establish on DUT
     logger.info("Waiting for BGP session to establish on DUT...")
@@ -335,7 +393,7 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo, 
     peer_established = wait_until(
         30, 1, 0,
         lambda: check_bgp_session_state(
-            nbrhosts[peer_name],
+            nbrhosts[peer_name]['host'],
             None,
             peer_interface
         )
