@@ -23,6 +23,8 @@ def test_reboot_pdu_forever(duthost, localhost, conn_graph_facts, get_pdu_contro
     Reboot the dut forever using the PDU to cut the power.
     This is mostly intended for various chamber testing.
     """
+    NUM_REBOOT = 5
+
     pdu = get_pdu_controller(duthost)
     pytest_assert(pdu is not None, "No PDU found")
 
@@ -35,13 +37,16 @@ def test_reboot_pdu_forever(duthost, localhost, conn_graph_facts, get_pdu_contro
     }
 
     check_all_xcvrs = {duthost.hostname: []}
-    num_failures = 0
-    for count in range(15):
-        logger.warn(f"Rebooting dut for {count + 1}'th time. {num_failures} failures")
+    failures = []
+    for count in range(NUM_REBOOT):
+        logger.warn(f"Rebooting dut for {count + 1}'th time. {len(failures)} failures")
         try:
             reboot_and_check(localhost, duthost, conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {}),
                              check_all_xcvrs, reboot_type=REBOOT_TYPE_POWEROFF,
                              reboot_helper=_power_off_reboot_helper, reboot_kwargs=reboot_kwargs)
         except Exception as e:
             logger.error(f"Reboot failed: {e}")
-            num_failures += 1
+            failures.append(f"{count + 1}'th reboot: {e}")
+
+    if failures:
+        pytest.fail(f"Reboot failed {len(failures)}/{NUM_REBOOT} times {failures}")
