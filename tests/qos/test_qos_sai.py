@@ -388,7 +388,6 @@ class TestQosSai(QosSaiBase):
         logger.info("dualtor_ports {}".format(dualtor_ports_for_duts))
 
     @pytest.mark.parametrize("xoffProfile", ["xoff_1", "xoff_2", "xoff_3", "xoff_4"])
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiPfcXoffLimit(
         self, xoffProfile, duthosts, get_src_dst_asic_and_duts,
         ptfhost, dutTestParams, dutConfig, dutQosConfig,
