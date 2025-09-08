@@ -20,7 +20,7 @@ from tests.common.utilities import wait_tcp_connection
 from tests.common import config_reload
 from bgp_helpers import define_config, apply_default_bgp_config, DUT_TMP_DIR, TEMPLATE_DIR, BGP_PLAIN_TEMPLATE,\
     BGP_NO_EXPORT_TEMPLATE, DUMP_FILE, CUSTOM_DUMP_SCRIPT, CUSTOM_DUMP_SCRIPT_DEST,\
-    BGPMON_TEMPLATE_FILE, BGPMON_CONFIG_FILE, BGP_MONITOR_NAME, BGP_MONITOR_PORT
+    BGPMON_TEMPLATE_FILE, BGPMON_CONFIG_FILE, BGP_MONITOR_NAME, BGP_MONITOR_PORT, is_chassis
 from tests.common.helpers.constants import DEFAULT_NAMESPACE
 from tests.common.dualtor.dual_tor_utils import mux_cable_server_ip
 from tests.common import constants
@@ -66,17 +66,21 @@ def _check_if_module_skipped_for_mode(request, frr_mgmt_config):
         if not conditions:
             return False
 
-        found_conditions = None
-        # Search through the list of condition dictionaries
+        matched_entries = []
+        # Search through the list of condition dictionaries and collect ALL matches
         for condition_dict in conditions:
             condition_entry = list(condition_dict.keys())[0]
             if condition_entry == module_path or module_path.startswith(condition_entry):
-                found_conditions = condition_dict[condition_entry]
-                break
+                matched_entries.append(condition_dict[condition_entry])
+        if not matched_entries:
+            return False
 
-        if found_conditions and 'skip' in found_conditions:
-            skip_conditions = found_conditions['skip'].get('conditions', [])
-            # Check if any condition mentions frr_mgmt_config
+        # Evaluate all matched 'skip' blocks to see if any explicitly skip for frr_mgmt_config
+        for entry in matched_entries:
+            if 'skip' not in entry:
+                continue
+            skip_block = entry['skip']
+            skip_conditions = skip_block.get('conditions', [])
             for condition in skip_conditions:
                 if isinstance(condition, str) and 'frr_mgmt_config' in condition:
                     if frr_mgmt_config == 'true' and "frr_mgmt_config == 'true'" in condition:
@@ -765,6 +769,7 @@ def bgpmon_setup_teardown(ptfhost, duthosts, enum_rand_one_per_hwsku_frontend_ho
     asn = mg_facts['minigraph_bgp_asn']
     # TODO: Add a common method to load BGPMON config for test_bgpmon and test_traffic_shift
     logger.info("Configuring bgp monitor session on DUT")
+
     bgpmon_args = {
         'db_table_name': 'BGP_MONITORS',
         'peer_addr': peer_addr,
@@ -811,8 +816,12 @@ def bgpmon_setup_teardown(ptfhost, duthosts, enum_rand_one_per_hwsku_frontend_ho
 
     pt_assert(wait_tcp_connection(localhost, ptfhost.mgmt_ip, BGP_MONITOR_PORT, timeout_s=60),
               "Failed to start bgp monitor session on PTF")
-    pt_assert(wait_until(20, 5, 0, duthost.check_bgp_session_state, [peer_addr]),
-              'BGP session {} on duthost is not established'.format(BGP_MONITOR_NAME))
+    if is_chassis(duthost):
+        # the BGPMON session comes up when its a chassis. currently for
+        # t2-single-node-min topo it doesn't comeup as the update-source
+        # loopback4096 isn't present
+        pt_assert(wait_until(20, 5, 0, duthost.check_bgp_session_state, [peer_addr]),
+                  'BGP session {} on duthost is not established'.format(BGP_MONITOR_NAME))
 
     yield connection
     # Cleanup bgp monitor

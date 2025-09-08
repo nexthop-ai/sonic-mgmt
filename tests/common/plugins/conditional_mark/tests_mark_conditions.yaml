@@ -156,6 +156,18 @@ bfd/test_bfd_traffic.py:
 #######################################
 #####            bgp              #####
 #######################################
+bgp/reliable_tsa/test_reliable_tsa_flaky.py:
+  skip:
+    reason: "reliable TSA is not supported on non-chassis"
+    conditions:
+      - "is_chassis==False"
+
+bgp/reliable_tsa/test_reliable_tsa_stable.py:
+  skip:
+    reason: "reliable TSA is not supported on non-chassis"
+    conditions:
+      - "is_chassis==False"
+
 bgp/test_bgp_allow_list.py:
   skip:
     reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported. BGP_ALLOWED_PREFIXES is not supported in unified management framework."
@@ -411,7 +423,7 @@ bgp/test_startup_tsa_tsb_service.py::test_user_init_tsb_on_sup_while_service_run
 
 bgp/test_traffic_shift.py:
   skip:
-    reason: "TSA/TSB/TSC is supported in unified management framework"
+    reason: "TSA/TSB/TSC is not supported in unified management framework"
     conditions:
       - "frr_mgmt_config == 'true'"
   xfail:
@@ -431,6 +443,7 @@ bgp/test_traffic_shift_sup.py:
     reason: "Not supported on T2 single node topology"
     conditions:
       - "'t2_single_node' in topo_name"
+      - "frr_mgmt_config == 'true'"
 
 #######################################
 #####            cacl             #####
