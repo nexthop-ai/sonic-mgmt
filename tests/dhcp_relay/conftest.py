@@ -59,8 +59,10 @@ def check_dhcp_feature_status(request, duthost):
                 time.sleep(2)
                 yield
                 duthost.shell("sudo config feature state dhcp_relay disabled")
+                return
             else:
                 pytest.skip("dhcp_relay is not enabled")
+    yield
 
 
 @pytest.fixture(scope="module")
