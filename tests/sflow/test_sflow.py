@@ -118,7 +118,7 @@ def config_dut_ports(duthost, ports, vlan):
     # Even though port is deleted from vlan , the port shows its master as Bridge upon assigning ip address.
     # Hence config reload is done as workaround. ##FIXME
     for i in range(len(ports)):
-        duthost.command('config vlan member del %s %s' % (vlan, ports[i]))
+        duthost.command('config vlan member del %s %s' % (vlan, ports[i]), module_ignore_errors=True)
         duthost.command('config interface ip add %s %s/24' %
                         (ports[i], var['dut_intf_ips'][i]))
     duthost.command('config save -y')
@@ -375,7 +375,7 @@ class TestSflowCollector():
         verify_show_sflow(duthost, status='up', collector=['collector0'])
         for intf in var['sflow_ports']:
             verify_sflow_interfaces(duthost, intf, 'up', SFLOW_RATE_DEFAULT)
-        time.sleep(5)
+        time.sleep(10)
         partial_ptf_runner(
             enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
             active_collectors="['collector0']")
