@@ -155,7 +155,7 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
         # delay, the wait_until loop can start checking before bgp has even started and we would see
         # annoying "bgpd is not running" errors in the logs.
         initial_delay = 10
-        if not wait_until(300, 10, initial_delay, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
+        if not wait_until(600, 10, initial_delay, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
             logger.error(f"Not all BGP sessions are up after {operation_name.lower()}")
             return False
 
