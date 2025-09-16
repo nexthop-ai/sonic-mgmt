@@ -189,8 +189,14 @@ def dut_setup_teardown(rand_selected_dut, tbinfo, dut_lo_addr, request):
                                                         v6_src_address=lo_ipv6_addr),
                      dest=BGPSENTINEL_CONFIG_FILE)
         duthost.shell("sonic-cfggen -j {} -w".format(BGPSENTINEL_CONFIG_FILE))
+        if not is_bgp_sentinel_supported(duthost):
+            pytest.skip("BGP sentinel is not supported on this image")
 
     elif request.param == 'BGPMonV6':
+        # Save ourselves a lot of trouble and simply skip right here since we
+        # dont support BGPMonV6
+        pytest.skip("BGPMonV6 is not supported on this image")
+
         # render template and write to DB, check running configuration for BGPMonV6
         bgpmon_args = {
             'db_table_name': 'BGP_MONITORS',
@@ -203,6 +209,8 @@ def dut_setup_teardown(rand_selected_dut, tbinfo, dut_lo_addr, request):
         duthost.copy(content=bgpmon_template.render(**bgpmon_args),
                      dest=BGPMON_CONFIG_FILE)
         duthost.shell("sonic-cfggen -j {} -w".format(BGPMON_CONFIG_FILE))
+        if not is_bgp_monv6_supported(duthost):
+            pytest.skip("BGPMonV6 is not supported on this image")
 
     duthost.shell("vtysh -c \"configure terminal\" -c \"ipv6 nht resolve-via-default\"")
 
