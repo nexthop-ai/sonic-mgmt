@@ -1,17 +1,30 @@
 """
 Route Programming Performance Benchmark Test
 
-This test measures route programming performance in SONiC using the route_programming_benchmark.py
-script and outputs structured results for metrics collection.
+This test measures route programming performance through the SONiC pipeline
+and supports YAML-based performance policies for optimization.
 
 Usage:
-  # Default 100K routes
+  # Basic test (default: 100,000 routes)
   pytest tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
 
   # Custom route scale
-  pytest --route_scale 1000 tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
   pytest --route_scale 50000 tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
-  pytest --route_scale 200000 tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
+
+  # Using performance policies
+  pytest --perf_policy "basic_performance" \\
+         tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
+  # Use custom policy (create your_policy.yaml in tests/route/policies/ first)
+  pytest --perf_policy "your_policy" \\
+         tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
+
+Available policies: basic_performance, non_zmq_optimized, zmq_with_db_persistence, zmq_without_db_persistence
+Policy files are located in tests/route/policies/
+To see available policies: ls tests/route/policies/
+
+Custom Policy Creation:
+  1. Create your policy file: tests/route/policies/my_custom_policy.yaml
+  2. Use it by name: --perf_policy "my_custom_policy"
 
 Metrics Output:
   The test outputs structured metrics in JSON format that can be consumed by external tools
@@ -25,8 +38,13 @@ Metrics Output:
 
 import json
 import logging
+import os
 import pytest
-from tests.common import config_reload
+import time
+import yaml
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Any
+from tests.common.config_reload import config_reload
 from tests.common.helpers.assertions import pytest_assert
 
 logger = logging.getLogger(__name__)
@@ -35,18 +53,357 @@ pytestmark = [
     pytest.mark.topology("t0", "t1", "any"),
 ]
 
+
+@pytest.fixture(autouse=True)
+def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
+    """
+    Ignore expected failures logs during test execution.
+
+    Route programming tests can trigger various expected errors in virtual testbeds,
+    especially during config reload and container restarts.
+
+    Args:
+        duthost: DUT host object
+        loganalyzer: Loganalyzer utility fixture
+    """
+    if loganalyzer:
+        ignoreRegex = [
+            # Syncd plugin registration errors (common in virtual testbeds)
+            r".* ERR syncd\d*#syncd: :- addPlugins: Plugin .* already registered",
+
+            # DHCP DOS logger errors for missing interfaces
+            r".* ERR dhcp_dos_logger.py: TC command failed for Ethernet\d+: Cannot find device \"Ethernet\d+\"",
+
+            # Orchagent timeout errors during heavy route programming
+            r".* ERR swss\d*#orchagent: :- wait: SELECT operation result: TIMEOUT on .*",
+            r".* ERR swss\d*#orchagent: :- wait: failed to get response for .*",
+
+            # Priority group initialization errors for virtual interfaces
+            r".* ERR swss\d*#orchagent: :- initializePriorityGroups: Failed to get number of priority groups "
+            r"for port .* rv:-1",
+
+            # Common config reload related errors
+            r".* ERR swss\d*#orchagent: :- getPort: Failed to get cached bridge port ID.*",
+            r".* ERR syncd\d*#syncd.*_attribute_enum_values_capability.*count.*greater than capability-count 0.*",
+        ]
+        loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
+
+    yield
+
+
 # Default test parameters
 DEFAULT_ROUTE_COUNT = 100000
 DEFAULT_PREFIX = "192.168.0.0/16"
 DEFAULT_NEXTHOP = "10.0.0.1"
 
 
-def output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags=None):
+@dataclass
+class PerformancePolicy:
+    """Represents a performance policy loaded from YAML"""
+    name: str
+    description: str
+    config: Dict[str, Any]
+    containers_to_restart: List[str]
+
+    @classmethod
+    def from_yaml_file(cls, file_path: str) -> 'PerformancePolicy':
+        """Load policy from YAML file"""
+        with open(file_path, 'r') as f:
+            data = yaml.safe_load(f)
+
+        return cls(
+            name=data['name'],
+            description=data['description'],
+            config=data['config'],
+            containers_to_restart=data['containers_to_restart']
+        )
+
+
+class PolicyManager:
+    """Manages performance policies"""
+
+    def __init__(self, policy_dir: Optional[str] = None):
+        if policy_dir is None:
+            # Default to policies directory relative to this file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            self.policy_dir = os.path.join(current_dir, "policies")
+        else:
+            self.policy_dir = policy_dir
+
+    def list_available_policies(self) -> List[str]:
+        """List all available policy names"""
+        if not os.path.exists(self.policy_dir):
+            return []
+
+        policies = []
+        for filename in os.listdir(self.policy_dir):
+            if filename.endswith('.yaml') or filename.endswith('.yml'):
+                policy_name = os.path.splitext(filename)[0]
+                policies.append(policy_name)
+
+        return sorted(policies)
+
+    def load_policy(self, policy_name: str) -> PerformancePolicy:
+        """
+        Load a policy by name from the policies directory
+
+        Args:
+            policy_name: Policy name (e.g., 'basic_performance', 'my_custom_policy')
+
+        Returns:
+            PerformancePolicy object
+        """
+        # Check if it's a policy name in the policies directory
+        policy_file = os.path.join(self.policy_dir, f"{policy_name}.yaml")
+        if os.path.exists(policy_file):
+            return PerformancePolicy.from_yaml_file(policy_file)
+
+        # Try .yml extension
+        policy_file = os.path.join(self.policy_dir, f"{policy_name}.yml")
+        if os.path.exists(policy_file):
+            return PerformancePolicy.from_yaml_file(policy_file)
+
+        available = self.list_available_policies()
+        raise FileNotFoundError(f"Policy '{policy_name}' not found. Available policies: {available}")
+
+    def validate_policy(self, policy: PerformancePolicy) -> List[str]:
+        """
+        Validate a policy and return list of warnings/errors
+
+        Returns:
+            List of validation messages (empty if valid)
+        """
+        issues = []
+
+        # Check required fields
+        if not policy.name:
+            issues.append("Policy name is required")
+
+        if not policy.config:
+            issues.append("Policy config is required")
+
+        if not policy.containers_to_restart:
+            issues.append("At least one container to restart should be specified")
+
+        # Validate config structure
+        if 'DEVICE_METADATA' not in policy.config:
+            issues.append("Policy config must contain DEVICE_METADATA section")
+        elif 'localhost' not in policy.config['DEVICE_METADATA']:
+            issues.append("Policy config DEVICE_METADATA must contain localhost section")
+
+        # Check for conflicting configurations
+        device_config = policy.config.get('DEVICE_METADATA', {}).get('localhost', {})
+
+        # ZMQ conflicts
+        zmq_enabled = device_config.get('orch_northbond_route_zmq_enabled') == 'true'
+        flush_pub_enabled = device_config.get('producerstate_flush_pub_enabled') == 'true'
+
+        if zmq_enabled and flush_pub_enabled:
+            issues.append("ZMQ and flushPub cannot be enabled simultaneously")
+
+        # ZMQ dependency checks
+        zmq_db_persistence_disabled = device_config.get('zmq_db_persistence_enabled') == 'false'
+        if zmq_db_persistence_disabled and not zmq_enabled:
+            issues.append("zmq_db_persistence_enabled=false requires orch_northbond_route_zmq_enabled=true")
+
+        return issues
+
+
+class PerformanceKnobManager:
+    """Manages performance optimization knobs for route programming benchmarks"""
+
+    def __init__(self, duthost):
+        self.duthost = duthost
+        self.policy_manager = PolicyManager()
+        self.applied_policy: Optional[PerformancePolicy] = None
+
+    def _restart_container(self, container_name: str) -> None:
+        """Restart a specific container"""
+        logger.info(f"Restarting {container_name} service...")
+        restart_result = self.duthost.shell(f"sudo systemctl restart {container_name}", module_ignore_errors=True)
+        if restart_result["rc"] != 0:
+            error_msg = restart_result.get('stderr', 'Unknown error')
+            raise RuntimeError(f"Failed to restart {container_name} service: {error_msg}")
+        logger.info(f"Successfully restarted {container_name} service")
+
+    def _wait_for_containers_ready(self, containers: List[str], timeout: int = 120) -> None:
+        """Wait for containers to be ready using systemctl is-active"""
+        logger.info(f"Waiting for services to be active: {containers}")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            all_ready = True
+            for container in containers:
+                # Check if service is active using systemctl
+                result = self.duthost.shell(f"systemctl is-active {container}", module_ignore_errors=True)
+                if result["rc"] != 0 or result.get("stdout", "").strip() != "active":
+                    all_ready = False
+                    logger.debug(f"Service {container} not active yet: {result.get('stdout', 'unknown')}")
+                    break
+                else:
+                    logger.debug(f"Service {container} is active")
+
+            if all_ready:
+                logger.info("All services are active and ready")
+                return
+            time.sleep(5)
+
+        raise RuntimeError(f"Services not ready after {timeout} seconds: {containers}")
+
+    def _shutdown_bgp(self) -> None:
+        """Shutdown BGP to clear existing routes before benchmarking"""
+        logger.info("Shutting down BGP to clear existing routes...")
+
+        # Try to get BGP ASN from config facts
+        try:
+            config_facts = self.duthost.config_facts(host=self.duthost.hostname, source="running")['ansible_facts']
+            bgp_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
+
+            if bgp_asn is None:
+                logger.warning("Could not determine BGP ASN from config facts, trying default ASN 65100")
+                bgp_asn = "65100"  # Use common default ASN
+        except Exception as e:
+            logger.error(f"Failed to get config facts: {e}")
+            logger.warning("Using default BGP ASN 65100")
+            bgp_asn = "65100"
+
+        # Execute BGP shutdown using the proven vtysh format from other tests
+        logger.info(f"Executing BGP shutdown for ASN {bgp_asn}...")
+
+        result = self.duthost.shell(
+            f"vtysh -c 'configure terminal' "
+            f"-c 'router bgp {bgp_asn}' "
+            f"-c 'bgp shutdown'",
+            module_ignore_errors=True
+        )
+
+        if result["rc"] != 0:
+            logger.warning(f"BGP shutdown failed: {result.get('stderr', 'Unknown error')}")
+        else:
+            logger.info(f"BGP (ASN {bgp_asn}) shutdown completed successfully")
+
+    def apply_policy(self, policy_name: str) -> Dict[str, Any]:
+        """
+        Apply a performance policy from YAML file
+
+        Args:
+            policy_name: Policy name (e.g., 'basic_performance', 'my_custom_policy')
+
+        Returns:
+            Dictionary with policy application results
+        """
+        logger.info(f"Loading performance policy: {policy_name}")
+
+        # Load the policy
+        try:
+            policy = self.policy_manager.load_policy(policy_name)
+        except FileNotFoundError as e:
+            available_policies = self.policy_manager.list_available_policies()
+            raise ValueError(f"Policy not found: {e}. Available policies: {available_policies}")
+
+        # Validate the policy
+        validation_issues = self.policy_manager.validate_policy(policy)
+        if validation_issues:
+            raise ValueError(f"Policy validation failed: {validation_issues}")
+
+        logger.info(f"Applying policy '{policy.name}': {policy.description}")
+
+        # Apply the policy configuration
+        containers_to_restart = set()
+        applied_config = {}
+
+        for table_name, table_config in policy.config.items():
+            for key, key_config in table_config.items():
+                config_key = f"{table_name}|{key}"
+
+                # Store what we're applying for results
+                if table_name not in applied_config:
+                    applied_config[table_name] = {}
+                applied_config[table_name][key] = key_config
+
+                # Apply each configuration value
+                for config_field, config_value in key_config.items():
+                    cmd = f"sonic-db-cli CONFIG_DB hset '{config_key}' {config_field} {config_value}"
+                    result = self.duthost.shell(cmd)
+
+                    if result["rc"] != 0:
+                        error_msg = result.get('stderr', 'Unknown error')
+                        raise RuntimeError(f"Failed to apply policy config {config_field}={config_value}: {error_msg}")
+
+                    logger.info(f"Applied: {config_key} {config_field}={config_value}")
+
+        # Track containers that need restart
+        containers_to_restart.update(policy.containers_to_restart)
+
+        # Restart required containers
+        containers_restarted = []
+        if containers_to_restart:
+            logger.info(f"Restarting containers: {list(containers_to_restart)}")
+            for container in containers_to_restart:
+                self._restart_container(container)
+                containers_restarted.append(container)
+
+            # Wait for containers to be ready
+            self._wait_for_containers_ready(containers_restarted)
+
+            # Shutdown BGP to clear any existing BGP routes. This makes benchmarking using
+            # static/sharp routes more predictable.
+            self._shutdown_bgp()
+            logger.info("BGP shutdown completed to clear existing routes")
+
+        # Verify policy was applied
+        self._verify_policy_applied(policy)
+
+        # Store the applied policy
+        self.applied_policy = policy
+
+        return {
+            "policy_applied": {
+                "name": policy.name,
+                "description": policy.description,
+                "config": applied_config
+            },
+            "containers_restarted": containers_restarted
+        }
+
+    def _verify_policy_applied(self, policy: PerformancePolicy) -> None:
+        """Verify that policy was applied correctly"""
+        logger.info("Verifying policy was applied correctly...")
+
+        for table_name, table_config in policy.config.items():
+            for key, key_config in table_config.items():
+                config_key = f"{table_name}|{key}"
+
+                for config_field, expected_value in key_config.items():
+                    cmd = f"sonic-db-cli CONFIG_DB hget '{config_key}' {config_field}"
+                    result = self.duthost.shell(cmd)
+
+                    if result["rc"] != 0:
+                        error_msg = result.get('stderr', 'Unknown error')
+                        logger.warning(f"Could not verify {config_key} {config_field}: {error_msg}")
+                    else:
+                        actual_value = result["stdout"].strip()
+
+                        if actual_value == str(expected_value):
+                            logger.info(f"Policy config verified: {config_key} {config_field}={actual_value}")
+                        else:
+                            logger.warning(
+                                f"Policy config mismatch: {config_key} {config_field} - "
+                                f"expected: {expected_value}, actual: {actual_value}"
+                            )
+
+
+def output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None):
     """Output structured metrics in JSON format for external consumption"""
     logger.info(f"Outputting structured metrics for {route_count} routes...")
 
     # Base tags for all metrics
-    base_tags = {"dut": dut_name, "route_count": str(route_count), "module": "route_programming_benchmark"}
+    base_tags = {"dut": dut_name, "route_count": str(route_count)}
+
+    # Add policy information to tags if provided
+    if knob_config and knob_config.get("policy_applied"):
+        policy_info = knob_config["policy_applied"]
+        base_tags["policy"] = policy_info["name"]
 
     # Add extra tags if provided
     if extra_tags:
@@ -60,9 +417,8 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
         total_tags["stage"] = "total"
         metrics.append(
             {
-                "measurement": "route_programming_performance",
                 "tags": total_tags,
-                "fields": {"value": benchmark_results["total_time"], "total_time": benchmark_results["total_time"]},
+                "fields": {"time": benchmark_results["total_time"]},
             }
         )
         logger.info(f"Added total time metric: {benchmark_results['total_time']}s")
@@ -73,12 +429,8 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
         hardware_tags["stage"] = "hardware"
         metrics.append(
             {
-                "measurement": "route_programming_performance",
                 "tags": hardware_tags,
-                "fields": {
-                    "value": benchmark_results["asic_db_to_hardware_time"],
-                    "hardware_time": benchmark_results["asic_db_to_hardware_time"],
-                },
+                "fields": {"time": benchmark_results["asic_db_to_hardware_time"]},
             }
         )
         logger.info(f"Added hardware time metric: {benchmark_results['asic_db_to_hardware_time']}s")
@@ -90,9 +442,8 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
         fpmsyncd_tags["stage"] = "fpmsyncd"
         metrics.append(
             {
-                "measurement": "route_programming_performance",
                 "tags": fpmsyncd_tags,
-                "fields": {"value": fpmsyncd_time, "fpmsyncd_time": fpmsyncd_time},
+                "fields": {"time": fpmsyncd_time},
             }
         )
         logger.info(f"Added fpmsyncd time metric: {fpmsyncd_time}s")
@@ -104,15 +455,18 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
         orchagent_tags["stage"] = "orchagent"
         metrics.append(
             {
-                "measurement": "route_programming_performance",
                 "tags": orchagent_tags,
-                "fields": {"value": orchagent_time, "orchagent_time": orchagent_time},
+                "fields": {"time": orchagent_time},
             }
         )
         logger.info(f"Added orchagent time metric: {orchagent_time}s")
 
     # Output metrics in a structured format that can be parsed by external tools
-    metrics_output = {"test_name": "route_programming_benchmark", "metrics": metrics, "raw_results": benchmark_results}
+    metrics_output = {"metrics": metrics, "raw_results": benchmark_results}
+
+    # Add policy configuration details if provided
+    if knob_config:
+        metrics_output["policy_configuration"] = knob_config
 
     # Output as JSON with a special marker for easy parsing
     logger.warning("=== NEXTHOP_METRICS_START ===")
@@ -127,9 +481,9 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
     logger.info(f"✓ Successfully output {len(metrics)} structured metrics for {route_count} routes")
 
 
-def publish_metrics(dut_name, route_count, benchmark_results, extra_tags=None):
+def publish_metrics(dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None):
     """Output structured metrics in JSON format for external consumption"""
-    output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags)
+    output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags, knob_config)
     # TODO: Integrate with InfluxDB here, so that in addition to outputting metrics
     # in JSON format on console, we also publish to InfluxDB
 
@@ -271,53 +625,79 @@ def run_benchmark_script(duthost, route_count, prefix=DEFAULT_PREFIX, nexthop=DE
 
 
 def test_route_programming_performance(duthosts, enum_rand_one_per_hwsku_frontend_hostname, request):
-    """
-    Test route programming performance at configurable scale
-
-    This test uses the route_programming_benchmark.py script to measure
-    route programming performance through the SONiC pipeline and publishes
-    the results to InfluxDB for tracking over time.
-
-    Default: 100,000 routes
-    Usage:
-      pytest tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
-      pytest --route_scale 50000 tests/route/test_route_programming_benchmark.py::test_route_programming_performance -v
-    """
+    """Test route programming performance with configurable optimization policies"""
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     dut_name = duthost.hostname
 
-    # Get route scale from command line argument (default: 100000)
+    # Get parameters from command line arguments
     route_scale = request.config.getoption("--route_scale")
+    perf_policy_str = request.config.getoption("--perf_policy")
 
     logger.info(f"Starting route programming benchmark for {route_scale} routes on {dut_name}")
 
-    # Run the benchmark
-    results = run_benchmark_script(duthost, route_scale)
+    if perf_policy_str:
+        logger.info(f"Performance policy requested: {perf_policy_str}")
 
-    # Validate results
-    pytest_assert(
-        results.get("total_routes") == route_scale, f"Expected {route_scale} routes, got {results.get('total_routes')}"
-    )
+    # Initialize policy manager
+    policy_manager = PerformanceKnobManager(duthost)
+    policy_config = None
 
-    pytest_assert(
-        results.get("total_time") is not None and results.get("total_time") > 0, "Total time should be positive"
-    )
+    try:
+        # Apply performance configuration
+        if perf_policy_str:
+            # Apply policy-based configuration
+            logger.info(f"Applying performance policy: {perf_policy_str}")
+            policy_config = policy_manager.apply_policy(perf_policy_str)
+            policy_info = policy_config["policy_applied"]
+            logger.info(f"Applied policy: {policy_info['name']} - {policy_info['description']}")
+            logger.info(f"Restarted containers: {policy_config['containers_restarted']}")
 
-    # Log key metrics
-    logger.info("Route programming completed:")
-    logger.info(f"  Routes: {results.get('total_routes', 'N/A')}")
-    logger.info(f"  Total time: {results.get('total_time', 'N/A')}s")
+        # Run the benchmark
+        results = run_benchmark_script(duthost, route_scale)
 
-    if results.get("asic_db_to_hardware_time"):
-        logger.info(f"  ASIC DB → Hardware (syncd): {results['asic_db_to_hardware_time']}s")
+        # Validate results
+        pytest_assert(
+            results.get("total_routes") == route_scale,
+            f"Expected {route_scale} routes, got {results.get('total_routes')}"
+        )
 
-    if results.get("fpmsyncd_timing") and len(results["fpmsyncd_timing"]) >= 3:
-        logger.info(f"  FPMsyncd processing: {results['fpmsyncd_timing'][2]}s")
+        pytest_assert(
+            results.get("total_time") is not None and results.get("total_time") > 0, "Total time should be positive"
+        )
 
-    if results.get("orchagent_timing") and len(results["orchagent_timing"]) >= 3:
-        logger.info(f"  Orchagent processing: {results['orchagent_timing'][2]}s")
+        # Log key metrics
+        logger.info("Route programming completed:")
+        logger.info(f"  Routes: {results.get('total_routes', 'N/A')}")
+        logger.info(f"  Total time: {results.get('total_time', 'N/A')}s")
 
-    # Publish metrics
-    publish_metrics(dut_name, route_scale, results)
+        if results.get("asic_db_to_hardware_time"):
+            logger.info(f"  ASIC DB → Hardware (syncd): {results['asic_db_to_hardware_time']}s")
 
-    logger.info(f"Route programming benchmark completed successfully for {route_scale} routes")
+        if results.get("fpmsyncd_timing") and len(results["fpmsyncd_timing"]) >= 3:
+            logger.info(f"  FPMsyncd processing: {results['fpmsyncd_timing'][2]}s")
+
+        if results.get("orchagent_timing") and len(results["orchagent_timing"]) >= 3:
+            logger.info(f"  Orchagent processing: {results['orchagent_timing'][2]}s")
+
+        # Log policy configuration if applied
+        if policy_config and policy_config.get("policy_applied"):
+            policy_info = policy_config["policy_applied"]
+            logger.info(f"Performance policy applied: {policy_info['name']} - {policy_info['description']}")
+
+        # Publish metrics with policy configuration
+        publish_metrics(dut_name, route_scale, results, knob_config=policy_config)
+
+        logger.info(f"Route programming benchmark completed successfully for {route_scale} routes")
+
+    finally:
+        # Always restore original configuration using config reload
+        if policy_manager.applied_policy:
+            logger.info("Restoring original configuration using config reload...")
+            try:
+                config_reload(duthost, safe_reload=True, check_intf_up_ports=True)
+                logger.info("Configuration restored successfully via config reload")
+            except Exception as e:
+                logger.error(f"Config reload failed: {e}")
+                logger.error("Manual intervention may be required to restore DUT state")
+        else:
+            logger.info("No policy configuration to restore")

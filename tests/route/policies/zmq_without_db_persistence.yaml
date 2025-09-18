@@ -1,0 +1,13 @@
+name: "zmq_without_db_persistence"
+description: "Maximum performance with ZMQ optimizations without DB persistence"
+
+config:
+  DEVICE_METADATA:
+    localhost:
+      orch_northbond_route_zmq_enabled: "true"
+      zmq_db_persistence_enabled: "false"
+      route_download_log_chunk: "10000"
+
+containers_to_restart:
+  - swss
+  - bgp

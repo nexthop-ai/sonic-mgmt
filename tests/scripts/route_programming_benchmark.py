@@ -539,6 +539,25 @@ class RouteProgrammingBenchmark:
         print("\nBaseline counts:")
         initial_stats.print()
 
+        # Parse syslog for fpmsyncd timing after routes are in hardware
+        # Default patterns for fpmsyncd RouteCounter messages
+        # Looks for messages like:
+        # Example: bgp#fpmsyncd: :- ~RouteCounter: Processed 10000 RTM_NEWROUTE messages
+        fpmsyncd_count_pattern = (r"(\d{4} \w+ \d+ \d{2}:\d{2}:\d{2}\.\d+) .* bgp#fpmsyncd: :- ~RouteCounter: "
+                                  r"Processed (\d+) RTM_NEWROUTE messages")
+        fpmsyncd_baseline_info = self.get_last_routecounter_timestamp(fpmsyncd_count_pattern)
+        if fpmsyncd_baseline_info:
+            baseline_timestamp, baseline_count = fpmsyncd_baseline_info
+            print(f"Baseline fpmsyncd: {baseline_count} routes at {baseline_timestamp}")
+
+        # Example: swss#orchagent: :- flush_creating_entries: RouteOrch: 110000 routes added to SAI (bulk)
+        orchagent_count_pattern = (r"(\d{4} \w+ \d+ \d{2}:\d{2}:\d{2}\.\d+) .* swss#orchagent: :- "
+                                   r"flush_creating_entries: RouteOrch: (\d+)")
+        orchagent_baseline_info = self.get_last_routecounter_timestamp(orchagent_count_pattern)
+        if orchagent_baseline_info:
+            baseline_timestamp, baseline_count = orchagent_baseline_info
+            print(f"Baseline orchagent: {baseline_count} routes at {baseline_timestamp}")
+
         # Start benchmark
         total_start_time = time.time()
         dt_object = datetime.fromtimestamp(total_start_time)
@@ -565,26 +584,12 @@ class RouteProgrammingBenchmark:
 
         total_time = time.time() - total_start_time
 
-        # Parse syslog for fpmsyncd timing after routes are in hardware
-        # Default patterns for fpmsyncd RouteCounter messages
-        # Looks for messages like:
-        # 2025 Aug 13 02:48:38.274482 vlab-01 NOTICE bgp#fpmsyncd: :- ~RouteCounter:
-        # Processed 10000 RTM_NEWROUTE messages
-
-        default_count_pattern = (
-            r"(\d{4} \w+ \d+ \d{2}:\d{2}:\d{2}\.\d+) .* bgp#fpmsyncd: :- ~RouteCounter: "
-            r"Processed (\d+) RTM_NEWROUTE messages"
-        )
-        baseline_info = self.get_last_routecounter_timestamp(default_count_pattern)
-        if baseline_info:
-            baseline_timestamp, baseline_count = baseline_info
-            print(f"Baseline RouteCounter: {baseline_count} routes at {baseline_timestamp}")
-
         feature = "fpmsyncd RouteCounter"
         cnt = 30
         fpmsyncd_timing = None
         while not fpmsyncd_timing and cnt > 0:
-            fpmsyncd_timing = self.parse_syslog_timing(self.num_routes, default_count_pattern, feature, baseline_info)
+            fpmsyncd_timing = self.parse_syslog_timing(self.num_routes, fpmsyncd_count_pattern, feature,
+                                                       fpmsyncd_baseline_info)
             if not fpmsyncd_timing:
                 cnt -= 1
                 if cnt:
@@ -594,6 +599,18 @@ class RouteProgrammingBenchmark:
 
         # Parse syslog for Orchagent timing
         orchagent_timing = None
+        feature = "orchagent RouteCounter"
+        cnt = 30
+        orchagent_timing = None
+        while not orchagent_timing and cnt > 0:
+            orchagent_timing = self.parse_syslog_timing(self.num_routes, orchagent_count_pattern, feature,
+                                                        orchagent_baseline_info)
+            if not orchagent_timing:
+                cnt -= 1
+                if cnt:
+                    time.sleep(1)
+            else:
+                break
 
         # Clean up test routes
         print("\nCleaning up test routes...")

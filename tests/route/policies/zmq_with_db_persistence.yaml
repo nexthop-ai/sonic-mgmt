@@ -1,0 +1,13 @@
+name: "zmq_with_db_persistence"
+description: "ZMQ with DB persistence for backward compatibility"
+
+config:
+  DEVICE_METADATA:
+    localhost:
+      orch_northbond_route_zmq_enabled: "true"
+      zmq_db_persistence_enabled: "true"
+      route_download_log_chunk: "10000"
+
+containers_to_restart:
+  - swss
+  - bgp

@@ -1,0 +1,11 @@
+name: "basic_performance"
+description: "Basic performance optimizations with minimal risk"
+
+config:
+  DEVICE_METADATA:
+    localhost:
+      route_download_log_chunk: "10000"
+
+containers_to_restart:
+  - bgp
+  - swss

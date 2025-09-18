@@ -1,0 +1,15 @@
+name: "non_zmq_optimized"
+description: "Optimizations without ZMQ dependency"
+
+config:
+  DEVICE_METADATA:
+    localhost:
+      producerstate_flush_pub_enabled: "true"
+      synchronous_mode: "enable"
+      suppress-fib-pending: "disabled"
+      route_download_log_chunk: "10000"
+      nexthop_group: "enabled"
+
+containers_to_restart:
+  - swss
+  - bgp
