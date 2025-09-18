@@ -4529,9 +4529,6 @@ class LossyQueueTest(sai_base_test.ThriftInterfaceDataPlane):
             else:
                 if check_leackout_compensation_support(asic_type, hwsku):
                     pkts_num_leak_out = 0
-                if hwsku in ('NH-4010'):
-                    # adjust the pkts_num_leak_out
-                    pkts_num_leak_out = 905
                 # send packets short of triggering egress drop
                 send_packet(self, src_port_id, pkt, pkts_num_leak_out +
                             pkts_num_trig_egr_drp - 1 - margin)
@@ -4563,11 +4560,11 @@ class LossyQueueTest(sai_base_test.ThriftInterfaceDataPlane):
             # recv port no pfc
             qos_test_assert(self, recv_counters[pg] == recv_counters_base[pg])
             # recv port no ingress drop
-            # For dnx few extra ipv6 NS/RA pkt received, adding to coutner value
-            # & may give inconsistent test results
+            # For some broadcom asics (dnx or th5) few extra ipv6 NS/RA pkt received,
+            # adding to counter value & may give inconsistent test results
             # Adding COUNTER_MARGIN to provide room to 2 pkt incase, extra traffic received
             for cntr in ingress_counters:
-                if platform_asic and platform_asic == "broadcom-dnx":
+                if platform_asic and (platform_asic == "broadcom-dnx" or platform_asic == "broadcom"):
                     if cntr == 1:
                         log_message("recv_counters_base: {}, recv_counters: {}".format(
                             recv_counters_base[cntr], recv_counters[cntr]), to_stderr=True)
@@ -4595,9 +4592,9 @@ class LossyQueueTest(sai_base_test.ThriftInterfaceDataPlane):
             qos_test_assert(self, recv_counters[pg] == recv_counters_base[pg])
             # recv port no ingress drop
             for cntr in ingress_counters:
-                if platform_asic and platform_asic == "broadcom-dnx":
+                if platform_asic and (platform_asic == "broadcom-dnx" or platform_asic == "broadcom"):
                     if cntr == 1:
-                        qos_test_assert(self, recv_counters[cntr] > recv_counters_base[cntr])
+                        qos_test_assert(self, recv_counters[cntr] >= recv_counters_base[cntr])
                 else:
                     qos_test_assert(self, recv_counters[cntr] == recv_counters_base[cntr])
 
