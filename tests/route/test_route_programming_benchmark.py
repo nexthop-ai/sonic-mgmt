@@ -31,15 +31,16 @@ Metrics Output:
   for publishing to monitoring systems.
 
   Schema:
-    Measurement: route_programming_performance
-    Tags: dut, route_count, stage
-    Fields: total_time, asic_db_time, hardware_time, fpmsyncd_time, orchagent_time
+    Measurement: route_benchmark_metrics
+    Tags: dut, route_count, policy (optional)
+    Fields: total_time, hardware_time, fpmsyncd_time (optional), orchagent_time (optional)
 """
 
 import json
 import logging
 import os
 import pytest
+import socket
 import time
 import yaml
 from dataclasses import dataclass
@@ -48,10 +49,170 @@ from tests.common.config_reload import config_reload
 from tests.common.helpers.assertions import pytest_assert
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 pytestmark = [
     pytest.mark.topology("t0", "t1", "any"),
 ]
+
+INFLUXDB_AVAILABLE = False
+INFLUXDB_CONFIG = {
+    'host': 'http://influxdb:8181',
+    'database': 'service-metrics',
+    'token': 'apiv3_T6XsnV184x8CtNWuSviKD0afM94wrmtfev5GCJvKlaox_IflRkz3mMASk_wSnEZg12aIJkK8SHbiFqO1crtrnw'
+}
+
+# Default test parameters
+DEFAULT_ROUTE_COUNT = 100000
+DEFAULT_PREFIX = "192.168.0.0/16"
+DEFAULT_NEXTHOP = "10.0.0.1"
+
+
+def detect_influxdb_environment():
+    """Detect if InfluxDB is available using direct connection"""
+    global INFLUXDB_AVAILABLE
+
+    try:
+        logger.info("=== INFLUXDB DETECTION START ===")
+        logger.info("Checking for InfluxDB availability...")
+        logger.info(f"InfluxDB Host: {INFLUXDB_CONFIG['host']}")
+        logger.info(f"InfluxDB Database: {INFLUXDB_CONFIG['database']}")
+
+        # Extract host and port from InfluxDB URL
+        influxdb_url = INFLUXDB_CONFIG['host']
+
+        if influxdb_url.startswith('http://'):
+            host_port = influxdb_url[7:]
+        elif influxdb_url.startswith('https://'):
+            host_port = influxdb_url[8:]
+        else:
+            host_port = influxdb_url
+
+        if '/' in host_port:
+            host_port = host_port.split('/')[0]
+
+        if ':' in host_port:
+            host, port = host_port.split(':')
+            port = int(port)
+        else:
+            host = host_port
+            port = 8086
+
+        logger.info(f"Testing connection to {host}:{port}...")
+
+        # Test connection
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+        result = sock.connect_ex((host, port))
+        sock.close()
+
+        if result == 0:
+            logger.info(f"InfluxDB is reachable at {host}:{port}")
+            logger.info("InfluxDB integration ENABLED - metrics will be published to InfluxDB")
+            INFLUXDB_AVAILABLE = True
+            logger.info("=== INFLUXDB DETECTION END ===")
+            return True
+        else:
+            logger.info(f"InfluxDB not reachable at {host}:{port} - metrics will be output to console only")
+            logger.info("=== INFLUXDB DETECTION END ===")
+            return False
+
+    except Exception as e:
+        logger.warning(f"InfluxDB detection failed: {e} - metrics will be output to console only")
+        logger.info("=== INFLUXDB DETECTION END ===")
+        return False
+
+
+def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=None):
+    """Publish metrics directly to InfluxDB using HTTP requests"""
+    if not INFLUXDB_AVAILABLE:
+        logger.info("InfluxDB not available - skipping InfluxDB publishing")
+        return False
+
+    try:
+        import requests
+        logger.info("=== INFLUXDB PUBLISHING START ===")
+        logger.info(f"Publishing metrics for {route_count} routes to InfluxDB...")
+        logger.info(f"Target: {INFLUXDB_CONFIG['host']}")
+        logger.info(f"Database: {INFLUXDB_CONFIG['database']}")
+
+        # Base tags
+        base_tags = {"dut": dut_name, "route_count": str(route_count)}
+
+        # Add policy information if available
+        if knob_config and knob_config.get("policy_applied"):
+            policy_info = knob_config["policy_applied"]
+            base_tags["policy"] = policy_info["name"]
+            logger.info(f"Policy: {policy_info['name']}")
+
+        # Collect all metrics
+        all_fields = {}
+        if benchmark_results.get('total_time'):
+            all_fields["total_time"] = benchmark_results['total_time']
+            logger.info(f"Total time: {benchmark_results['total_time']}s")
+        if benchmark_results.get('asic_db_to_hardware_time'):
+            all_fields["hardware_time"] = benchmark_results['asic_db_to_hardware_time']
+            logger.info(f"Hardware time: {benchmark_results['asic_db_to_hardware_time']}s")
+        if benchmark_results.get('fpmsyncd_timing') and len(benchmark_results['fpmsyncd_timing']) >= 3:
+            all_fields["fpmsyncd_time"] = benchmark_results['fpmsyncd_timing'][2]
+            logger.info(f"FPMsyncd time: {benchmark_results['fpmsyncd_timing'][2]}s")
+        if benchmark_results.get('orchagent_timing') and len(benchmark_results['orchagent_timing']) >= 3:
+            all_fields["orchagent_time"] = benchmark_results['orchagent_timing'][2]
+            logger.info(f"Orchagent time: {benchmark_results['orchagent_timing'][2]}s")
+
+        if all_fields:
+            # Create InfluxDB line protocol format
+            tag_str = ','.join([f"{k}={v}" for k, v in base_tags.items()])
+            field_str = ','.join([f"{k}={v}" for k, v in all_fields.items()])
+            line_protocol = f"route_benchmark_metrics,{tag_str} {field_str}"
+
+            logger.info(f"Line protocol: {line_protocol}")
+
+            # Send to InfluxDB
+            url = f"{INFLUXDB_CONFIG['host']}/api/v2/write"
+            headers = {
+                'Authorization': f"Token {INFLUXDB_CONFIG['token']}",
+                'Content-Type': 'text/plain'
+            }
+
+            # Log headers with truncated token for security
+            log_headers = headers.copy()
+            log_headers['Authorization'] = f"Token {INFLUXDB_CONFIG['token'][:20]}..."
+            params = {
+                'bucket': INFLUXDB_CONFIG['database'],
+                'precision': 's'
+            }
+
+            logger.info(f"Sending HTTP POST to: {url}")
+            logger.info(f"Parameters: {params}")
+            logger.info(f"Headers: {list(log_headers.keys())} (token truncated for security)")
+
+            response = requests.post(url, data=line_protocol, headers=headers, params=params, timeout=10)
+
+            logger.info(f"InfluxDB response status: {response.status_code}")
+
+            if response.status_code == 204:
+                logger.info(f"SUCCESS: Published metrics to InfluxDB: {list(all_fields.keys())}")
+                logger.info("Route programming benchmark metrics are now available in InfluxDB!")
+                logger.info("=== INFLUXDB PUBLISHING END ===")
+                return True
+            else:
+                logger.error(f"FAILED: InfluxDB write failed with status {response.status_code}: {response.text}")
+                logger.info("=== INFLUXDB PUBLISHING END ===")
+                return False
+        else:
+            logger.warning("No metrics available to publish")
+            logger.info("=== INFLUXDB PUBLISHING END ===")
+            return False
+
+    except ImportError:
+        logger.error("requests module not available - skipping InfluxDB publishing")
+        logger.info("=== INFLUXDB PUBLISHING END ===")
+        return False
+    except Exception as e:
+        logger.error(f"FAILED: Exception during InfluxDB publishing: {e}")
+        logger.info("=== INFLUXDB PUBLISHING END ===")
+        return False
 
 
 @pytest.fixture(autouse=True)
@@ -89,12 +250,6 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
 
     yield
-
-
-# Default test parameters
-DEFAULT_ROUTE_COUNT = 100000
-DEFAULT_PREFIX = "192.168.0.0/16"
-DEFAULT_NEXTHOP = "10.0.0.1"
 
 
 @dataclass
@@ -469,23 +624,42 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
         metrics_output["policy_configuration"] = knob_config
 
     # Output as JSON with a special marker for easy parsing
-    logger.warning("=== NEXTHOP_METRICS_START ===")
-    logger.warning(json.dumps(metrics_output, indent=2))
-    logger.warning("=== NEXTHOP_METRICS_END ===")
+    logger.info("=== NEXTHOP_METRICS_START ===")
+    logger.info(json.dumps(metrics_output, indent=2))
+    logger.info("=== NEXTHOP_METRICS_END ===")
 
     # Also print to stdout for external parsing
     print("=== NEXTHOP_METRICS_START ===")
     print(json.dumps(metrics_output, indent=2))
     print("=== NEXTHOP_METRICS_END ===")
 
-    logger.info(f"✓ Successfully output {len(metrics)} structured metrics for {route_count} routes")
+    logger.info(f"Successfully output {len(metrics)} structured metrics for {route_count} routes")
 
 
 def publish_metrics(dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None):
-    """Output structured metrics in JSON format for external consumption"""
+    """Output structured metrics and optionally publish to InfluxDB if available"""
+
+    logger.info("=== METRICS PUBLISHING START ===")
+    logger.info(f"Publishing metrics for DUT: {dut_name}, Routes: {route_count}")
+
+    # Always output structured metrics to console
     output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags, knob_config)
-    # TODO: Integrate with InfluxDB here, so that in addition to outputting metrics
-    # in JSON format on console, we also publish to InfluxDB
+
+    # Detect InfluxDB at runtime (not at module load)
+    detect_influxdb_environment()
+
+    # Additionally publish to InfluxDB if available
+    if INFLUXDB_AVAILABLE:
+        logger.info("InfluxDB is available - attempting to publish metrics to InfluxDB")
+        success = publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config)
+        if success:
+            logger.info("SUCCESS: Metrics successfully published to InfluxDB!")
+        else:
+            logger.warning("WARNING: Failed to publish metrics to InfluxDB")
+    else:
+        logger.info("InfluxDB not available - structured output only")
+
+    logger.info("=== METRICS PUBLISHING END ===")
 
 
 @pytest.fixture(scope="function", autouse=True)
