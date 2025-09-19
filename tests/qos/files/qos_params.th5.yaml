@@ -19,17 +19,31 @@ qos_params:
                     # pkts_num_trig_pfc value is determined based on
                     # dynamic threshold and shared buffer pool size,
                     # which comes from buffers__defaults_t1/t2.j2
-                    # headroom pool (92850-91450) comes from pg_profile_lookup.ini
+                    # headroom pool (93125-91450) comes from pg_profile_lookup.ini
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
+                    pkts_num_trig_ingr_drp: 93125
                     pkts_num_trig_pfc: 91450
                 xoff_2:
                     dscp: 4
                     ecn: 1
                     pg: 4
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
+                    pkts_num_trig_ingr_drp: 93125
                     pkts_num_trig_pfc: 91450
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 350
+                    pkts_num_margin: 380
+                    pkts_num_trig_pfc: 92000
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 350
+                    pkts_num_margin: 380
+                    pkts_num_trig_pfc: 92000
             800000_40m:
                 lossy_queue_1:
                     dscp: 8
@@ -44,15 +58,29 @@ qos_params:
                     ecn: 1
                     pg: 3
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 91750
+                    pkts_num_trig_ingr_drp: 92000
                     pkts_num_trig_pfc: 91450
                 xoff_2:
                     dscp: 4
                     ecn: 1
                     pg: 4
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
+                    pkts_num_trig_ingr_drp: 92000
                     pkts_num_trig_pfc: 91450
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 350
+                    pkts_num_margin: 380
+                    pkts_num_trig_pfc: 92000
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 350
+                    pkts_num_margin: 380
+                    pkts_num_trig_pfc: 92000
             400000_300m:
                 lossy_queue_1:
                     dscp: 8
@@ -67,15 +95,29 @@ qos_params:
                     ecn: 1
                     pg: 3
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
-                    pkts_num_trig_pfc: 91450
+                    pkts_num_trig_ingr_drp: 92050
+                    pkts_num_trig_pfc: 91150
                 xoff_2:
                     dscp: 4
                     ecn: 1
                     pg: 4
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
-                    pkts_num_trig_pfc: 91450
+                    pkts_num_trig_ingr_drp: 92050
+                    pkts_num_trig_pfc: 91150
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
             400000_40m:
                 lossy_queue_1:
                     dscp: 8
@@ -90,15 +132,103 @@ qos_params:
                     ecn: 1
                     pg: 3
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 91750
-                    pkts_num_trig_pfc: 91450
+                    pkts_num_trig_ingr_drp: 91450
+                    pkts_num_trig_pfc: 91150
                 xoff_2:
                     dscp: 4
                     ecn: 1
                     pg: 4
                     pkts_num_margin: 100
-                    pkts_num_trig_ingr_drp: 92850
-                    pkts_num_trig_pfc: 91450
+                    pkts_num_trig_ingr_drp: 91450
+                    pkts_num_trig_pfc: 91150
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+            200000_300m:
+                lossy_queue_1:
+                    dscp: 8
+                    ecn: 1
+                    pg: 0
+                    pkts_num_margin: 100
+                    pkts_num_trig_egr_drp: 121380
+                pkts_num_egr_mem: 0
+                pkts_num_leak_out: 0
+                xoff_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_margin: 100
+                    pkts_num_trig_ingr_drp: 92050
+                    pkts_num_trig_pfc: 91150
+                xoff_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_margin: 100
+                    pkts_num_trig_ingr_drp: 92050
+                    pkts_num_trig_pfc: 91150
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+            200000_40m:
+                lossy_queue_1:
+                    dscp: 8
+                    ecn: 1
+                    pg: 0
+                    pkts_num_margin: 100
+                    pkts_num_trig_egr_drp: 121380
+                pkts_num_egr_mem: 0
+                pkts_num_leak_out: 0
+                xoff_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_margin: 100
+                    pkts_num_trig_ingr_drp: 91450
+                    pkts_num_trig_pfc: 91150
+                xoff_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_margin: 100
+                    pkts_num_trig_ingr_drp: 91450
+                    pkts_num_trig_pfc: 91150
+                xon_1:
+                    dscp: 3
+                    ecn: 1
+                    pg: 3
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
+                xon_2:
+                    dscp: 4
+                    ecn: 1
+                    pg: 4
+                    pkts_num_dismiss_pfc: 100
+                    pkts_num_margin: 220
+                    pkts_num_trig_pfc: 91350
             200000_5m:
                 hdrm_pool_size:
                     dscps:
