@@ -1,5 +1,4 @@
 import pytest
-import shutil
 import logging
 import os
 import glob
@@ -40,6 +39,7 @@ def setup_vrf_configuration(vrf_config):
     return vrf_config
 
 
+<<<<<<< HEAD
 @pytest.fixture(scope="function", autouse=True)
 def skip_non_x86_platform(duthosts, rand_one_dut_hostname):
     """
@@ -63,6 +63,8 @@ def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
         localhost.shell("sudo chmod +x gnmi/%s" % file)
 
 
+=======
+>>>>>>> upstream/master
 @pytest.fixture(scope="module", autouse=True)
 def setup_gnmi_ntp_client_server(duthosts, rand_one_dut_hostname, ptfhost):
     """Auto-setup NTP for all gNMI tests using existing helper."""

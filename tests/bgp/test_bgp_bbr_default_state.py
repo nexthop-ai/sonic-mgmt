@@ -129,8 +129,10 @@ def setup(duthosts, rand_one_dut_hostname, tbinfo, nbrhosts):
     return setup_info
 
 
+@pytest.mark.disable_loganalyzer
 def test_bbr_disabled_constants_yml_default(duthosts, rand_one_dut_hostname, setup, config_bbr_disabled, loganalyzer):
     duthost = duthosts[rand_one_dut_hostname]
+<<<<<<< HEAD
     if duthost.sonichost.facts['platform_asic'] == 'broadcom':
         ignore_regex = r".* ERR swss#orchagent:\s*.*\s*queryAattributeEnumValuesCapability:\s*returned value " \
             r"\d+ is not allowed on SAI_SWITCH_ATTR_(?:ECMP|LAG)_DEFAULT_HASH_ALGORITHM.*|" \
@@ -139,6 +141,8 @@ def test_bbr_disabled_constants_yml_default(duthosts, rand_one_dut_hostname, set
             r"ecmp members max get failed with error Invalid parameter.*"
         loganalyzer[duthost.hostname].ignore_regex.extend([ignore_regex])
 
+=======
+>>>>>>> upstream/master
     duthost.shell("sudo config save -y")
     config_reload(duthost, safe_reload=True)
     is_bbr_enabled = duthost.shell("show runningconfiguration bgp | grep allowas", module_ignore_errors=True)['stdout']
