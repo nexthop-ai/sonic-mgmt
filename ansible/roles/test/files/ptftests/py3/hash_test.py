@@ -245,12 +245,8 @@ class HashTest(BaseTest):
         # ip_proto 60 is redirected to ip_proto 4 as encapsulation protocol, ip payload will be malformat
         # ip_proto 254 is experimental
         # MLNX ASIC can't forward ip_proto 254, BRCM is OK, skip for all for simplicity
-<<<<<<< HEAD
         skip_protos = [2, 253, 4, 41, 47, 60, 254]
 
-=======
-        skip_protos = [2, 253, 4, 41, 60, 254]
->>>>>>> upstream/master
         if self.is_active_active_dualtor:
             # Skip ICMP for active-active dualtor as it is duplicated to both ToRs
             skip_protos.append(1)
@@ -653,7 +649,6 @@ class IPinIPHashTest(HashTest):
     for IPinIP packet.
     '''
 
-<<<<<<< HEAD
     def setUp(self):
         HashTest.setUp(self)
         self.ecmp_inner_header_hash_supported = self.test_params.get(
@@ -674,7 +669,7 @@ class IPinIPHashTest(HashTest):
         ) if hash_key == 'dst-ip' else self.dst_ip_interval.get_first_ip()
         sport = random.randint(0, 65535) if hash_key == 'src-port' else 1234
         dport = random.randint(0, 65535) if hash_key == 'dst-port' else 80
-=======
+
     def create_packets_logs(
             self, src_port, sport, dport, version='IP', pkt=None, ipinip_pkt=None,
             vxlan_pkt=None, nvgre_pkt=None, inner_pkt=None, outer_sport=None,
@@ -699,7 +694,6 @@ class IPinIPHashTest(HashTest):
                             dport,
                             src_port))
         return logs
->>>>>>> upstream/master
 
     def set_packet_parameter(self, pkt, exp_pkt, hash_key, ip_proto, version='IP'):
         if hash_key == 'ip-proto':
@@ -827,15 +821,10 @@ class IPinIPHashTest(HashTest):
                     matched_index, 0) + 1
             logging.info("hash_key={}, hit count map: {}".format(
                 hash_key, hit_count_map))
-<<<<<<< HEAD
 
             if self.ecmp_inner_header_hash_supported:
                 for next_hop in next_hops:
                     self.check_balancing(next_hop.get_next_hop(), hit_count_map, src_port, hash_key)
-=======
-            for next_hop in next_hops:
-                self.check_balancing(next_hop.get_next_hop(), hit_count_map, src_port, hash_key)
->>>>>>> upstream/master
 
 
 class VxlanHashTest(HashTest):
@@ -1026,12 +1015,11 @@ class NvgreHashTest(HashTest):
     for NvGRE packet.
     '''
 
-<<<<<<< HEAD
     def setUp(self):
         HashTest.setUp(self)
         self.ecmp_inner_header_hash_supported = self.test_params.get(
             'ecmp_inner_header_hash_supported', False)
-=======
+
     def create_packets_logs(
             self, src_port, sport, dport, version='IP', pkt=None, ipinip_pkt=None,
             vxlan_pkt=None, nvgre_pkt=None, inner_pkt=None, outer_sport=None,
@@ -1060,7 +1048,6 @@ class NvgreHashTest(HashTest):
 
     def set_packet_parameter(self, pkt, exp_pkt, hash_key, ip_proto, version='IP'):
         pass
->>>>>>> upstream/master
 
     def simple_nvgrev6_packet(self, pktlen=300,
                               eth_dst='00:01:02:03:04:05',
@@ -1228,7 +1215,6 @@ class NvgreHashTest(HashTest):
                 matched_index, 0) + 1
         logging.info("hash_key={}, hit count map: {}".format(
             hash_key, hit_count_map))
-<<<<<<< HEAD
 
         if self.ecmp_inner_header_hash_supported:
             for next_hop in next_hops:
@@ -1243,7 +1229,3 @@ class NvgreHashTest(HashTest):
         for hash_key in self.hash_keys:
             logging.info("hash test hash_key: {}".format(hash_key))
             self.check_hash(hash_key)
-=======
-        for next_hop in next_hops:
-            self.check_balancing(next_hop.get_next_hop(), hit_count_map, src_port, hash_key)
->>>>>>> upstream/master
