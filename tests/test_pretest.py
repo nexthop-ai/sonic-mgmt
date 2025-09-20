@@ -472,21 +472,6 @@ def test_update_saithrift_ptf(request, ptfhost, duthosts, enum_dut_hostname):
     pkg_name = py_saithrift_url.split("/")[-1]
     ptfhost.shell("rm -f {}".format(pkg_name))
 
-<<<<<<< HEAD
-    if 'Nexthop' in version:
-        pass
-    elif branch_name.startswith("internal-") and branch_name < "internal-202405":
-        # For internal branches older than 202405, use the original URL without modification
-        pass
-    elif branch_name == "master":
-        py_saithrift_url = (f"http://{ip_addr}/mssonic-public-pipelines/"
-                            f"Azure.sonic-buildimage.official.{asic}/master/{asic}/"
-                            f"latest/target/debs/{debian_codename}/{pkg_name}")
-    else:
-        # For internal branches newer than 202405 and other branches
-        py_saithrift_url = (f"http://{ip_addr}/pipelines/Networking-acs-buildimage-Official/"
-                            f"{asic}/{branch_name}/latest/target/debs/{debian_codename}/{pkg_name}")
-=======
     # Check if this is a MSFT URL that should be reconstructed
     # Vendor URLs (like Arista) have different structure and should not be modified
     if is_msft_url(py_saithrift_url):
@@ -526,7 +511,6 @@ def test_update_saithrift_ptf(request, ptfhost, duthosts, enum_dut_hostname):
                                     f"{asic}/{branch_name}/latest/target/debs/{debian_codename}/{pkg_name}")
             # For old internal branches (< internal-202405), use the original URL without modification
     # If not MSFT URL (vendor URL), use it as-is without any reconstruction
->>>>>>> upstream/master
 
     # Retry download of saithrift library
     retry_count = 5
