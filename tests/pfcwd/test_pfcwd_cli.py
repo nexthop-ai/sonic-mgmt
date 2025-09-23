@@ -454,15 +454,25 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                 "PFC storm detect count not correct"
             )
 
+        # Define counter checking function
+        def check_counters(counter_to_check, init_count):
+            pfcwd_stat = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
+            if not pfcwd_stat:
+                return False
+            current_count = int(pfcwd_stat[0][counter_to_check])
+            logger.debug("{} current: {}".format(counter_to_check, current_count))
+            return (current_count - init_count) >= self.pfc_wd['test_pkt_count']
+
         # send traffic to egress port
         self.traffic_inst.send_tx_egress(self.tx_action, False)
-        time.sleep(10)  # wait for the traffic to be processed
-        pfcwd_stat_after_tx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
-        logger.debug("pfcwd_stat_after_tx {}".format(pfcwd_stat_after_tx))
         if asic_type != 'vs':
             # check count, drop: tx_drop_count; forward: tx_ok_count
             if self.tx_action == "drop":
                 tx_drop_count_init = int(pfcwd_stat_init[0]['tx_drop_count'])
+                if not wait_until(300, 2, 5, check_counters, 'tx_drop_count', tx_drop_count_init):
+                    logger.warning("TX counters did not reach expected threshold within timeout")
+                pfcwd_stat_after_tx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
+                logger.debug("pfcwd_stat_after_tx {}".format(pfcwd_stat_after_tx))
                 tx_drop_count_check = int(pfcwd_stat_after_tx[0]['tx_drop_count'])
                 logger.info("tx_drop_count {} -> {}".format(tx_drop_count_init, tx_drop_count_check))
                 pytest_assert(
@@ -471,6 +481,10 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                 )
             elif self.tx_action == "forward":
                 tx_ok_count_init = int(pfcwd_stat_init[0]['tx_ok_count'])
+                if not wait_until(300, 2, 5, check_counters, 'tx_ok_count', tx_ok_count_init):
+                    logger.warning("TX counters did not reach expected threshold within timeout")
+                pfcwd_stat_after_tx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
+                logger.debug("pfcwd_stat_after_tx {}".format(pfcwd_stat_after_tx))
                 tx_ok_count_check = int(pfcwd_stat_after_tx[0]['tx_ok_count'])
                 logger.info("tx_ok_count {} -> {}".format(tx_ok_count_init, tx_ok_count_check))
                 pytest_assert(
@@ -481,13 +495,14 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         # send traffic to ingress port
         time.sleep(3)
         self.traffic_inst.send_rx_ingress(self.rx_action, False)
-        time.sleep(10)  # wait for the traffic to be processed
-        pfcwd_stat_after_rx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
-        logger.debug("pfcwd_stat_after_rx {}".format(pfcwd_stat_after_rx))
         if asic_type != 'vs':
             # check count, drop: rx_drop_count; forward: rx_ok_count
             if self.rx_action == "drop":
                 rx_drop_count_init = int(pfcwd_stat_init[0]['rx_drop_count'])
+                if not wait_until(300, 2, 5, check_counters, 'rx_drop_count', rx_drop_count_init):
+                    logger.warning("RX counters did not reach expected threshold within timeout")
+                pfcwd_stat_after_rx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
+                logger.debug("pfcwd_stat_after_rx {}".format(pfcwd_stat_after_rx))
                 rx_drop_count_check = int(pfcwd_stat_after_rx[0]['rx_drop_count'])
                 logger.info("rx_drop_count {} -> {}".format(rx_drop_count_init, rx_drop_count_check))
                 pytest_assert(
@@ -496,6 +511,10 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                 )
             elif self.rx_action == "forward":
                 rx_ok_count_init = int(pfcwd_stat_init[0]['rx_ok_count'])
+                if not wait_until(300, 2, 5, check_counters, 'rx_ok_count', rx_ok_count_init):
+                    logger.warning("RX counters did not reach expected threshold within timeout")
+                pfcwd_stat_after_rx = parser_show_pfcwd_stat(dut, port, self.pfc_wd['queue_index'])
+                logger.debug("pfcwd_stat_after_rx {}".format(pfcwd_stat_after_rx))
                 rx_ok_count_check = int(pfcwd_stat_after_rx[0]['rx_ok_count'])
                 logger.info("rx_ok_count {} -> {}".format(rx_ok_count_init, rx_ok_count_check))
                 pytest_assert(
