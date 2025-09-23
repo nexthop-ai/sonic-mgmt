@@ -31,7 +31,7 @@ When run test cases, we need to validate the config db, the state db and bgp run
 2. Query state db to get all state for each aggregate addresses.
 3. Query bgp runing config to get aggregate addresses.
 4. When BBR is enabled, check if all aggregate addresses in config are in state db and having active state, check if all aggregate addresses are in bgp running config.
-5. When BBR is disable, check if all aggregate addresses in config with bbr required true are in state db and having inactive state, and make sure they are not in bgp running config. check if all aggregate addresses in config with brr required false are in state db and having active state, check if all aggregate addresses are in bgp running config. 
+5. When BBR is disable, check if all aggregate addresses in config with bbr required true are in state db and having inactive state, and make sure they are not in bgp running config. check if all aggregate addresses in config with brr required false are in state db and having active state, check if all aggregate addresses are in bgp running config.
 
 ### Test with parameters Combination
 Test the feature with all parameters combination to validate the feature as much as possible.

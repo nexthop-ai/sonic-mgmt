@@ -654,22 +654,6 @@ class IPinIPHashTest(HashTest):
         self.ecmp_inner_header_hash_supported = self.test_params.get(
             'ecmp_inner_header_hash_supported', False)
 
-    def check_ipv4_route(self, hash_key, src_port, dst_port_lists, outer_src_ip, outer_dst_ip):
-        '''
-        @summary: Check IPv4 route works.
-        @param hash_key: hash key to build packet with.
-        @param src_port: index of port to use for sending packet to switch
-        @param dst_port_lists: list of ports on which to expect packet to come back from the switch
-        @param outer_src_ip: source ip at the outer layer
-        @param outer_dst_ip: destination ip at the outer layer
-        '''
-        ip_src = self.src_ip_interval.get_random_ip(
-        ) if hash_key == 'src-ip' else self.src_ip_interval.get_first_ip()
-        ip_dst = self.dst_ip_interval.get_random_ip(
-        ) if hash_key == 'dst-ip' else self.dst_ip_interval.get_first_ip()
-        sport = random.randint(0, 65535) if hash_key == 'src-port' else 1234
-        dport = random.randint(0, 65535) if hash_key == 'dst-port' else 80
-
     def create_packets_logs(
             self, src_port, sport, dport, version='IP', pkt=None, ipinip_pkt=None,
             vxlan_pkt=None, nvgre_pkt=None, inner_pkt=None, outer_sport=None,
