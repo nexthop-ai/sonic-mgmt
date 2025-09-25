@@ -6,10 +6,10 @@ import re
 from tests.common.fixtures.conn_graph_facts import enum_fanout_graph_facts      # noqa: F401
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.pfc_storm import PFCStorm
-from tests.common.helpers.pfcwd_helper import start_wd_on_ports, start_background_traffic     # noqa: F401
+from tests.common.helpers.pfcwd_helper import start_wd_on_ports, start_background_traffic  # noqa: F401
 
 from tests.common.plugins.loganalyzer import DisableLogrotateCronContext
-from tests.common.helpers.pfcwd_helper import send_background_traffic
+from tests.common.helpers.pfcwd_helper import send_background_traffic, verify_pfcwd_status
 from tests.common import config_reload
 
 pytestmark = [
@@ -84,6 +84,12 @@ def pfcwd_timer_setup_restore(setup_pfc_test, enum_fanout_graph_facts, duthosts,
     timers['pfc_wd_restore_time'] = 400
     start_wd_on_ports(dut, pfc_wd_test_port, timers['pfc_wd_restore_time'],
                       timers['pfc_wd_detect_time'])
+
+    if not verify_pfcwd_status(
+        dut, pfc_wd_test_port, timers["pfc_wd_restore_time"], timers["pfc_wd_detect_time"]
+    ):
+        pytest.fail("Failed to start wd on port {}".format(pfc_wd_test_port))
+
     # enable routing from mgmt interface to localhost
     dut.sysctl(name="net.ipv4.conf.eth0.route_localnet", value=1, sysctl_set=True)
     # rule to forward syslog packets from mgmt interface to localhost
@@ -184,7 +190,7 @@ class TestPfcwdAllTimer(object):
 
         if self.dut.facts['asic_type'] == 'vs':
             logger.info("Skip time detect for VS")
-            return
+            return False
 
         skip_this_loop = False
         if self.dut.topo_type == 't2' and self.storm_handle.peer_device.os == 'sonic':
@@ -206,17 +212,24 @@ class TestPfcwdAllTimer(object):
             if storm_detect_ms == 0 or storm_restore_ms == 0:
                 logging.warning("storm_detect_ms {} or storm_restore_ms {} is 0".format(
                     storm_detect_ms, storm_restore_ms))
+                # Override all entry to zero to avoid failure due to this
+                storm_detect_ms = 0
+                storm_restore_ms = 0
                 skip_this_loop = True
         else:
             if storm_start_ms == 0 or storm_detect_ms == 0 or storm_end_ms == 0 or storm_restore_ms == 0:
                 logging.warning("storm_start_ms {} or storm_detect_ms {} or "
                                 "storm_end_ms {} or storm_restore_ms {} is 0".format(
                                     storm_start_ms, storm_detect_ms, storm_end_ms, storm_restore_ms))
+                # Override all entry to zero to avoid failure due to this
+                storm_start_ms = 0
+                storm_detect_ms = 0
+                storm_end_ms = 0
+                storm_restore_ms = 0
                 skip_this_loop = True
 
         if skip_this_loop:
-            logger.warning("Skip this loop due to missing timestamps")
-            return
+            logging.warning("Skip this loop due to missing timestamps")
 
         if not (self.dut.topo_type == 't2' and self.storm_handle.peer_device.os == 'sonic'):
             real_detect_time = storm_detect_ms - storm_start_ms
@@ -232,6 +245,7 @@ class TestPfcwdAllTimer(object):
         logger.info(
             "Iteration all_dut_detect_restore_time list {} and length {}".format(
                 ",".join(str(i) for i in self.all_dut_detect_restore_time), len(self.all_dut_detect_restore_time)))
+        return not skip_this_loop
 
     def verify_pfcwd_timers(self):
         """
@@ -270,6 +284,12 @@ class TestPfcwdAllTimer(object):
                         (self.timers['pfc_wd_poll_time'] // 2)
                     )
                     break
+
+        err_msg = ("Not able to capture timestamp for all iterations. Total iteration captured {}. Expected {}.".format(
+            len(self.all_detect_time), check_point+1))
+        logger.info("Verify that all timestamp are captured properly")
+        if len(self.all_detect_time) < check_point+1:
+            pytest.fail(err_msg)
 
         err_msg = ("Real detection time is greater than configured: Real detect time: {} "
                    "Expected: {} (wd_detect_time + wd_poll_time)".format(self.all_detect_time[check_point],
@@ -367,11 +387,13 @@ class TestPfcwdAllTimer(object):
         self.all_detect_time = list()
         self.all_restore_time = list()
         self.all_dut_detect_restore_time = list()
+        self.skipped_loops = list()
         try:
             if self.dut.topo_type == 't2' and self.storm_handle.peer_device.os == 'sonic':
                 for i in range(1, 11):
                     logger.info("--- Pfcwd Timer Test iteration #{}".format(i))
-                    self.run_test(setup_info)
+                    if not self.run_test(setup_info):
+                        self.skipped_loops.append(i)
                 self.verify_pfcwd_timers_t2()
             else:
                 for i in range(1, ITERATION_NUM):
@@ -385,8 +407,13 @@ class TestPfcwdAllTimer(object):
                     pfcwd_cmd_response = self.dut.shell(cmd, module_ignore_errors=True)
                     logger.debug("loop {} cmd {} rsp {}".format(i, cmd, pfcwd_cmd_response.get('stdout', None)))
 
-                    self.run_test(setup_info)
+                    if not self.run_test(setup_info):
+                        self.skipped_loops.append(i)
                 self.verify_pfcwd_timers()
+
+            if len(self.skipped_loops) != 0:
+                err_msg = "Failing as we have skipped loops: {}".format(self.skipped_loops)
+                pytest.fail(err_msg)
 
         except Exception as e:
             logger.info("exception: ")

@@ -376,6 +376,31 @@ def start_wd_on_ports(duthost, port, restore_time, detect_time, action="drop"):
                     .format(action, restore_time, port, detect_time))
 
 
+def verify_pfcwd_status(duthost, port, restore_time, detect_time, action="drop"):
+    """Verify PFC watchdog configuration in Redis"""
+    if duthost.shell(f'redis-cli -n 4 EXISTS "PFC_WD|{port}"')['stdout'].strip() == '0':
+        logger.error(f"PFC_WD entry not found for port {port}")
+        return False
+
+    values = duthost.shell(
+        f'redis-cli -n 4 HMGET "PFC_WD|{port}" action restoration_time detection_time'
+    )['stdout'].strip().split('\n')
+    actual_action, actual_restore_time, actual_detect_time = (values + [None] * 3)[:3]
+
+    checks = [
+        (actual_action, action, "Action"),
+        (actual_restore_time, str(restore_time), "Restore time"),
+        (actual_detect_time, str(detect_time), "Detect time")
+    ]
+
+    for actual, expected, name in checks:
+        if actual != expected:
+            logger.error(f"{name} mismatch: expected {expected}, got {actual}")
+            return False
+
+    return True
+
+
 def fetch_vendor_specific_diagnosis_re(duthost):
     """
     Fetch regular expression of vendor specific diagnosis information
