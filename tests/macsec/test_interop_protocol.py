@@ -26,9 +26,16 @@ class TestInteropProtocol():
     def test_port_channel(self, duthost, profile_name, ctrl_links, wait_mka_establish):
         '''Verify lacp
         '''
+        pc = None
+
+        def check_portchannel_up(ctrl_port, duthost):
+            nonlocal pc
+            pc = None
+            pc = find_portchannel_from_member(ctrl_port, get_portchannel(duthost))
+            return pc and pc["status"] == "Up"
+
         ctrl_port, _ = list(ctrl_links.items())[0]
-        pc = find_portchannel_from_member(ctrl_port, get_portchannel(duthost))
-        assert pc["status"] == "Up"
+        assert wait_until(90, 1, 0, check_portchannel_up, ctrl_port, duthost)
 
         disable_macsec_port(duthost, ctrl_port)
         # Remove ethernet interface <ctrl_port> from PortChannel interface <pc>
@@ -41,8 +48,7 @@ class TestInteropProtocol():
         # Add ethernet interface <ctrl_port> back to PortChannel interface <pc>
         duthost.command("sudo config portchannel {} member add {} {}"
                         .format(getns_prefix(duthost, ctrl_port), pc["name"], ctrl_port))
-        assert wait_until(90, 1, 0, lambda: find_portchannel_from_member(
-            ctrl_port, get_portchannel(duthost))["status"] == "Up")
+        assert wait_until(90, 1, 0, check_portchannel_up, ctrl_port, duthost)
 
     @pytest.mark.disable_loganalyzer
     def test_lldp(self, duthost, ctrl_links, profile_name, wait_mka_establish):
