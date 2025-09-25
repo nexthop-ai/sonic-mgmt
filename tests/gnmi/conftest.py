@@ -1,5 +1,4 @@
 import pytest
-import shutil
 import logging
 import os
 import glob
@@ -38,29 +37,6 @@ def setup_vrf_configuration(vrf_config):
     It gets overridden in vrf_aware_tests/conftest.py.
     """
     return vrf_config
-
-
-@pytest.fixture(scope="function", autouse=True)
-def skip_non_x86_platform(duthosts, rand_one_dut_hostname):
-    """
-    Skip the current test if DUT is not x86_64 platform.
-    """
-    duthost = duthosts[rand_one_dut_hostname]
-    platform = duthost.facts["platform"]
-    if 'x86_64' not in platform:
-        pytest.skip("Test not supported for current platform. Skipping the test")
-
-
-@pytest.fixture(scope="module", autouse=True)
-def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
-    duthost = duthosts[rand_one_dut_hostname]
-    for file in ["gnmi_cli", "gnmi_set", "gnmi_get", "gnoi_client"]:
-        duthost.shell("docker cp %s:/usr/sbin/%s /tmp" % (gnmi_container(duthost), file))
-        duthost.shell("chmod +x /tmp/%s" % file)
-        ret = duthost.fetch(src="/tmp/%s" % file, dest=".")
-        gnmi_bin = ret.get("dest", None)
-        shutil.copyfile(gnmi_bin, "gnmi/%s" % file)
-        localhost.shell("sudo chmod +x gnmi/%s" % file)
 
 
 @pytest.fixture(scope="module", autouse=True)
