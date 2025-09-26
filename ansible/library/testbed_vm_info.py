@@ -85,7 +85,7 @@ class TestbedVMFacts:
     def __init__(self, toponame, base_vm, vm_file, servers_info):
         CLET_SUFFIX = "-clet"
         self.toponame = re.sub(CLET_SUFFIX + "$", "", toponame)
-        self.topofile = os.path.join(TOPO_PATH, f'topo_{self.toponame}.yml')
+        self.topofile = os.path.join(TOPO_PATH, 'topo_{}.yml'.format(self.toponame))
         self.base_vm = base_vm
         self.vm_file = vm_file
         self.servers_info = servers_info
@@ -141,12 +141,12 @@ class TestbedVMFacts:
         if self._inventory_cache is not None:
             return self._inventory_cache
         if not os.path.exists(self.vm_file):
-            raise IOError(f"Inventory file not found: {self.vm_file}")
+            raise IOError("Inventory file not found: {}".format(self.vm_file))
         with open(self.vm_file, 'r') as f:
             try:
                 data = yaml.safe_load(f) or {}
             except yaml.YAMLError as e:
-                raise ValueError(f"Failed to parse inventory yaml {self.vm_file}: {e}")
+                raise ValueError("Failed to parse inventory yaml {}: {}".format(self.vm_file, e))
         self._inventory_cache = data
         return data
 
