@@ -36,6 +36,9 @@ r, ".* ERR mux#linkmgrd: MuxManager\.cpp:.*Unsupported link failure detection ty
 r, ".* ERR syncd#syncd: \[none\] SAI_API_SWITCH:sai_query_attribute_capability:\d* Acl (entry|table) attribute capabilities failed with error -2."
 r, ".* ERR syncd#syncd: \[none\] SAI_API_SWITCH:sai_query_attribute_enum_values_capability:\d* Error in enum \d* capability query for obj type .* rv=-8"
 
+# hummingbird ISS-3504
+r, ".* ERR systemd.* Failed to start process-reboot-cause.service - Retrieve the reboot cause from the history files and save them to StateDB"
+
 # Errors for config reload on broadcom platform on 202405
 r, ".* ERR syncd\d*#syncd.*_attribute_enum_values_capability.*count.*greater than capability-count 0.*"
 
