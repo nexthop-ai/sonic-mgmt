@@ -5,6 +5,8 @@ import uuid
 import re
 import os
 
+from tabulate import tabulate
+
 from junit_xml_parser import (
     validate_junit_json_file,
     validate_junit_xml_path,
@@ -70,6 +72,10 @@ python3 report_uploader.py tests/files/sample_tr.xml -e TRACKING_ID#22
         "--version", "-o", type=str,
         help="OS version. If has this argument, will ignore image_url. They are mutually exclusive."
     )
+    parser.add_argument(
+        "--dry_run", "-d", action="store_true",
+        help="Dry run. Print the test result summary and skip the upload"
+    )
 
     args = parser.parse_args()
 
@@ -103,7 +109,19 @@ python3 report_uploader.py tests/files/sample_tr.xml -e TRACKING_ID#22
                     else:
                         roots = validate_junit_xml_path(path_name)
                         test_result_json = parse_test_result(roots)
-                    kusto_db.upload_report(test_result_json, tracking_id, report_guid, testbed, version)
+                    skipped = int(test_result_json['test_summary']['skipped'])
+                    fails = int(test_result_json['test_summary']['failures'])
+                    total = int(test_result_json['test_summary']['tests'])
+                    num_pass = total - skipped - fails
+                    pass_rate = num_pass/(total-skipped)*100
+                    data = {
+                        "key": list(test_result_json['test_summary'].keys()) + ["numPassed", "passRate"],
+                        "value": list(test_result_json['test_summary'].values()) + [num_pass, pass_rate]
+                    }
+                    print("Test results summary")
+                    print(tabulate([data['value']], headers=data['key'], tablefmt='simple'))
+                    if not args.dry_run:
+                        kusto_db.upload_report(test_result_json, tracking_id, report_guid, testbed, version)
             except Exception as e:
                 print(f"Failed to upload report '{path_name}', exception: {repr(e)}")
                 import traceback
