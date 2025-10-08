@@ -627,7 +627,7 @@ class HashTest(BaseTest):
                         member, 0), float(total_entry_hit_cnt) / len(ecmp_entry), hash_key)
                     logging.info("%-10s \t %-10s \t %10d \t %10d \t %10s"
                                  % ("LAG", str(member), total_entry_hit_cnt // len(ecmp_entry),
-                                    port_hit_cnt.get(member, 0), str(round(p, 4) * 100) + '%'), hash_key)
+                                    port_hit_cnt.get(member, 0), str(round(p, 4) * 100) + '%'))
                     result &= r
         assert result
 
