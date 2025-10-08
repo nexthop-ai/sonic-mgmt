@@ -66,10 +66,23 @@ def check_vrf(dut, vrf):
 
     Args:
         dut (SonicHost): The target device
-        vrf (str): vrf
+        vrf (str): vrf name to check
     """
     res = dut.command('sudo show vrf')["stdout"]
-    return vrf in res
+
+    lines = res.strip().split('\n')
+    if len(lines) < 2:
+        return False
+
+    # Skip header and separator, check VRF name in first column only
+    for line in lines[2:]:
+        if not line.strip():
+            continue
+        columns = line.split()
+        if columns and columns[0] == vrf:
+            return True
+
+    return False
 
 
 def remove_vrf(dut, vrf):
