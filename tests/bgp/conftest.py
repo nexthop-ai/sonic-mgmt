@@ -48,7 +48,7 @@ def check_results(results):
         pt_assert(False, 'Some processes for updating nbr hosts configuration returned failed results')
 
 
-def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config):
+def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config, zmq_enabled, tbinfo):
     try:
         module_name = request.module.__name__
         # Extract module path from the file path (relative to tests directory)
@@ -57,6 +57,10 @@ def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config):
             module_path = fspath_str.split('/tests/')[-1]
         else:
             module_path = module_name.replace('.', '/') + '.py'
+
+        if zmq_enabled == 'true' and not is_chassis(duthost) and tbinfo["topo"]["type"] == 't2':
+            logger.info(f"Module {module_path} skipped for zmq_enabled on t2 non chassis")
+            return True
 
         # Check if this module has skip conditions for frr_mgmt_config
         session = request.session
@@ -128,7 +132,7 @@ def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config):
     ids=['legacy-mode-zmq-disabled', 'legacy-mode-zmq-enabled',
          'unified-mode-zmq-disabled', 'unified-mode-zmq-enabled']
 )
-def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
+def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
     global _original_dut_frr_mgmt_modes
     duthost = duthosts[rand_one_dut_hostname]
     config_params = request.param
@@ -139,7 +143,7 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
     logger.info(f"{'=' * 30} Testing in {config_params['mode_name'].upper()} mode {'=' * 30}")
 
     # Check if module is marked to be skipped for this mode
-    if _check_if_module_skipped_for_mode(request, duthost, test_frr_mgmt_mode):
+    if _check_if_module_skipped_for_mode(request, duthost, test_frr_mgmt_mode, test_zmq_enabled, tbinfo):
         logger.info(f"Skipping {config_params['mode_name']} - "
                     f"module marked to skip for {test_frr_mgmt_mode}")
         pytest.skip(f"Module is marked to skip for {config_params['mode_name']} mode")

@@ -665,7 +665,6 @@ class TestQosSai(QosSaiBase):
             )
 
     @pytest.mark.parametrize("xonProfile", ["xon_1", "xon_2", "xon_3", "xon_4"])
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiPfcXonLimit(
         self, get_src_dst_asic_and_duts, xonProfile, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         ingressLosslessProfile, change_lag_lacp_timer
