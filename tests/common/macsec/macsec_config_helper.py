@@ -17,7 +17,8 @@ __all__ = [
     'enable_macsec_port',
     'disable_macsec_port',
     'get_macsec_enable_status',
-    'get_macsec_profile'
+    'get_macsec_profile',
+    'adjust_mtu'
 ]
 
 logger = logging.getLogger(__name__)
@@ -268,3 +269,92 @@ def setup_macsec_configuration(duthost, ctrl_links, profile_name, default_priori
 
     # Load the MACSEC_INFO, to have data of all macsec sessions
     load_all_macsec_info(duthost, ctrl_links, tbinfo)
+
+
+def adjust_mtu(duthost, ctrl_links, enable, original_mtus):
+    _adjusted_list = set()
+    MACSEC_OVERHEAD = 32
+
+    def _set_mtu(host, port, enable):
+        nonlocal original_mtus
+        if isinstance(host, EosHost):
+            # EOS device - use configuration commands
+            key = f"{host.hostname}:{port}"
+            if enable:
+                # Default MTU
+                if key not in original_mtus:
+                    mtu = 9214
+                    # Use show interfaces command to get MTU
+                    result_json = host.eos_command(commands=[f"show interfaces {port}"], output="json")
+                    if result_json and len(result_json) > 0:
+                        interfaces_data = result_json[0].get('interfaces', {})
+                        if port in interfaces_data:
+                            mtu = interfaces_data[port].get('mtu', None)
+                    # Store original MTU for restoration
+                    original_mtus[key] = mtu
+                mtu = original_mtus[key] - MACSEC_OVERHEAD
+            else:
+                mtu = original_mtus[key]
+
+            if key not in _adjusted_list:
+                """Set MTU on EOS interface using configuration commands"""
+                # Enter configuration mode and set MTU
+                config_commands = [f'mtu {mtu}']
+                parent_commands = [f'interface {port}']
+                host.eos_config(
+                        lines=config_commands,
+                        parents=parent_commands,
+                        save_when='modified'
+                    )
+
+                logger.info(f"Port {key} MTU {'adjusted' if enable else 'restored'} to {mtu}")
+                _adjusted_list.add(key)
+
+            return
+
+        # Take port channel into consideration
+        table = 'PORT'
+        target_interface = port
+        pc = find_portchannel_from_member(port, get_portchannel(host))
+        if pc:
+            target_interface = pc['name']
+            table = 'PORTCHANNEL'
+        key = f"{host.hostname}:{target_interface}"
+
+        # Fetch the MTU
+        if enable:
+            if key not in original_mtus:
+                cmd = f"sonic-db-cli {getns_prefix(host, port)} CONFIG_DB HGET '{table}|{target_interface}' mtu"
+                result = host.command(cmd)
+                mtu_str = result["stdout"].strip()
+                mtu = 9100
+                if mtu_str and mtu_str != "":
+                    mtu = int(mtu_str)
+                original_mtus[key] = mtu
+            mtu = original_mtus[key] - MACSEC_OVERHEAD
+        else:
+            mtu = original_mtus[key]
+
+        if key not in _adjusted_list:
+            cmd = f"sonic-db-cli {getns_prefix(host, port)} CONFIG_DB HSET '{table}|{target_interface}' mtu {mtu}"
+            host.command(cmd)
+            logger.info(f"Port {key} MTU {'adjusted' if enable else 'restored'} to {mtu}")
+            _adjusted_list.add(key)
+
+        if pc:
+            # Update port MTU if part of port channel
+            key = f"{host.hostname}:{port}"
+            if key not in _adjusted_list:
+                cmd = f"sonic-db-cli {getns_prefix(host, port)} CONFIG_DB HSET 'PORT|{port}' mtu {mtu}"
+                host.command(cmd)
+                logger.info(f"Port {key} MTU {'adjusted' if enable else 'restored'} to {mtu}")
+                _adjusted_list.add(key)
+        return
+
+    if enable and original_mtus is None:
+        original_mtus = {}
+    for dut_port, nbr in list(ctrl_links.items()):
+        _set_mtu(duthost, dut_port, enable)
+        _set_mtu(nbr["host"], nbr["port"], enable)
+
+    return original_mtus

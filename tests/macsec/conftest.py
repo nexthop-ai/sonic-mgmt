@@ -1,7 +1,11 @@
 import pytest
+import logging
 
 from tests.common.macsec.macsec_helper import check_appl_db
+from tests.common.macsec.macsec_config_helper import adjust_mtu
 from tests.common.utilities import wait_until
+
+logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config):
@@ -60,3 +64,32 @@ def rekey_period(macsec_profile):
 @pytest.fixture(scope="module")
 def wait_mka_establish(duthost, ctrl_links, policy, cipher_suite, send_sci):
     assert wait_until(300, 6, 12, check_appl_db, duthost, ctrl_links, policy, cipher_suite, send_sci)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def macsec_mtu_adjustment(duthost, ctrl_links):
+    """
+    Automatically adjust MTU for MACsec-enabled interfaces
+
+    This fixture:
+    - Runs automatically for all tests in MACsec test modules
+    - Reduces interface MTU by 32 bytes (MACsec overhead) during setup
+    - Restores original MTU values during teardown
+
+    Args:
+        duthost: DUT host fixture
+        ctrl_links: MACsec-enabled control links fixture
+
+    Yields:
+        dict: Original MTU values
+    """
+    logger.info("Starting MACsec MTU adjustment")
+    # SETUP PHASE: Reduce MTU by 32 bytes
+    original_mtus = adjust_mtu(duthost, ctrl_links, True, None)
+
+    # Yield control to tests
+    yield original_mtus
+
+    # TEARDOWN PHASE: Restore original MTU values
+    logger.info("Restoring original MTU values")
+    adjust_mtu(duthost, ctrl_links, False, original_mtus)
