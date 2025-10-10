@@ -183,7 +183,12 @@ def ignore_expected_loganalyzer_exceptions(duthosts, selected_dut_hostname, loga
 
             # Ignore errors from k8s config test
             ".*ERR ctrmgrd.py: Refer file.*",
-            ".*ERR ctrmgrd.py: Join failed.*"
+            ".*ERR ctrmgrd.py: Join failed.*",
+
+            # DO NOT UPSTREAM
+            # Ignore errors from sharpd
+            # https://app.devrev.ai/nexthop/works/ISS-3399
+            ".*ERR bgp#sharpd.*INTERFACE_STATE: Cannot find IF Vrf_.* in VRF.*"
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
 
