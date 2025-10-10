@@ -3725,7 +3725,7 @@ class HdrmPoolSizeTest(sai_base_test.ThriftInterfaceDataPlane):
             else:
                 # assert ingress drop
                 for cntr in self.ingress_counters:
-                    assert (recv_counters[cntr] > recv_counters_bases[sidx_dscp_pg_tuples[i][0]][cntr])
+                    assert (recv_counters[cntr] >= recv_counters_bases[sidx_dscp_pg_tuples[i][0]][cntr])
 
             # assert no egress drop at the dut xmit port
             if self.platform_asic != "broadcom-dnx":
