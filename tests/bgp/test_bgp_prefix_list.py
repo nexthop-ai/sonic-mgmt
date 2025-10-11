@@ -63,17 +63,18 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     # verify sessions are established
     logger.info(duthost.shell('show ip bgp summary'))
     logger.info(duthost.shell('show ipv6 bgp summary'))
-
+    namespace_str = f"-n {namespace}" if duthost.is_multi_asic else ""
     setup_info = {
         'duthost': duthost,
         'neighhost': tor_neighbors[tor1],
         'neigh_asn': neigh_asn[tor1],
         'asn_dict':  neigh_asn,
         'neighbors': tor_neighbors,
-        'namespace': namespace
+        'namespace': namespace,
+        'namespace_str': namespace_str
     }
 
-    logger.info("DUT BGP Config: {}".format(duthost.shell("vtysh -n {} -c \"show run bgp\"".format(namespace),
+    logger.info("DUT BGP Config: {}".format(duthost.shell("vtysh {} -c \"show run bgp\"".format(namespace_str),
                                             module_ignore_errors=True)))
     logger.info('Setup_info: {}'.format(setup_info))
 
