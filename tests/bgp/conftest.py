@@ -242,6 +242,20 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
         config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
         bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
 
+        if operation_name == "Restoration":
+            # link training is an automatic process used for high-speed copper cables
+            # to fine-tune the signal quality between a transmitter and receiver
+            # DUT with long-cables are configured for link-training by prepare_dut_config.
+            # However, the migration script turns off link-training. So, we need to
+            # turn it back on.
+            # TODO: We are configuring link-training without checking if the DUT has long cables.
+            # It should not have any impact on short cables / optics. However, we should add a check
+            # here to avoid running the command unnecessarily.
+            for intf_name, intf_config in config_facts.get('PORT', {}).items():
+                if intf_config.get('admin_status') == 'up':
+                    duthost.shell(f"sudo config interface link-training {intf_name} on",
+                                  module_ignore_errors=True)
+
         # Wait for BGP sessions to come up giving an initial delay for bgp to start. Without the
         # delay, the wait_until loop can start checking before bgp has even started and we would see
         # annoying "bgpd is not running" errors in the logs.
