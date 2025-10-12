@@ -13,10 +13,11 @@ from tests.common.gu_utils import format_json_patch_for_multiasic
 from tests.common.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
 from tests.common.gu_utils import is_valid_platform_and_version
 from tests.common.mellanox_data import is_mellanox_device
+from tests.common.utilities import get_host_visible_vars
 
 pytestmark = [
-    pytest.mark.topology('t0'),
-    pytest.mark.asic('mellanox', 'barefoot', 'marvell-teralynx')
+    pytest.mark.topology('t0', 't1'),
+    pytest.mark.asic('mellanox', 'barefoot', 'marvell-teralynx', 'broadcom')
 ]
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ OPER_HEADROOM_SIZE = 19
 INGRESS_POOL_THRESHOLD = 10
 HEADROOM_POOL_OVERSUB = 2
 MMU_SIZE = 13619
+MMU_SIZE_BRCM_TH5 = 166115492
 READ_ASICDB_TIMEOUT = 480
 READ_ASICDB_INTERVAL = 20
 
@@ -184,7 +186,26 @@ def calculate_field_value(duthost, tbinfo, field):
         return headroom_pool
     else:
         operational_headroom = headroom_pool + private_headroom
-        ingress_lossless_egress_lossy = MMU_SIZE - operational_headroom - user_reserved - system_reserved
+        """
+            Adjust the MMU size based on the platform.
+            Today it is handled for BRCM TH5 only. If needed for other asics, adjust the
+            MMU size accordingly.
+        """
+        hostvars = get_host_visible_vars(duthost.host.options['inventory'], duthost.hostname)
+        hwsku = duthost.facts['hwsku']
+        supported_platforms = ['broadcom_th5_hwskus']
+        asic_name = None
+        for platform in supported_platforms:
+            supported_skus = hostvars.get(platform, [])
+            if hwsku in supported_skus:
+                asic_name = platform.split('_')[1]
+            else:
+                continue
+        if asic_name == "th5":
+            mmu_size = MMU_SIZE_BRCM_TH5
+        else:
+            mmu_size = MMU_SIZE
+        ingress_lossless_egress_lossy = mmu_size - operational_headroom - user_reserved - system_reserved
         return ingress_lossless_egress_lossy
 
 
