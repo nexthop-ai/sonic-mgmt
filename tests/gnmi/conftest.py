@@ -3,6 +3,7 @@ import logging
 import os
 import glob
 import grpc
+import shutil
 
 from grpc_tools import protoc
 
@@ -56,6 +57,18 @@ def setup_gnmi_ntp_client_server(duthosts, rand_one_dut_hostname, ptfhost):
 
     with setup_ntp_context(ptfhost, duthost, False):
         yield
+
+
+@pytest.fixture(scope="module", autouse=True)
+def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
+    duthost = duthosts[rand_one_dut_hostname]
+    for file in ["gnmi_cli", "gnmi_set", "gnmi_get", "gnoi_client"]:
+        duthost.shell("docker cp %s:/usr/sbin/%s /tmp" % (gnmi_container(duthost), file))
+        duthost.shell("chmod +x /tmp/%s" % file)
+        ret = duthost.fetch(src="/tmp/%s" % file, dest=".")
+        gnmi_bin = ret.get("dest", None)
+        shutil.copyfile(gnmi_bin, "gnmi/%s" % file)
+        localhost.shell("sudo chmod +x gnmi/%s" % file)
 
 
 @pytest.fixture(scope="module", autouse=True)

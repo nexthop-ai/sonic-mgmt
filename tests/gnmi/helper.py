@@ -41,23 +41,33 @@ def get_intf_vlan(cfg_facts, interface):
     return None
 
 
-def get_available_intf(cfg_facts, exclude_interfaces=['Ethernet0']):
-    port_indices = cfg_facts.get('config_port_indices', {})
-    for dut_intf, ptf_idx in port_indices.items():
-        if dut_intf not in exclude_interfaces:
+def get_available_intf(cfg_facts, mg_facts, exclude_interfaces=['Ethernet0']):
+    ptf_indices = mg_facts.get('minigraph_ptf_indices', {})
+    portchannel_members = cfg_facts.get('PORTCHANNEL_MEMBER', {})
+
+    # Exclude all member interfaces from portchannel configuration
+    member_interfaces = set()
+    for portchannel in portchannel_members.values():
+        for member in portchannel.keys():
+            member_interfaces.add(member)
+
+    for dut_intf, ptf_idx in ptf_indices.items():
+        if dut_intf not in exclude_interfaces and dut_intf not in member_interfaces:
             ptf_intf = f"eth{ptf_idx}"
             return dut_intf, ptf_intf
+
     return None, None
 
 
-def get_intfs_pair_with_vlan(duthost, exclude_interfaces=['Ethernet0']):
+def get_intfs_pair_with_vlan(duthost, tbinfo, exclude_interfaces=['Ethernet0']):
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
     port_name_list_sorted = natsorted(list(cfg_facts['PORT'].keys()))
     port_index_map = {}
     for idx, val in enumerate(port_name_list_sorted):
         port_index_map[val] = idx
     cfg_facts['config_port_indices'] = port_index_map
-    dut_intf, ptf_intf = get_available_intf(cfg_facts, exclude_interfaces)
+    dut_intf, ptf_intf = get_available_intf(cfg_facts, mg_facts, exclude_interfaces)
     return dut_intf, get_intf_vlan(cfg_facts, dut_intf), ptf_intf
 
 
@@ -359,7 +369,7 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count, ip=N
     # For non-default VRF we need to use the DUT's gnmi_cli binary
     # since ip vrf exec needs elevated privileges and gnmi
     # docker container doesn't have it
-    if vrf_name:
+    if vrf_name and vrf_name != "default":
         logger.info("Using gnmi_cli on DUT for VRF-aware execution")
         cmd = f"sudo ip vrf exec {vrf_name} /tmp/gnmi_cli "
     else:
@@ -466,7 +476,7 @@ def gnoi_reboot(duthost, method, delay, message, ip=None, vrf_name=None):
     # For non-default VRF we need to use the DUT's gnoi_client binary
     # since ip vrf exec needs elevated privileges and gnmi
     # docker container doesn't have it
-    if vrf_name:
+    if vrf_name and vrf_name != "default":
         logger.info("Using gnmi_cli on DUT for VRF-aware execution")
         cmd = f"sudo ip vrf exec {vrf_name} /tmp/gnoi_client "
     else:

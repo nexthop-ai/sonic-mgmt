@@ -15,17 +15,17 @@ DEFAULT_SNMP_PORT = 161
 
 
 @pytest.fixture(scope="module", params=VRF_SCENARIOS, ids=lambda scenario: f"vrf_{scenario['name']}")
-def vrf_config(request, duthost, ptfhost):
-    tbname = request.config.getoption("--testbed")
+def vrf_config(request, duthost, ptfhost, tbinfo):
     vrf_cfg = request.param.copy()
     vrf_name = vrf_cfg["vrf"]
-    if (not tbname or "t0" not in tbname) and vrf_name == CUSTOM_VRF_NAME:
-        pytest.skip("Skipping custom VRF test on non-T0 topology")
     if vrf_name and vrf_name == CUSTOM_VRF_NAME:
+        topo_name = tbinfo.get("topo", {}).get("name")
+        if not topo_name or "t0" not in topo_name:
+            pytest.skip("Skipping custom VRF test on non-T0 topology")
         # Use a new subnet for VRF paths
         subnet = find_unused_subnet(duthost, ptfhost)
         assert subnet, "Failed to find an unused subnet"
-        dut_intf, dut_vlan, ptf_intf = get_intfs_pair_with_vlan(duthost)
+        dut_intf, dut_vlan, ptf_intf = get_intfs_pair_with_vlan(duthost, tbinfo)
         assert None not in (dut_intf, ptf_intf), "Failed to find available DUT interfaces"
         vrf_cfg.update({
             "custom_subnet": subnet,
