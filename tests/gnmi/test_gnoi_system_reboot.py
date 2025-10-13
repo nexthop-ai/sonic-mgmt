@@ -1,6 +1,5 @@
 import pytest
 import logging
-import json
 
 from .helper import gnoi_request, extract_gnoi_response, apply_cert_config, gnoi_request_dpu, is_reboot_inactive
 from tests.common.helpers.assertions import pytest_assert
@@ -9,6 +8,7 @@ from tests.common.platform.processes_utils import wait_critical_processes
 from tests.common.utilities import wait_until
 from tests.conftest import get_specified_dpus
 from tests.common.platform.device_utils import reboot_dpu_and_wait_for_start_up
+from tests.gnmi.helper import gnoi_reboot
 
 
 pytestmark = [
@@ -78,14 +78,13 @@ def test_gnoi_system_reboot_cold(duthosts, rand_one_dut_hostname, localhost):
     """
     duthost = duthosts[rand_one_dut_hostname]
 
-    reboot_args = {
-        "message": REBOOT_MESSAGE,
-        "method": RebootMethod["COLD"]
-    }
-    # Record uptime before reboot
     uptime_before = duthost.get_up_time(utc_timezone=True)
 
-    ret, msg = gnoi_request(duthost, localhost, "System", "Reboot", json.dumps(reboot_args))
+    method = RebootMethod["COLD"]
+    delay = 0
+    message = REBOOT_MESSAGE
+
+    ret, msg = gnoi_reboot(duthost, method, delay, message)
     pytest_assert(ret == 0, "System.Reboot API reported failure (rc = {}) with message: {}".format(ret, msg))
     logging.info("System.Reboot API returned msg: {}".format(msg))
 
@@ -124,12 +123,11 @@ def test_gnoi_system_reboot_warm(duthosts, rand_one_dut_hostname, localhost):
     """
     duthost = duthosts[rand_one_dut_hostname]
 
-    reboot_args = {
-        "message": REBOOT_MESSAGE,
-        "method": RebootMethod["WARM"]
-    }
+    method = RebootMethod["WARM"]
+    delay = 0
+    message = REBOOT_MESSAGE
 
-    ret, msg = gnoi_request(duthost, localhost, "System", "Reboot", json.dumps(reboot_args))
+    ret, msg = gnoi_reboot(duthost, method, delay, message)
     pytest_assert(ret == 0, "System.Reboot API reported failure (rc = {}) with message: {}".format(ret, msg))
     logging.info("System.Reboot API returned msg: {}".format(msg))
 
@@ -169,10 +167,9 @@ def test_gnoi_system_reboot_halt_dpus(duthosts, rand_one_dut_hostname, localhost
     else:
         pytest.skip("No DPUs specified, skipping HALT reboot test.")
 
-    reboot_args = {
-        "message": REBOOT_MESSAGE,
-        "method": RebootMethod["HALT"]
-    }
+    method = RebootMethod["HALT"]
+    delay = 0
+    message = REBOOT_MESSAGE
 
     for dpuhost_name in dpuhost_names:
         # Extract the last number from the duthost name
@@ -182,7 +179,7 @@ def test_gnoi_system_reboot_halt_dpus(duthosts, rand_one_dut_hostname, localhost
         if not (0 <= dpu_index <= 8):
             pytest.fail(f"Invalid dpu_index {dpu_index}, must be between 0 and 8")
 
-        ret, msg = gnoi_request_dpu(duthost, localhost, dpu_index, "System", "Reboot", json.dumps(reboot_args))
+        ret, msg = gnoi_reboot(duthost, method, delay, message)
         pytest_assert(ret == 0, "System.Reboot API reported failure (rc = {}) with message: {}".format(ret, msg))
         logging.info("System.Reboot API returned msg: {}".format(msg))
 
