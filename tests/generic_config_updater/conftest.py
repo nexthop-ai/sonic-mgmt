@@ -162,21 +162,6 @@ def ignore_expected_loganalyzer_exceptions(duthosts, selected_dut_hostname, loga
             ".*ERR swss[0-9]*#orchagent.*objectTypeGetAvailability.*",  # test_monitor_config
             ".*ERR dhcp_relay[0-9]*#dhcrelay.*",  # test_dhcp_relay
 
-            # Platforms without egress metering don't support SAI_MIRROR_SESSION_ATTR_POLICER
-            # Root cause errors
-            ".*ERR syncd[0-9]*#syncd.*Platform does not support "
-            "SAI_MIRROR_SESSION_ATTR_POLICER.*",  # test_monitor_config
-            ".*ERR syncd[0-9]*#syncd.*Error processing mirror attributes.*",  # test_monitor_config
-            ".*ERR syncd[0-9]*#syncd.*sendApiResponse: api SAI_COMMON_API_CREATE "
-            "failed in syncd mode.*",  # test_monitor_config
-            # Cascading errors from mirror session creation failure
-            ".*ERR syncd[0-9]*#syncd.*processQuadEvent: attr: SAI_MIRROR_SESSION_ATTR.*",
-            ".*ERR swss[0-9]*#orchagent.*create: create status: -327669.*",  # test_monitor_config
-            ".*ERR swss[0-9]*#orchagent.*activateSession: Failed to activate "
-            "mirroring session.*",  # test_monitor_config
-            ".*ERR swss[0-9]*#orchagent.*handleSai.*: Encountered failure in create "
-            "operation.*SAI API: SAI_API_MIRROR.*",  # test_monitor_config
-
             # sonic-sairedis/vslib/HostInterfaceInfo.cpp: Need investigation
             ".*ERR syncd[0-9]*#syncd.*tap2veth_fun: failed to write to socket.*",   # test_portchannel_interface tc2
             ".*ERR.*'apply-patch' executed failed.*",  # negative cases that are expected to fail
