@@ -151,23 +151,24 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
 
     def get_current_frr_mgmt_modes():
         def redis_get(key):
-            return duthost.shell(
+            result = duthost.shell(
                 f'redis-cli -n 4 HGET "DEVICE_METADATA|localhost" "{key}"'
             )['stdout'].strip()
+            # Handle cases where Redis returns empty string or "(nil)" for non-existent keys
+            if result == '' or result == '(nil)' or result.lower() == 'none':
+                return None
+            return result
+
         routing_mode = redis_get('docker_routing_config_mode')
+        # Default to 'unified' if docker_routing_config_mode is not set (matches YANG schema default)
+        if routing_mode is None:
+            routing_mode = 'unified'
+
         frr_mgmt_mode = 'true' if redis_get('frr_mgmt_framework_config') == 'true' else 'false'
         zmq_mode = 'true' if redis_get('orch_northbond_route_zmq_enabled') == 'true' else 'false'
         logger.info(f"Current modes - routing: {routing_mode}, "
                     f"frr_mgmt: {frr_mgmt_mode}, zmq: {zmq_mode}")
         return routing_mode, frr_mgmt_mode, zmq_mode
-
-    def reload_and_wait_bgp(operation_name):
-        logger.info(f"Config reload for {operation_name}")
-        config_reload(duthost, safe_reload=True, check_intf_up_ports=True)
-        config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-        bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
-        if not wait_until(600, 10, 10, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
-            raise Exception(f"BGP sessions not up after {operation_name}")
 
     def set_zmq_in_redis(zmq_value):
         redis_key = '"DEVICE_METADATA|localhost" "orch_northbond_route_zmq_enabled"'
@@ -187,7 +188,7 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             raise False
         return True
 
-    def configure_zmq(zmq_enabled, restart_containers=False, operation_name="ZMQ Configuration"):
+    def configure_zmq(zmq_enabled, operation_name="ZMQ Configuration"):
         get_cmd = "redis-cli -n 4 HGET \"DEVICE_METADATA|localhost\" \"orch_northbond_route_zmq_enabled\""
         zmq_output = duthost.shell(get_cmd, module_ignore_errors=True)['stdout'].strip()
         current_zmq = 'true' if zmq_output == 'true' else 'false'
@@ -200,9 +201,6 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             if not set_zmq_in_redis(zmq_enabled):
                 raise Exception("Failed to set ZMQ in Redis")
 
-            if restart_containers:
-                reload_and_wait_bgp(operation_name)
-
             return True
         except Exception as e:
             logger.info(f"ZMQ configuration failed {e} - Reverting ZMQ configuration to {current_zmq}")
@@ -210,61 +208,44 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             return False
 
     # Helper function to execute migration command
-    def execute_migration(routing_cfg_mode, frr_mgmt_mode, zmq_enabled, operation_name="Migration"):
-        # Configure ZMQ setting before migration so it gets applied during the config reload
-        zmq_op_name = f"{operation_name} ZMQ setup"
-        if not configure_zmq(zmq_enabled, restart_containers=False, operation_name=zmq_op_name):
-            logger.error(f"Failed to configure ZMQ setting for {operation_name}")
-            return False
+    # frr_unified_cfg_mgmt_migrator.py used only to update metadata
+    # and/or config_db transformation.  Then config_reload is handled separately
+    # based on config mode + zmq_enabled
+    def execute_migration(routing_cfg_mode, frr_mgmt_mode, zmq_enabled, cfg_reload='true',
+                          operation_name="Migration"):
+        # Configure ZMQ setting before config migration so it gets applied during the config reload
+        if dut_zmq_mode != zmq_enabled:
+            zmq_op_name = f"{operation_name} ZMQ setup"
+            if not configure_zmq(zmq_enabled, operation_name=zmq_op_name):
+                logger.error(f"Failed to configure ZMQ setting for {operation_name}")
+                return False
 
-        cmd = (
-            f"sudo /usr/local/bin/frr_unified_cfg_mgmt_migrator.py "
-            f"--routing_config_mode='{routing_cfg_mode}' "
-            f"--frr_mgmt_config='{frr_mgmt_mode}' --config_reload='true'"
-        )
+        if dut_routing_cfg_mode != routing_cfg_mode or dut_frr_mgmt_mode != frr_mgmt_mode:
+            cmd = (
+                f"sudo /usr/local/bin/frr_unified_cfg_mgmt_migrator.py "
+                f"--routing_config_mode='{routing_cfg_mode}' "
+                f"--frr_mgmt_config='{frr_mgmt_mode}' --config_reload='false'"
+            )
 
-        logger.info(f"Executing {operation_name.lower()} command: {cmd}")
-        output = duthost.shell(cmd, module_ignore_errors=True)
-
-        # Log output appropriately
-        if output.get('stdout'):
-            logger.info(f"{operation_name} output: {output['stdout']}")
-        if output.get('stderr'):
-            logger.warning(f"{operation_name} stderr: {output['stderr']}")
-
-        # Check for failure
-        if output.get('rc', 0) != 0:
-            logger.error(f"{operation_name} failed with return code {output.get('rc', 'unknown')}")
+            logger.info(f"Executing {operation_name.lower()} command: {cmd}")
+            output = duthost.shell(cmd, module_ignore_errors=True)
+            # Log output appropriately
+            if output.get('stdout'):
+                logger.info(f"{operation_name} output: {output['stdout']}")
             if output.get('stderr'):
-                logger.error(f"{operation_name} error: {output['stderr']}")
-            return False
+                logger.warning(f"{operation_name} stderr: {output['stderr']}")
 
-        config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-        bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
+            # Check for failure
+            if output.get('rc', 0) != 0:
+                logger.error(f"{operation_name} failed with return code {output.get('rc', 'unknown')}")
+                if output.get('stderr'):
+                    logger.error(f"{operation_name} error: {output['stderr']}")
+                return False
 
-        if operation_name == "Restoration":
-            # link training is an automatic process used for high-speed copper cables
-            # to fine-tune the signal quality between a transmitter and receiver
-            # DUT with long-cables are configured for link-training by prepare_dut_config.
-            # However, the migration script turns off link-training. So, we need to
-            # turn it back on.
-            # TODO: We are configuring link-training without checking if the DUT has long cables.
-            # It should not have any impact on short cables / optics. However, we should add a check
-            # here to avoid running the command unnecessarily.
-            for intf_name, intf_config in config_facts.get('PORT', {}).items():
-                if intf_config.get('admin_status') == 'up':
-                    duthost.shell(f"sudo config interface link-training {intf_name} on",
-                                  module_ignore_errors=True)
+        if cfg_reload == 'true':
+            config_reload(duthost, wait=600, safe_reload=True, wait_for_bgp=True, check_intf_up_ports=True)
+            logger.info(f"All BGP sessions are up after {operation_name.lower()}")
 
-        # Wait for BGP sessions to come up giving an initial delay for bgp to start. Without the
-        # delay, the wait_until loop can start checking before bgp has even started and we would see
-        # annoying "bgpd is not running" errors in the logs.
-        initial_delay = 10
-        if not wait_until(600, 10, initial_delay, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
-            logger.error(f"Not all BGP sessions are up after {operation_name.lower()}")
-            return False
-
-        logger.info(f"All BGP sessions are up after {operation_name.lower()}")
         return True
 
     # Get current configuration
@@ -282,19 +263,9 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             dut_zmq_mode == test_zmq_enabled):
         logger.info(f"DUT already in {config_params['mode_name']} mode - no changes needed")
     else:
-        # Check if only ZMQ setting needs to change (no migration needed)
-        if (dut_routing_cfg_mode == test_routing_cfg_mode and
-                dut_frr_mgmt_mode == test_frr_mgmt_mode and
-                dut_zmq_mode != test_zmq_enabled):
-            logger.info(f"Only ZMQ setting needs to change from {dut_zmq_mode} to {test_zmq_enabled}")
-            if not configure_zmq(test_zmq_enabled, restart_containers=True,
-                                 operation_name=f"{config_params['mode_name']} ZMQ-only change"):
-                pytest.fail(f"Failed to configure ZMQ for {config_params['mode_name']} mode")
-        else:
-            # Execute migrator script (which will also apply ZMQ setting)
-            if not execute_migration(test_routing_cfg_mode, test_frr_mgmt_mode, test_zmq_enabled,
-                                     f"{config_params['mode_name']} switch"):
-                pytest.fail(f"Failed to switch DUT to {config_params['mode_name']} mode")
+        if not execute_migration(test_routing_cfg_mode, test_frr_mgmt_mode, test_zmq_enabled,
+                                 cfg_reload='true', operation_name=f"{config_params['mode_name']} switch"):
+            pytest.fail(f"Failed to switch DUT to {config_params['mode_name']} mode")
 
     yield
 
@@ -311,10 +282,14 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             logger.info("DUT already in original frr mgmt config mode - no restoration needed")
         else:
             logger.info(f"Restoring DUT to original frr mgmt config mode: {_original_dut_frr_mgmt_modes}")
-            # Execute restoration
+            # Execute restoration - update the metadata for docker_routing_config_mode
+            # and frr_mgmt_framework_config.  The config_db.json will be restored by
+            # tests/conftest.py fixture core_dump_and_config_check
             if not execute_migration(_original_dut_frr_mgmt_modes['routing_config_mode'],
                                      _original_dut_frr_mgmt_modes['frr_mgmt_config'],
-                                     _original_dut_frr_mgmt_modes['zmq_enabled'], "Restoration"):
+                                     _original_dut_frr_mgmt_modes['zmq_enabled'],
+                                     cfg_reload='false',
+                                     operation_name="Restoration"):
                 pytest.fail("Failed to restore original frr mgmt config mode")
 
         logger.info(f"{'=' * 30} Completed restoring frr mgmt config mode {'=' * 30}")
