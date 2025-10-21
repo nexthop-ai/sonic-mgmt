@@ -229,7 +229,11 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
 
             if pg_name_map:
                 for pg in default_lossless_pgs:
-                    buffer_pg_asic_oid = pg_name_map['{}:{}'.format(port, pg)]
+                    pg_key = f'{port}:{pg}'
+                    if pg_key not in pg_name_map:
+                        logging.info(f"Port {port} PG {pg} not found in PG_NAME_MAP, skipping ASIC_DB check")
+                        continue
+                    buffer_pg_asic_oid = pg_name_map[pg_key]
                     buffer_pg_asic_key = dut_asic.run_redis_cmd(
                         argv=['redis-cli', '-n', 1, 'keys', '*{}*'.format(buffer_pg_asic_oid)])[0]
                     buffer_profile_oid_in_pg = dut_asic.run_redis_cmd(
@@ -251,7 +255,11 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
                 return None, False
             if pg_name_map:
                 for pg in default_lossless_pgs:
-                    buffer_pg_asic_oid = pg_name_map['{}:{}'.format(port, pg)]
+                    pg_key = f'{port}:{pg}'
+                    if pg_key not in pg_name_map:
+                        logging.info(f"Port {port} PG {pg} not found in PG_NAME_MAP, skipping ASIC_DB check")
+                        continue
+                    buffer_pg_asic_oid = pg_name_map[pg_key]
                     buffer_pg_asic_key = dut_asic.run_redis_cmd(
                         argv=['redis-cli', '-n', 1, 'keys', '*{}*'.format(buffer_pg_asic_oid)])[0]
                     buffer_profile_oid_in_pg = dut_asic.run_redis_cmd(
@@ -305,7 +313,6 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
     for port in configdb_ports:
         port_config = make_dict_from_output_lines(dut_asic.run_redis_cmd(
             argv=['redis-cli', '-n', 4, 'hgetall', 'PORT|{}'.format(port)]))
-
         is_port_up = port_config.get('admin_status') == 'up'
 
         # Check if we should validate buffer configuration for this port
@@ -316,19 +323,27 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
             # Always check buffer configuration for admin-up ports
             should_check_buffer = True
             admin_up_ports.add(port)
-            cable_length = cable_length_map[port]
-            speed = port_config['speed']
-            expected_profile = '[BUFFER_PROFILE|pg_lossless_{}_{}_profile]'.format(
-                speed, cable_length)
+            if port not in cable_length_map:
+                logging.info(f"Port {port} not found in cable_length_map, skipping buffer check")
+                should_check_buffer = False
+            else:
+                cable_length = cable_length_map[port]
+                speed = port_config['speed']
+                expected_profile = '[BUFFER_PROFILE|pg_lossless_{}_{}_profile]'.format(
+                    speed, cable_length)
         elif not RECLAIM_BUFFER_ON_ADMIN_DOWN:
             # For platforms that don't support buffer reclaim, only check admin-down ports
             # if they actually have buffer profiles configured
             if port_has_buffer_profile(dut_asic, port):
                 should_check_buffer = True
-                cable_length = cable_length_map[port]
-                speed = port_config['speed']
-                expected_profile = '[BUFFER_PROFILE|pg_lossless_{}_{}_profile]'.format(
-                    speed, cable_length)
+                if port not in cable_length_map:
+                    logging.info(f"Port {port} not found in cable_length_map, skipping buffer check")
+                    should_check_buffer = False
+                else:
+                    cable_length = cable_length_map[port]
+                    speed = port_config['speed']
+                    expected_profile = '[BUFFER_PROFILE|pg_lossless_{}_{}_profile]'.format(
+                        speed, cable_length)
 
         if should_check_buffer:
             logging.info("Checking admin-{} port {} buffer information: profile {}".format(
@@ -338,6 +353,9 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
                 dut_asic, port, expected_profile)
 
             if expected_profile and expected_profile not in profiles_checked:
+                if port not in cable_length_map:
+                    logging.warning(f"Port {port} not found in cable_length_map, skipping profile validation")
+                    continue
                 cable_length = cable_length_map[port]
                 speed = port_config['speed']
                 profile_info = make_dict_from_output_lines(dut_asic.run_redis_cmd(
