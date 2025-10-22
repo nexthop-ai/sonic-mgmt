@@ -26,6 +26,7 @@ ETHERTYPE_RANGE = [0x0801, 0x0900]
 ENCAPSULATION = ['ipinip', 'vxlan', 'nvgre']
 MELLANOX_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT']
 CISCO_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT']
+BROADCOM_SUPPORTED_HASH_ALGORITHM = ['CRC', 'XOR', 'CRC_32LO', 'CRC_32HI', 'CRC_CCITT', 'CRC_XOR']
 DEFAULT_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT', 'RANDOM', 'XOR']
 
 MELLANOX_ECMP_HASH_FIELDS = [
@@ -44,6 +45,12 @@ CISCO_ECMP_HASH_FIELDS = [
 CISCO_LAG_HASH_FIELDS = [
     'IP_PROTOCOL', 'SRC_IP', 'DST_IP', 'L4_SRC_PORT', 'L4_DST_PORT'
 ]
+BROADCOM_ECMP_HASH_FIELDS = [
+    'SRC_IP', 'DST_IP', 'VLAN_ID', 'IP_PROTOCOL', 'IPV6_FLOW_LABEL', 'L4_SRC_PORT', 'L4_DST_PORT', 'IN_PORT'
+]
+BROADCOM_LAG_HASH_FIELDS = [
+    'VLAN_ID', 'ETHERTYPE', 'SRC_MAC', 'DST_MAC', 'IN_PORT'
+]
 DEFAULT_ECMP_HASH_FIELDS = [
     'IN_PORT', 'SRC_MAC', 'DST_MAC', 'ETHERTYPE', 'VLAN_ID', 'IP_PROTOCOL', 'SRC_IP', 'DST_IP', 'L4_SRC_PORT',
     'L4_DST_PORT', 'INNER_SRC_IP', 'INNER_DST_IP', 'INNER_IP_PROTOCOL', 'INNER_ETHERTYPE', 'INNER_L4_SRC_PORT',
@@ -59,7 +66,12 @@ HASH_CAPABILITIES = {'mellanox': {'ecmp': MELLANOX_ECMP_HASH_FIELDS,
                      'default': {'ecmp': DEFAULT_ECMP_HASH_FIELDS,
                                  'lag': DEFAULT_LAG_HASH_FIELDS},
                      'cisco-8000': {'ecmp': CISCO_ECMP_HASH_FIELDS,
-                                    'lag': CISCO_LAG_HASH_FIELDS}}
+                                    'lag': CISCO_LAG_HASH_FIELDS},
+                     'broadcom': {'ecmp': BROADCOM_ECMP_HASH_FIELDS,
+                                  'lag': BROADCOM_LAG_HASH_FIELDS}}
+
+ALLOWED_FIELD_COMBINATIONS = {'broadcom': {'ecmp': BROADCOM_ECMP_HASH_FIELDS,
+                                           'lag': BROADCOM_LAG_HASH_FIELDS}}
 
 logger = logging.getLogger(__name__)
 vlan_member_to_restore = {}
@@ -82,6 +94,8 @@ def get_supported_hash_algorithms(request):
         supported_hash_algorithm_list = MELLANOX_SUPPORTED_HASH_ALGORITHM[:]
     elif asic_type in 'cisco-8000':
         supported_hash_algorithm_list = CISCO_SUPPORTED_HASH_ALGORITHM[:]
+    elif asic_type in 'broadcom':
+        supported_hash_algorithm_list = BROADCOM_SUPPORTED_HASH_ALGORITHM[:]
     else:
         supported_hash_algorithm_list = DEFAULT_SUPPORTED_HASH_ALGORITHM[:]
     return supported_hash_algorithm_list
@@ -198,8 +212,19 @@ def global_hash_capabilities(rand_selected_dut):
         lag_hash_fields: a list of supported lag hash fields
     """
     global_hash_capabilities = rand_selected_dut.get_switch_hash_capabilities()
-    return {'ecmp': global_hash_capabilities['ecmp'], 'ecmp_algo': global_hash_capabilities['ecmp_algo'],
-            'lag': global_hash_capabilities['lag'], 'lag_algo': global_hash_capabilities['lag_algo']}
+    asic_type = rand_selected_dut.facts["asic_type"]
+    if asic_type in ALLOWED_FIELD_COMBINATIONS:
+        allowed_ecmp = ALLOWED_FIELD_COMBINATIONS[asic_type]['ecmp']
+        allowed_lag = ALLOWED_FIELD_COMBINATIONS[asic_type]['lag']
+        return {'ecmp': allowed_ecmp,
+                'ecmp_algo': global_hash_capabilities['ecmp_algo'],
+                'lag': allowed_lag,
+                'lag_algo': global_hash_capabilities['lag_algo']}
+    else:
+        return {'ecmp': global_hash_capabilities['ecmp'],
+                'ecmp_algo': global_hash_capabilities['ecmp_algo'],
+                'lag': global_hash_capabilities['lag'],
+                'lag_algo': global_hash_capabilities['lag_algo']}
 
 
 @pytest.fixture()
@@ -475,6 +500,12 @@ def get_hash_fields_from_option(request, test_type, hash_field_option):
     if hash_field_option == "all":
         return hash_fields
     elif hash_field_option == "random":
+        if test_type == 'ecmp':
+            invalid_fileds_in_ecmp = ['DST_MAC', 'ETHERTYPE', 'VLAN_ID']
+            hash_fields = list(set(hash_fields) - set(invalid_fileds_in_ecmp))
+        if 'IN_PORT' in hash_fields:
+            # IN_PORT doesn't provide enough entropy in tests
+            hash_fields.remove('IN_PORT')
         return [random.choice(hash_fields)]
     elif hash_field_option in hash_fields:
         return [hash_field_option]
@@ -497,6 +528,8 @@ def get_hash_algorithm_from_option(request, hash_algorithm_identifier):
         supported_hash_algorithm_list = MELLANOX_SUPPORTED_HASH_ALGORITHM[:]
     elif asic_type in 'cisco-8000':
         supported_hash_algorithm_list = CISCO_SUPPORTED_HASH_ALGORITHM[:]
+    elif asic_type in 'broadcom':
+        supported_hash_algorithm_list = BROADCOM_SUPPORTED_HASH_ALGORITHM[:]
     else:
         supported_hash_algorithm_list = DEFAULT_SUPPORTED_HASH_ALGORITHM[:]
     if hash_algorithm_identifier == 'all':

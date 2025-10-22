@@ -37,10 +37,10 @@ def pytest_generate_tests(metafunc):
     """
     params = []
     params_tuple = []
-    if 'lag' in metafunc.function.__name__:
-        hash_fields = get_hash_fields_from_option(metafunc, 'lag', metafunc.config.getoption("--hash_field"))
-    else:
+    if 'ecmp' in metafunc.function.__name__ or 'nexthop' in metafunc.function.__name__:
         hash_fields = get_hash_fields_from_option(metafunc, 'ecmp', metafunc.config.getoption("--hash_field"))
+    else:
+        hash_fields = get_hash_fields_from_option(metafunc, 'lag', metafunc.config.getoption("--hash_field"))
     hash_algorithms = get_hash_algorithm_from_option(metafunc, metafunc.config.getoption("--algorithm"))
     outer_ip_versions = get_ip_version_from_option(metafunc.config.getoption("--ip_version"))
     inner_ip_versions = get_ip_version_from_option(metafunc.config.getoption("--inner_ip_version"))
