@@ -101,6 +101,9 @@ def verify_expected_loganalyzer_logs(
         ".*ERR.* handleSaiFailure: Encountered failure in create operation.*",
         ".*ERR.* object key SAI_OBJECT_TYPE_ROUTE_ENTRY:.* already exists.*",  # TODO move to expectRegex
         ".*ERR.* addRoutePost: Failed to create route.*",  # TODO move to expectRegex
+        ".*ERR syncd#syncd.*SAI_API_ROUTE.*L3 route add failed with error Entry exists.*",
+        ".*ERR syncd#syncd.*SAI_API_ROUTE.*L3 route add failed with error -6.*",
+        ".*ERR syncd#syncd.*SAI_API_ROUTE.*pd route create failed.*with error -6.*",
     ]
     if loganalyzer:
         # Skip if loganalyzer is disabled
