@@ -123,6 +123,44 @@ def detect_influxdb_environment():
         return False
 
 
+def build_metric_tags(dut_name, route_count, knob_config=None, extra_tags=None):
+    """
+    Build base tags for metrics including DUT, route count, policy, and knob settings.
+
+    Args:
+        dut_name: Name of the DUT
+        route_count: Number of routes in the test
+        knob_config: Optional policy configuration with knob settings
+        extra_tags: Optional additional tags to include
+
+    Returns:
+        Dictionary of tags to be used for metrics
+    """
+    base_tags = {"dut": dut_name, "route_count": str(route_count)}
+
+    # Add policy information if available
+    if knob_config and knob_config.get("policy_applied"):
+        policy_info = knob_config["policy_applied"]
+        base_tags["policy"] = policy_info["name"]
+        logger.info(f"Policy: {policy_info['name']}")
+
+        # Extract individual knob settings from the nested config structure
+        # Config structure: {table_name: {key: {field: value}}}
+        if "config" in policy_info:
+            for table_name, table_config in policy_info["config"].items():
+                for key, key_config in table_config.items():
+                    for field_name, field_value in key_config.items():
+                        # Add each knob setting as a tag
+                        base_tags[field_name] = str(field_value)
+                        logger.info(f"Added knob tag: {field_name}={field_value}")
+
+    # Add extra tags if provided
+    if extra_tags:
+        base_tags.update(extra_tags)
+
+    return base_tags
+
+
 def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=None):
     """Publish metrics directly to InfluxDB using HTTP requests"""
     if not INFLUXDB_AVAILABLE:
@@ -136,14 +174,8 @@ def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=No
         logger.info(f"Target: {INFLUXDB_CONFIG['host']}")
         logger.info(f"Database: {INFLUXDB_CONFIG['database']}")
 
-        # Base tags
-        base_tags = {"dut": dut_name, "route_count": str(route_count)}
-
-        # Add policy information if available
-        if knob_config and knob_config.get("policy_applied"):
-            policy_info = knob_config["policy_applied"]
-            base_tags["policy"] = policy_info["name"]
-            logger.info(f"Policy: {policy_info['name']}")
+        # Build base tags using helper function
+        base_tags = build_metric_tags(dut_name, route_count, knob_config)
 
         # Collect all metrics
         all_fields = {}
@@ -220,7 +252,7 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
     """
     Ignore expected failures logs during test execution.
 
-    Route programming tests can trigger various expected errors in virtual testbeds,
+    Route programming tests can trigger various expected errors,
     especially during config reload and container restarts.
 
     Args:
@@ -229,7 +261,7 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
     """
     if loganalyzer:
         ignoreRegex = [
-            # Syncd plugin registration errors (common in virtual testbeds)
+            # Syncd plugin registration errors
             r".* ERR syncd\d*#syncd: :- addPlugins: Plugin .* already registered",
 
             # DHCP DOS logger errors for missing interfaces
@@ -246,6 +278,16 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
             # Common config reload related errors
             r".* ERR swss\d*#orchagent: :- getPort: Failed to get cached bridge port ID.*",
             r".* ERR syncd\d*#syncd.*_attribute_enum_values_capability.*count.*greater than capability-count 0.*",
+
+            # SAI switch attribute errors (unrelated, and safe to ignore purely from route programming
+            # measurement point of view)
+            r".* ERR syncd\d*#syncd:.*SAI_API_SWITCH:brcm_sai_get_switch_attribute.*"
+            r"Unknown switch attribute.*passed\.",
+            r".* ERR syncd\d*#syncd:.*SAI_API_SWITCH:sai_query_attribute_capability.*"
+            r"Acl entry attribute capabilities failed with error.*",
+            r".* ERR syncd\d*#syncd: message repeated .* times:.*"
+            r"SAI_API_SWITCH:sai_query_attribute_capability.*"
+            r"Acl entry attribute capabilities failed with error.*",
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
 
@@ -552,17 +594,8 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
     """Output structured metrics in JSON format for external consumption"""
     logger.info(f"Outputting structured metrics for {route_count} routes...")
 
-    # Base tags for all metrics
-    base_tags = {"dut": dut_name, "route_count": str(route_count)}
-
-    # Add policy information to tags if provided
-    if knob_config and knob_config.get("policy_applied"):
-        policy_info = knob_config["policy_applied"]
-        base_tags["policy"] = policy_info["name"]
-
-    # Add extra tags if provided
-    if extra_tags:
-        base_tags.update(extra_tags)
+    # Build base tags using helper function
+    base_tags = build_metric_tags(dut_name, route_count, knob_config, extra_tags)
 
     metrics = []
 
