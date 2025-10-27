@@ -3,6 +3,30 @@ qos_params:
         topo-t0-standalone: &topo-t0-standalone
             cell_size: 254
             hdrm_pool_wm_multiplier: 1
+            shared_res_size_1:
+                ecn: 1
+                packet_size: 1500
+                cell_size: 254
+                pkts_num_margin: 2
+                dscps: [3, 4]
+                pgs: [3, 4]
+                queues: [3, 4]
+                src_port_i: [0, 1]
+                dst_port_i: [3, 4]
+                pkt_counts: [1000, 1]
+                shared_limit_bytes: 1524000
+            shared_res_size_2:
+                ecn: 1
+                packet_size: 1500
+                cell_size: 254
+                pkts_num_margin: 2
+                dscps: [3, 4, 5]
+                pgs: [3, 4, 5]
+                queues: [3, 4, 5]
+                src_port_i: [0, 1, 2]
+                dst_port_i: [3, 4, 5]
+                pkt_counts: [800, 800, 1]
+                shared_limit_bytes: 2438400
             800000_300m:
                 hdrm_pool_size:
                     dscps:

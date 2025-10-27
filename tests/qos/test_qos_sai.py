@@ -985,7 +985,6 @@ class TestQosSai(QosSaiBase):
                 testParams=testParams)
 
     @pytest.mark.parametrize("sharedResSizeKey", ["shared_res_size_1", "shared_res_size_2"])
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiSharedReservationSize(
         self, sharedResSizeKey, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         get_src_dst_asic_and_duts, check_skip_shared_res_test
@@ -1055,7 +1054,6 @@ class TestQosSai(QosSaiBase):
 
         if "pkts_num_margin" in qosConfig[sharedResSizeKey]:
             testParams["pkts_num_margin"] = qosConfig[sharedResSizeKey]["pkts_num_margin"]
-
         self.runPtfTest(
             ptfhost, testCase="sai_qos_tests.SharedResSizeTest",
             testParams=testParams
