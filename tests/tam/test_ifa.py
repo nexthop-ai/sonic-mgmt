@@ -147,12 +147,10 @@ def verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=12345, time
     deadline = time.time() + timeout
     last_pkt_debug = None
     while time.time() < deadline:
-        res = testutils.dp_poll(ptfadapter, device_number=0, timeout=0.5)
+        res = testutils.dp_poll(ptfadapter, device_number=0, timeout=5)
         if not isinstance(res, ptfadapter.dataplane.PollSuccess):
             continue
-        if res.port == ptf_src_port:
-            # Ignore reflections on ingress
-            continue
+
         try:
             rx = Ether(res.packet)
         except Exception:

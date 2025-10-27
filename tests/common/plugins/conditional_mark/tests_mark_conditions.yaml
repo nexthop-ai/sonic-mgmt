@@ -4025,6 +4025,15 @@ tacacs/test_authorization.py::test_authorization_tacacs_and_local:
       - https://github.com/sonic-net/sonic-mgmt/issues/11349
 
 #######################################
+#####             tam             #####
+#######################################
+tam:
+  skip:
+    reason: "This test can only support Broadcom TH5 platforms"
+    conditions:
+      - "hwsku not in group_vars['broadcom_th5_hwskus']"
+
+#######################################
 #####           telemetry         #####
 #######################################
 telemetry/test_events.py:
