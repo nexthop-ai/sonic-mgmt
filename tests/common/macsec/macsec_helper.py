@@ -33,7 +33,6 @@ __all__ = [
     'get_sci',
     'getns_prefix',
     'get_ipnetns_prefix',
-    'restart_macsec_service_with_retry',
 ]
 
 logger = logging.getLogger(__name__)
@@ -663,121 +662,6 @@ def get_macsec_counters(duthost, port):
 
 def clear_macsec_counters(duthost):
     assert duthost.command("sonic-clear macsec")["failed"] is False
-
-
-def _macsec_residuals_present(duthost):
-    """
-    Read-only check for residual MACsec state after stop.
-    Returns True if any MACsec netdevs (kernel) or APPL_DB MACSEC_* entries remain.
-    """
-    # Kernel view (more authoritative): ip -j macsec show returns [] when clean
-    ip_json = duthost.shell("ip -j macsec show", module_ignore_errors=True)
-    ip_out = (ip_json.get('stdout') or '').strip()
-    have_kernel = bool(ip_out and ip_out not in ('[]', ''))
-
-    # Legacy iface text check as a fallback
-    ip_res = duthost.shell("ip link show type macsec", module_ignore_errors=True)
-    have_ifaces = bool((ip_res.get('stdout') or '').strip())
-
-    # APPL_DB entries
-    app_res = duthost.shell("redis-cli -n 0 keys 'MACSEC_*' | head -1", module_ignore_errors=True)
-    have_app = bool((app_res.get('stdout') or '').strip())
-
-    if have_kernel or have_ifaces or have_app:
-        logger.debug(f"Residuals present after stop: kernel={have_kernel}, ifaces={have_ifaces}, appdb={have_app}")
-    return have_kernel or have_ifaces or have_app
-
-
-def _wait_for_macsec_stop_clean(duthost, timeout_seconds=90, interval_seconds=3):
-    """Poll until MACsec residuals are gone or timeout, then settle briefly for counters to unregister."""
-    start = time.time()
-    while time.time() - start < timeout_seconds:
-        if not _macsec_residuals_present(duthost):
-            # settle window for flex counters and orch to drop OIDs cleanly
-            time.sleep(3)
-            return True
-        time.sleep(interval_seconds)
-    return False
-
-
-def restart_macsec_service_with_retry(duthost, max_retries=3, delay_seconds=15, stop_clean_timeout=120):
-    """
-    Restart MACsec service with retry logic while avoiding explicit cleanup.
-
-    Strategy:
-    - reset-failed -> stop -> wait for natural teardown (no explicit cleanup)
-    - start -> verify active
-    - handle systemd rate limiting with backoff
-    - fail if residuals remain beyond timeout to surface stop-path issues
-
-    """
-    logger.info(f"=== Starting MACsec Service Restart with Retry (max_retries={max_retries}) ===")
-
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Restart attempt {attempt + 1}/{max_retries}")
-
-            # Reset systemd failed state (rate limiting hygiene)
-            duthost.shell("sudo systemctl reset-failed macsec.service", module_ignore_errors=True)
-            time.sleep(2)
-
-            # Stop the service cleanly first
-            logger.info("Stopping macsec.service")
-            duthost.shell("sudo systemctl stop macsec.service", module_ignore_errors=True)
-            # Give systemd/orch some breathing room before probing residuals
-            time.sleep(3)
-
-            # Wait for residuals to clear naturally; do not perform explicit cleanup
-            logger.info("Waiting for MACsec residuals to drain after stop...")
-            residuals_cleared = _wait_for_macsec_stop_clean(
-                duthost,
-                timeout_seconds=stop_clean_timeout,
-                interval_seconds=3,
-            )
-            if not residuals_cleared:
-                # Proceed anyway to let start path clean up any lingering state (DNX tends to clear refs post-start)
-                logger.warning("Residuals remained after stop; proceeding to start to allow cleanup in start path")
-
-            # Start the service
-            logger.info("Starting macsec.service")
-            restart_result = duthost.shell("sudo systemctl start macsec.service", module_ignore_errors=True)
-
-            # Verify service is actually running
-            status_result = duthost.shell("sudo systemctl is-active macsec.service", module_ignore_errors=True)
-            if (
-                restart_result.get('rc', 1) == 0
-                and status_result.get('rc', 1) == 0
-                and 'active' in (status_result.get('stdout') or '')
-            ):
-                logger.info("MACsec service is confirmed active")
-                return True
-
-            # Handle failures with backoff
-            error_msg = (restart_result.get('stderr') or '') + (restart_result.get('stdout') or '')
-            logger.warning(f"Start failed on attempt {attempt + 1}: {error_msg}")
-
-            # Detect systemd rate limiting indicators
-            rate_limit_hit = any(phrase in error_msg.lower() for phrase in [
-                "start request repeated too quickly",
-                "start-limit-hit",
-                "too many restarts",
-            ])
-
-            if attempt < max_retries - 1:
-                # Be generous if rate limit suspected, else modest delay before retry
-                wait_s = max(delay_seconds, 30) if rate_limit_hit else max(10, delay_seconds)
-                logger.info(f"Waiting {wait_s}s before next attempt{' (rate-limit)' if rate_limit_hit else ''}...")
-                time.sleep(wait_s)
-                continue
-
-        except Exception as e:
-            logger.error(f"Exception during MACsec service restart (attempt {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(5)
-                continue
-
-    logger.error(f"Failed to restart macsec.service after {max_retries} attempts")
-    return False
 
 
 __origin_dp_poll = testutils.dp_poll
