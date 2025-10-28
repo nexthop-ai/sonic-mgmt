@@ -1633,7 +1633,6 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiDwrr(
         self, ptfhost, duthosts, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig, change_port_speed,
             skip_src_dst_different_asic, set_cir_change, change_lag_lacp_timer
@@ -2215,7 +2214,6 @@ class TestQosSai(QosSaiBase):
             testParams=testParams
         )
 
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiDwrrWeightChange(
         self, get_src_dst_asic_and_duts, ptfhost, dutTestParams, dutConfig, dutQosConfig,
             updateSchedProfile, skip_src_dst_different_asic, set_cir_change,
