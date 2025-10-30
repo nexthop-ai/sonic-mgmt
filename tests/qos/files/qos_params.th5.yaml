@@ -454,6 +454,7 @@ qos_params:
                     pkts_num_margin: 2
                     pkts_num_trig_pfc: 120117
             wrr:
+                scale_factor: 0.95
                 ecn: 1
                 q0_num_of_pkts: 140
                 q1_num_of_pkts: 140
@@ -466,6 +467,7 @@ qos_params:
                 limit: 80
                 packet_size: 9000
             wrr_chg:
+                scale_factor: 0.95
                 ecn: 1
                 q0_num_of_pkts: 80
                 q1_num_of_pkts: 80
