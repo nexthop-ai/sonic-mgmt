@@ -23,13 +23,12 @@ import ipaddress
 import json
 import logging
 import pytest
-import random
 import time
 
 from tests.common.helpers.assertions import pytest_assert
 import ptf.testutils as testutils
 from tests.qos.qos_helpers import find_dscp_for_queue
-from tests.common.helpers.ptf_tests_helper import get_dut_to_ptf_port_mapping
+from tests.common.helpers.ptf_tests_helper import select_test_interface_and_ptf_port
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,9 @@ class StrictPriorityRateLimitingDriver:
         self.target_queue = TEST_CONFIG['queue']
 
         # Step 1: Choose interface and get PTF port mapping
-        self.test_interface, self.ptf_port_index = self._select_test_interface_and_ptf_port()
+        self.test_interface, self.ptf_port_index = select_test_interface_and_ptf_port(duthost, testbed_info)
+        if not self.test_interface or self.ptf_port_index is None:
+            raise Exception("Could not find interface with PTF port mapping")
 
         # Step 2: Find correct DSCP for target queue
         self.dscp_value = find_dscp_for_queue(duthost, self.target_queue)
@@ -79,31 +80,6 @@ class StrictPriorityRateLimitingDriver:
         logger.info(f"DSCP: {self.dscp_value} (maps to Queue {self.target_queue})")
         logger.info(f"Packet IPs: {self.source_ip} -> {self.destination_ip}")
         logger.info(f"Test config: {TEST_CONFIG}")
-
-    def _select_test_interface_and_ptf_port(self):
-        """
-        Select test interface and find corresponding PTF port
-
-        Returns:
-            tuple: (interface_name, ptf_port_index)
-        """
-        try:
-            # Get DUT to PTF port mapping
-            dut_to_ptf_mapping = get_dut_to_ptf_port_mapping(self.duthost, self.testbed_info)
-
-            if not dut_to_ptf_mapping:
-                raise Exception("No DUT to PTF port mapping available")
-
-            # Use a random available interface/port pair
-            interface_name = random.choice(list(dut_to_ptf_mapping.keys()))
-            ptf_port_index = dut_to_ptf_mapping[interface_name]
-
-            logger.info(f"Chosen interface: {interface_name} (PTF port: {ptf_port_index})")
-            return interface_name, ptf_port_index
-
-        except Exception as e:
-            logger.error(f"Error choosing interface and PTF port: {e}")
-            raise
 
     def _get_test_packet_ips(self):
         """
