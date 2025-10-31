@@ -155,9 +155,6 @@ def test_tpm_remote_attestation_succeeds(duthosts, enum_rand_one_per_hwsku_hostn
     - Run tpm_remote_attestation.py against DUT using generated PCR sets
     """
 
-    # https://app.devrev.ai/nexthop/works/ISS-3526
-    pytest.skip("Skipping this test until custom docker-sonic-mgmt is ready")
-
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
 
     if "x86_64-nexthop" not in duthost.facts["platform"]:
