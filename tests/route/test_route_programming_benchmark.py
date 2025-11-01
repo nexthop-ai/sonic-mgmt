@@ -47,6 +47,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from tests.common.config_reload import config_reload
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
+from tests.common.utilities import wait_until
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -447,37 +449,28 @@ class PerformanceKnobManager:
 
         raise RuntimeError(f"Services not ready after {timeout} seconds: {containers}")
 
-    def _shutdown_bgp(self) -> None:
-        """Shutdown BGP to clear existing routes before benchmarking"""
-        logger.info("Shutting down BGP to clear existing routes...")
+    def _wait_for_bgp_sessions(self, timeout: int = 300) -> None:
+        """
+        Wait for BGP sessions to be established after container restart
 
-        # Try to get BGP ASN from config facts
-        try:
-            config_facts = self.duthost.config_facts(host=self.duthost.hostname, source="running")['ansible_facts']
-            bgp_asn = config_facts.get('DEVICE_METADATA', {}).get('localhost', {}).get('bgp_asn')
+        Args:
+            timeout: Maximum time to wait in seconds (default: 300)
+        """
+        logger.info(f"Waiting for BGP sessions to be established (timeout: {timeout}s)...")
 
-            if bgp_asn is None:
-                logger.warning("Could not determine BGP ASN from config facts, trying default ASN 65100")
-                bgp_asn = "65100"  # Use common default ASN
-        except Exception as e:
-            logger.error(f"Failed to get config facts: {e}")
-            logger.warning("Using default BGP ASN 65100")
-            bgp_asn = "65100"
+        # Get all BGP neighbors from config
+        config_facts = self.duthost.config_facts(host=self.duthost.hostname, source="running")['ansible_facts']
+        bgp_neighbors = get_bgp_neighbors_from_config_facts(self.duthost, config_facts)
 
-        # Execute BGP shutdown using the proven vtysh format from other tests
-        logger.info(f"Executing BGP shutdown for ASN {bgp_asn}...")
+        if not bgp_neighbors:
+            logger.warning("No BGP neighbors found in config")
+            return
 
-        result = self.duthost.shell(
-            f"vtysh -c 'configure terminal' "
-            f"-c 'router bgp {bgp_asn}' "
-            f"-c 'bgp shutdown'",
-            module_ignore_errors=True
-        )
+        # Use the standard wait_until helper with check_bgp_session_state
+        if not wait_until(timeout, 10, 0, self.duthost.check_bgp_session_state, bgp_neighbors):
+            raise RuntimeError(f"BGP sessions not established after {timeout} seconds")
 
-        if result["rc"] != 0:
-            logger.warning(f"BGP shutdown failed: {result.get('stderr', 'Unknown error')}")
-        else:
-            logger.info(f"BGP (ASN {bgp_asn}) shutdown completed successfully")
+        logger.info("All BGP sessions established")
 
     def apply_policy(self, policy_name: str) -> Dict[str, Any]:
         """
@@ -542,11 +535,11 @@ class PerformanceKnobManager:
 
             # Wait for containers to be ready
             self._wait_for_containers_ready(containers_restarted)
+            logger.info("Containers restarted and ready.")
 
-            # Shutdown BGP to clear any existing BGP routes. This makes benchmarking using
-            # static/sharp routes more predictable.
-            self._shutdown_bgp()
-            logger.info("BGP shutdown completed to clear existing routes")
+            # If BGP container was restarted, wait for BGP sessions to be established
+            if "bgp" in containers_restarted:
+                self._wait_for_bgp_sessions(timeout=300)
 
         # Verify policy was applied
         self._verify_policy_applied(policy)

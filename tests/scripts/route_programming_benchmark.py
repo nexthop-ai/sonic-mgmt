@@ -173,7 +173,7 @@ class RouteProgrammingBenchmark:
         if self.is_root():
             return False
         # Check if command needs sudo privileges
-        return "syslog" in cmd
+        return "syslog" in cmd or "bcmcmd" in cmd
 
     def run_command(self, cmd: str, container: Optional[str] = None) -> str:
         """Execute command and return output"""
@@ -182,15 +182,19 @@ class RouteProgrammingBenchmark:
         elif self.needs_sudo(cmd):
             cmd = f"sudo {cmd}"
 
+        # Use longer timeout for bcmcmd which can be slow with many routes
+        timeout = 60 if "bcmcmd" in cmd else 30
+
         try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
             if result.returncode != 0:
-                print(f"Command failed: {cmd}")
-                print(f"Error: {result.stderr}")
+                print(f"Command failed (rc={result.returncode}): {cmd}")
+                print(f"Stdout: {result.stdout}")
+                print(f"Stderr: {result.stderr}")
                 return ""
             return result.stdout.strip()
         except subprocess.TimeoutExpired:
-            print(f"Command timed out: {cmd}")
+            print(f"Command timed out after {timeout}s: {cmd}")
             return ""
 
     def get_last_routecounter_timestamp(self, count_pattern) -> Optional[Tuple[str, int]]:
@@ -279,19 +283,25 @@ class RouteProgrammingBenchmark:
         """Get number of routes programmed in hardware using bcmcmd"""
         if self.is_vs:
             return 0
-        # Use bcmcmd to get actual hardware-programmed routes
-        cmd = 'bcmcmd "l3 route show" | grep -c "^[0-9]"'
+
+        # Try different bcmcmd commands to determine hardwre route count for different platforms
+        # Format 1: "l3 route show"
+        cmd = 'bash -c \'bcmcmd "l3 route show" 2>/dev/null | grep -c "^[0-9]" || true\''
         result = self.run_command(cmd)
-        if result.isdigit():
+        if result and result.isdigit() and int(result) > 0:
             return int(result)
 
-        # Fallback: try alternative bcmcmd format
-        cmd = 'bcmcmd "l3 route show" | wc -l'
+        # Format 2: "l3 defip show"
+        cmd = 'bash -c \'bcmcmd "l3 defip show" 2>/dev/null | grep -c "^[0-9]" || true\''
         result = self.run_command(cmd)
-        if result.isdigit():
-            # Subtract header lines (typically 2-3 lines)
-            count = int(result)
-            return max(0, count - 3)
+        if result and result.isdigit() and int(result) > 0:
+            return int(result)
+
+        # Format 3: "MDB LPM DuMP TaBLe=LPM_A2"
+        cmd = 'bash -c \'bcmcmd "MDB LPM DuMP TaBLe=LPM_A2" 2>/dev/null | grep -c "^| [0-9]" || true\''
+        result = self.run_command(cmd)
+        if result and result.isdigit() and int(result) > 0:
+            return int(result)
 
         return 0
 
@@ -422,12 +432,17 @@ class RouteProgrammingBenchmark:
             print(f"Error parsing syslog: {e}")
             return None
 
-    def clear_existing_routes(self):
-        """Clear any existing test routes"""
-        print("Clearing existing test routes...")
+    def clear_injected_routes(self):
+        """Clear the routes that were injected during this test run"""
+        print("Clearing injected test routes...")
 
-        # Clear SHARP routes using correct syntax
-        cmd = f"vtysh -c 'sharp remove routes 192.168.1.1 {self.num_routes}'"
+        # Use the first IP from the base prefix that was actually programmed
+        ip_parts = self.base_ip.split('.')
+        ip_parts[-1] = '1'
+        start_ip = '.'.join(ip_parts)
+
+        # Clear SHARP routes using the actual prefix and count
+        cmd = f"vtysh -c 'sharp remove routes {start_ip} {self.num_routes}'"
         self.run_command(cmd, "bgp")
 
         # Clear nexthop group
@@ -436,11 +451,34 @@ class RouteProgrammingBenchmark:
         # Wait for cleanup
         time.sleep(2)
 
+    def wait_for_bgp_ready(self, timeout: int = 60) -> bool:
+        """Wait for BGP/SHARP to be ready by checking if sharpd daemon is running"""
+        print("Waiting for BGP/SHARP to be ready...")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            # Check if sharpd process is running in the BGP container
+            cmd = "ps aux | grep sharpd | grep -v grep"
+            result = self.run_command(cmd, "bgp")
+
+            if result and "sharpd" in result:
+                # sharpd is running, wait a bit for it to fully initialize
+                print("  sharpd is running, waiting for initialization...")
+                time.sleep(5)
+                print(f"BGP/SHARP is ready (took {time.time() - start_time:.1f}s)")
+                return True
+
+            print(f"  sharpd daemon not running yet (elapsed: {time.time() - start_time:.1f}s)")
+            time.sleep(5)
+
+        print(f"WARNING: BGP/SHARP not ready after {timeout}s")
+        return False
+
     def generate_nexthop_group(self) -> str:
         """Generate nexthop group and return group name"""
         print("Generating nexthop group...")
         start_nh = ipaddress.ip_address(self.nexthop)
-        nh_list = ["'" + "-c nexthop " + str(start_nh + i) + "'" for i in range(self.num_hops)]
+        nh_list = ["-c 'nexthop " + str(start_nh + i) + "'" for i in range(self.num_hops)]
         nh_group_name = "nhg1"
         cmd = f"vtysh -c 'configure terminal' -c 'nexthop-group {nh_group_name}' {' '.join(nh_list)}"
         self.run_command(cmd)
@@ -450,8 +488,14 @@ class RouteProgrammingBenchmark:
         """Inject routes using SHARP and return time taken"""
         print(f"Injecting {self.num_routes} routes using SHARP...")
 
-        # Calculate starting IP for route injection
-        start_ip = "192.168.1.1"  # Use a clean range for testing
+        # Wait for BGP/SHARP to be ready (important after container restarts)
+        if not self.wait_for_bgp_ready():
+            print("ERROR: BGP/SHARP not ready, route injection may fail")
+
+        # Use the first IP from the provided prefix
+        ip_parts = self.base_ip.split('.')
+        ip_parts[-1] = '1'  # Start from .1
+        start_ip = '.'.join(ip_parts)
 
         start_time = time.time()
 
@@ -525,8 +569,8 @@ class RouteProgrammingBenchmark:
         zmq_enabled = self.check_zmq_enabled()
         print(f"ZMQ Route Programming: {'Enabled' if zmq_enabled else 'Disabled'}")
 
-        # Clear existing routes
-        self.clear_existing_routes()
+        # Clear existing injected routes incase they were left over from last run
+        self.clear_injected_routes()
 
         # Get baseline counts
         initial_stats = RouteStatistics(
@@ -614,7 +658,7 @@ class RouteProgrammingBenchmark:
 
         # Clean up test routes
         print("\nCleaning up test routes...")
-        self.clear_existing_routes()
+        self.clear_injected_routes()
 
         return BenchmarkResults(
             total_routes=self.num_routes,
