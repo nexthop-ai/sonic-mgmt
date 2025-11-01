@@ -2,11 +2,9 @@ import json
 import logging
 import pytest
 import ptf.testutils as testutils
-from scapy.all import Ether, IP, UDP, TCP, Raw
+from scapy.all import Ether, IP, UDP, TCP, Raw, IPv6
 import time
-import random
 import threading
-import ipaddress
 import re
 
 from tests.common.helpers.assertions import pytest_assert
@@ -16,7 +14,7 @@ from ipfix_common import IPFIXHeader
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.topology("any"),
+    pytest.mark.topology("t1"),
 ]
 
 TAM_ASICDB_TIMEOUT = 180
@@ -33,8 +31,8 @@ TAM_MOD_CONFIG_TEMPLATE = {
     },
     "TAM_COLLECTOR": {
         "COLLECTOR1": {
-            "src_ip": "1.1.1.1",
-            "dst_ip": "2.2.2.2",
+            "src_ip": "11.22.33.44",
+            "dst_ip": "10.20.30.40",
             "dst_port": "10000",
             "dscp_value": "32",
             "vrf": "default"
@@ -48,6 +46,7 @@ TAM_MOD_CONFIG_TEMPLATE = {
         }
     }
 }
+
 
 def tam_asicdb_state(duthost, shouldExist):
     """
@@ -84,6 +83,7 @@ def tam_asicdb_state(duthost, shouldExist):
     logger.info("ASIC_DB has expected state")
     return True
 
+
 def wait_for_tam_asicdb_applied(duthost, timeout=TAM_ASICDB_TIMEOUT, interval=TAM_ASICDB_INTERVAL):
     """
     Wait for TAM configuration to be applied to ASIC_DB.
@@ -106,6 +106,7 @@ def wait_for_tam_asicdb_applied(duthost, timeout=TAM_ASICDB_TIMEOUT, interval=TA
     """
     return wait_until(timeout, interval, 0, lambda: tam_asicdb_state(duthost, True))
 
+
 def verify_tam_mod_config_applied(duthost):
     """
     Verify that TAM Mirror on Drop config has been applied:
@@ -115,7 +116,6 @@ def verify_tam_mod_config_applied(duthost):
     # Check TAM device config
     show = duthost.shell('sonic-db-cli CONFIG_DB HGETALL "TAM|device"', module_ignore_errors=False)
     lines = show.get("stdout_lines", []) or []
-    dbg = "\n".join(lines)
     pytest_assert(lines, "CONFIG_DB: TAM|device not found or empty")
 
     # Check TAM collector config
@@ -133,6 +133,7 @@ def verify_tam_mod_config_applied(duthost):
         wait_for_tam_asicdb_applied(duthost, TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL),
         "ASIC_DB missing TAM keys; orchagent may not have processed TAM config.",
     )
+
 
 @pytest.fixture(scope="module")
 def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
@@ -198,8 +199,10 @@ def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM|device"', module_ignore_errors=True)
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM_COLLECTOR|COLLECTOR1"', module_ignore_errors=True)
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM_SESSION|DROPMONITOR"', module_ignore_errors=True)
-    return wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, False))
+    pytest_assert(wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0,
+                  lambda: tam_asicdb_state(duthost, False)), "ASIC_DB still has some TAM keys")
     logger.info("TAM cleanup completed")
+
 
 def _get_available_ports(duthost, tbinfo):
     """
@@ -239,8 +242,8 @@ def _get_available_ports(duthost, tbinfo):
         if all(port in admin_up_ports for port in member_ports):
             # Get PTF indices for all members
             ptf_indices = [mg_facts['minigraph_ptf_indices'][port]
-                          for port in member_ports
-                          if port in mg_facts['minigraph_ptf_indices']]
+                           for port in member_ports
+                           if port in mg_facts['minigraph_ptf_indices']]
             if ptf_indices:
                 available_ports[lag_name] = ptf_indices
                 logger.info(f"Added LAG {lag_name} with member PTF indices: {ptf_indices}")
@@ -253,6 +256,7 @@ def _get_available_ports(duthost, tbinfo):
 
     pytest_assert(len(available_ports) > 0, "No available front-panel ports found")
     return available_ports
+
 
 def _get_collector_egress_ports(duthost, collector_ip, available_ports):
     """
@@ -276,7 +280,8 @@ def _get_collector_egress_ports(duthost, collector_ip, available_ports):
         result = duthost.shell(cmd, module_ignore_errors=True)
 
         if result["rc"] != 0:
-            logger.warning(f"Failed to get route for {collector_ip}: {result.get('stderr', '')}, using all available ports")
+            logger.warning(
+                f"Failed to get route for {collector_ip}: {result.get('stderr', '')}, using all available ports")
             return _flatten_port_indices(available_ports)
 
         route_lines = result.get("stdout_lines", [])
@@ -343,29 +348,19 @@ def _flatten_port_indices(available_ports):
             flattened.append(port_value)
     return flattened
 
+
 def _get_router_mac(duthost):
     out = duthost.shell("sonic-db-cli CONFIG_DB HGET 'DEVICE_METADATA|localhost' mac")
     pytest_assert(out["rc"] == 0 and out["stdout"], "Failed to read DUT router MAC")
     return out["stdout"].strip().lower()
 
+
 def _get_collector_config(duthost):
-    """Get collector configuration from CONFIG_DB"""
-    show = duthost.shell("sonic-db-cli CONFIG_DB HGETALL 'TAM_COLLECTOR|COLLECTOR1'")
-    pytest_assert(show["rc"] == 0 and show["stdout"].strip(), f"Failed to read collector config: {show}")
-    
-    # Parse the output to extract collector details
-    lines = show["stdout_lines"]
-    config = {}
-    for i in range(0, len(lines), 2):
-        if i + 1 < len(lines):
-            config[lines[i]] = lines[i + 1]
-    
-    return {
-        "src_ip": config.get("src_ip", "1.1.1.1"),
-        "dst_ip": config.get("dst_ip", "2.2.2.2"),
-        "dst_port": int(config.get("dst_port", "10000")),
-        "dscp_value": int(config.get("dscp_value", "32"))
-    }
+    config = TAM_MOD_CONFIG_TEMPLATE["TAM_COLLECTOR"]["COLLECTOR1"]
+    config["dst_port"] = int(config["dst_port"])
+    config["dscp_value"] = int(config["dscp_value"])
+    return config
+
 
 def build_ttl_expiry_packet(ptfadapter, router_mac, ptf_src_port, is_ipv4=True):
     """
@@ -381,7 +376,7 @@ def build_ttl_expiry_packet(ptfadapter, router_mac, ptf_src_port, is_ipv4=True):
             / TCP(sport=1000, dport=80)  # Matches L4 ports and protocol 6
             / Raw(b"TTL expiry test packet for MoD V4")
         )
-    else :
+    else:
         packet = (
             Ether(src=src_mac, dst=router_mac)
             / IPv6(src="2000:10:1:1::100", dst="2000:20:2:2::100", hlim=1)  # TTL=1 will expire
@@ -391,8 +386,9 @@ def build_ttl_expiry_packet(ptfadapter, router_mac, ptf_src_port, is_ipv4=True):
 
     return packet
 
+
 class PacketTest:
-    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac ):
+    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac):
         self.ptfadapter = ptfadapter
         self.ptf_ingress_port = ptf_ingress_port
         self.collector = collector
@@ -405,8 +401,8 @@ class PacketTest:
             logger.info(f"Started IPFIX collection on PTF ports {self.collector.collector_ports}")
 
             # Build packets with TTL=1 that will expire and be dropped
-            ttl_expiry_packet = build_ttl_expiry_packet( self.ptfadapter, self.router_mac,  
-                                                         self.ptf_ingress_port, is_ipv4=is_ipv4)
+            ttl_expiry_packet = build_ttl_expiry_packet(self.ptfadapter, self.router_mac,
+                                                        self.ptf_ingress_port, is_ipv4=is_ipv4)
 
             logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
             for i in range(10):  # Send multiple packets to ensure drops are detected
@@ -431,6 +427,7 @@ class PacketTest:
             pytest_assert(report_count > 0, "At least one report must have been sent")
         else:
             pytest_assert(report_count == 0, "No report must have been sent")
+
 
 class IPFIXCollector:
     """
@@ -482,7 +479,7 @@ class IPFIXCollector:
 
             except Exception as e:
                 logger.debug(f"Failed to parse packet on port {res.port}: {e}")
-    
+
     def _is_ipfix_report(self, packet):
         """Check if the packet is an IPFIX report matching our collector config."""
         if IP not in packet or UDP not in packet:
@@ -492,23 +489,23 @@ class IPFIXCollector:
         udp_layer = packet[UDP]
 
         # Check if it matches our collector configuration
-        if (not(ip_layer.src == self.collector_config["src_ip"] and
-                ip_layer.dst == self.collector_config["dst_ip"] and
-                udp_layer.dport == self.collector_config["dst_port"])):
+        if (not (ip_layer.src == self.collector_config["src_ip"] and
+           ip_layer.dst == self.collector_config["dst_ip"] and
+           udp_layer.dport == self.collector_config["dst_port"])):
             return False
 
         # Verify that it is an IPFix packet
         udp_payload = bytes(packet[UDP].payload)
-    
+
         if len(udp_payload) < 20:  # Minimum IPFIX header size
             return False
-        
+
         # Check if it looks like IPFIX (version 10)
         header = IPFIXHeader(udp_payload[:20])
         if header.version != 10:
             return False
 
-        # TODO - Need to verify DSCP values, 
+        # TODO - Need to verify DSCP values,
         # they seem incorrect
         # dscp = (ip_layer.tos >> 2) & 0x3F
         # pytest_assert( dscp == int( self.collector_config["dscp_value"] ) )
@@ -528,14 +525,14 @@ class IPFIXCollector:
     def get_reports_for_port(self, port):
         """Get captured reports for a specific port."""
         return self.captured_reports.get(port, [])
-  
+
     def cleanup(self):
         # Delete all the old reports
         for port in self.collector_ports:
             self.captured_reports[port] = []
 
+
 @pytest.mark.disable_loganalyzer
-@pytest.mark.topology('t1')
 def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     """
     Test basic TAM Mirror on Drop(stateless, flow aware) functionality with TTL expiry drops.
@@ -561,7 +558,8 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     # If it's a LAG (list of indices), pick the first member port
     if isinstance(port_value, list):
         ptf_ingress_port = port_value[0]
-        logger.info(f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for packet injection")
+        logger.info(
+            f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for packet injection")
     else:
         ptf_ingress_port = port_value
         logger.info(f"Using ingress port {ingress_port_name}/PTF{ptf_ingress_port} for packet injection")
@@ -593,6 +591,6 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     duthost.shell(cmd,  module_ignore_errors=True)
     wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, True))
 
-     # Verify that now reports are generated on drops again
+    # Verify that now reports are generated on drops again
     packet_test.run_packet_test(is_ipv4=True, expect_reports=True)
     packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
