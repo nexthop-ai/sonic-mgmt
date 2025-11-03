@@ -32,8 +32,12 @@ Metrics Output:
 
   Schema:
     Measurement: route_benchmark_metrics
-    Tags: dut, route_count, policy (optional)
+    Tags: dut, route_count, branch (auto-detected), policy (optional)
     Fields: total_time, hardware_time, fpmsyncd_time (optional), orchagent_time (optional)
+
+  Note: The branch tag is automatically detected from the DUT's SONiC build version
+        (e.g., "master.487-a98cf221", "202505.123-e0c38ec4d") for tracking performance
+        across different builds and branches.
 """
 
 import json
@@ -125,20 +129,26 @@ def detect_influxdb_environment():
         return False
 
 
-def build_metric_tags(dut_name, route_count, knob_config=None, extra_tags=None):
+def build_metric_tags(dut_name, route_count, knob_config=None, extra_tags=None, branch_name=None):
     """
-    Build base tags for metrics including DUT, route count, policy, and knob settings.
+    Build base tags for metrics including DUT, route count, branch, policy, and knob settings.
 
     Args:
         dut_name: Name of the DUT
         route_count: Number of routes in the test
         knob_config: Optional policy configuration with knob settings
         extra_tags: Optional additional tags to include
+        branch_name: Optional SONiC build version/branch name
 
     Returns:
         Dictionary of tags to be used for metrics
     """
     base_tags = {"dut": dut_name, "route_count": str(route_count)}
+
+    # Add branch name if provided
+    if branch_name:
+        base_tags["branch"] = branch_name
+        logger.info(f"Branch: {branch_name}")
 
     # Add policy information if available
     if knob_config and knob_config.get("policy_applied"):
@@ -163,7 +173,7 @@ def build_metric_tags(dut_name, route_count, knob_config=None, extra_tags=None):
     return base_tags
 
 
-def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=None):
+def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=None, branch_name=None):
     """Publish metrics directly to InfluxDB using HTTP requests"""
     if not INFLUXDB_AVAILABLE:
         logger.info("InfluxDB not available - skipping InfluxDB publishing")
@@ -177,7 +187,7 @@ def publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config=No
         logger.info(f"Database: {INFLUXDB_CONFIG['database']}")
 
         # Build base tags using helper function
-        base_tags = build_metric_tags(dut_name, route_count, knob_config)
+        base_tags = build_metric_tags(dut_name, route_count, knob_config, branch_name=branch_name)
 
         # Collect all metrics
         all_fields = {}
@@ -583,12 +593,16 @@ class PerformanceKnobManager:
                             )
 
 
-def output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None):
+def output_structured_metrics(
+    dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None, branch_name=None
+):
     """Output structured metrics in JSON format for external consumption"""
     logger.info(f"Outputting structured metrics for {route_count} routes...")
 
     # Build base tags using helper function
-    base_tags = build_metric_tags(dut_name, route_count, knob_config, extra_tags)
+    base_tags = build_metric_tags(
+        dut_name, route_count, knob_config, extra_tags, branch_name=branch_name
+    )
 
     metrics = []
 
@@ -662,14 +676,18 @@ def output_structured_metrics(dut_name, route_count, benchmark_results, extra_ta
     logger.info(f"Successfully output {len(metrics)} structured metrics for {route_count} routes")
 
 
-def publish_metrics(dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None):
+def publish_metrics(
+    dut_name, route_count, benchmark_results, extra_tags=None, knob_config=None, branch_name=None
+):
     """Output structured metrics and optionally publish to InfluxDB if available"""
 
     logger.info("=== METRICS PUBLISHING START ===")
     logger.info(f"Publishing metrics for DUT: {dut_name}, Routes: {route_count}")
 
     # Always output structured metrics to console
-    output_structured_metrics(dut_name, route_count, benchmark_results, extra_tags, knob_config)
+    output_structured_metrics(
+        dut_name, route_count, benchmark_results, extra_tags, knob_config, branch_name=branch_name
+    )
 
     # Detect InfluxDB at runtime (not at module load)
     detect_influxdb_environment()
@@ -677,7 +695,7 @@ def publish_metrics(dut_name, route_count, benchmark_results, extra_tags=None, k
     # Additionally publish to InfluxDB if available
     if INFLUXDB_AVAILABLE:
         logger.info("InfluxDB is available - attempting to publish metrics to InfluxDB")
-        success = publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config)
+        success = publish_to_influxdb(dut_name, route_count, benchmark_results, knob_config, branch_name=branch_name)
         if success:
             logger.info("SUCCESS: Metrics successfully published to InfluxDB!")
         else:
@@ -833,6 +851,15 @@ def test_route_programming_performance(duthosts, enum_rand_one_per_hwsku_fronten
     route_scale = request.config.getoption("--route_scale")
     perf_policy_str = request.config.getoption("--perf_policy")
 
+    # Auto-detect SONiC build version from DUT (includes branch, build number, and commit hash)
+    try:
+        branch_name = duthost.os_version
+        # os_version will be like "master.487-a98cf221", "202505.123-e0c38ec4d", etc.
+        logger.info(f"Auto-detected SONiC build version: {branch_name}")
+    except Exception as e:
+        logger.warning(f"Failed to detect SONiC build version: {e}, using 'unknown'")
+        branch_name = "unknown"
+
     logger.info(f"Starting route programming benchmark for {route_scale} routes on {dut_name}")
 
     if perf_policy_str:
@@ -884,8 +911,8 @@ def test_route_programming_performance(duthosts, enum_rand_one_per_hwsku_fronten
             policy_info = policy_config["policy_applied"]
             logger.info(f"Performance policy applied: {policy_info['name']} - {policy_info['description']}")
 
-        # Publish metrics with policy configuration
-        publish_metrics(dut_name, route_scale, results, knob_config=policy_config)
+        # Publish metrics with policy configuration and branch name
+        publish_metrics(dut_name, route_scale, results, knob_config=policy_config, branch_name=branch_name)
 
         logger.info(f"Route programming benchmark completed successfully for {route_scale} routes")
 
