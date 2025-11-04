@@ -9,7 +9,8 @@ from tests.common.config_reload import config_reload
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.ntp_helper import (NtpDaemon, ntp_daemon_in_use, setup_ntp_context,  # noqa: F401
                                              get_ntp_daemon_in_use)
-from tests.common.helpers.snmp_helpers import get_snmp_facts
+from tests.common.helpers.snmp_helpers import (get_snmp_facts, get_snmp_ports_from_config,
+                                               configure_snmp_agent_addresses)
 from tests.common.devices.ptf import PTFHost
 from tests.common.gu_utils import apply_patch, generate_tmpfile, delete_tmpfile, format_json_patch_for_multiasic
 
@@ -58,10 +59,22 @@ def setup_mvrf(duthosts, rand_one_dut_hostname, localhost, check_ntp_sync, ptfho
     # Backup the original config_db without mgmt vrf config
     duthost.shell("cp /etc/sonic/config_db.json /etc/sonic/config_db.json.bak")
 
+    mgmt_ips = [duthost.mgmt_ip]
+    if hasattr(duthost, 'mgmt_ipv6') and duthost.mgmt_ipv6:
+        mgmt_ips.append(duthost.mgmt_ipv6)
+    agents = get_snmp_ports_from_config(duthost, mgmt_ips)
+
     try:
+        logger.info("Remove SNMP agent address configuration")
+        configure_snmp_agent_addresses(duthost, "del", agents)
+
         logger.info("Configure mgmt vrf")
         duthost.command("sudo config vrf add mgmt", module_async=True)
         time.sleep(5)
+
+        logger.info("Configure SNMP agent addresses for mgmt VRF")
+        configure_snmp_agent_addresses(duthost, "add", agents, "mgmt")
+
         verify_show_command(duthost, mvrf=True)
     except Exception as e:
         logger.error("Exception raised in setup, exception: {}".format(repr(e)))

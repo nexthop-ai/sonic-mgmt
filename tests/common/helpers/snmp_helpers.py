@@ -386,3 +386,45 @@ def get_snmp_output(ip, duthost, nbr, creds_all_duts, oid=SnmpOIDs.SYS_DESCR, ve
     finally:
         ip_tbl_rule_del = f"sudo {iptables_cmd} -D INPUT -p udp --dport 161 -d {ip} -j ACCEPT"
         duthost.shell(ip_tbl_rule_del)
+
+
+def get_snmp_ports_from_config(duthost, agent_ips):
+    """
+    Get SNMP ports from existing configuration for the given IP addresses.
+    Returns a dictionary mapping IP -> port, with default port 161 if not found.
+    """
+    ip_to_port = {}
+    for agent_ip in agent_ips:
+        output = duthost.shell(
+            f'sudo sonic-db-cli CONFIG_DB KEYS "SNMP_AGENT_ADDRESS_CONFIG|{agent_ip}|*"',
+            module_ignore_errors=True
+        )
+        ip_to_port[agent_ip] = "161"
+        if output and output['stdout'].strip():
+            key_parts = output['stdout'].strip().split('\n')[0].split('|')
+            if len(key_parts) >= 2:
+                ip_to_port[agent_ip] = key_parts[2]
+
+    return ip_to_port
+
+
+def configure_snmp_agent_addresses(duthost, op, agents, vrf_name=None):
+    """
+    Configure/Unconfigure SNMP agent address configurations for the given IP addresses.
+
+    Args:
+        duthost: DUT host object
+        op: Operation to perform ("add" or "del")
+        agents: Dictionary mapping IP -> port
+        vrf_name: VRF name to bind to (empty string for default VRF)
+    """
+    vrf_str = "" if not vrf_name else f'-v {vrf_name}'
+
+    # Reset any previous service failures before reconfiguring
+    duthost.shell("sudo systemctl reset-failed snmp.service", module_ignore_errors=True)
+
+    for ip, port in agents.items():
+        duthost.shell(
+            f'sudo config snmpagentaddress {op} -p {port} {vrf_str} {ip}',
+            module_ignore_errors=(op == "del")
+        )
