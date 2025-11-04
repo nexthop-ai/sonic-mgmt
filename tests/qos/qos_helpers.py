@@ -6,13 +6,15 @@ import re
 import os
 import json
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
-
 
 PFC_GEN_FILE = 'pfc_gen.py'
 PFC_GEN_LOCAL_PATH = '../../ansible/roles/test/files/helpers/pfc_gen.py'
 PFC_GEN_REMOTE_PATH = '~/pfc_gen.py'
+WITHDRAW = 'withdraw'
+ANNOUNCE = 'announce'
 
 
 def atoi(text):
@@ -410,6 +412,7 @@ def disable_voq_watchdog(duthosts, get_src_dst_asic_and_duts):
     modify_voq_watchdog(duthosts, get_src_dst_asic_and_duts, enable=True)
 
 
+<<<<<<< HEAD
 def update_tc_to_dscp_map(duthost, tc_to_dscp_map, map_name='REMAP_TEST', interface=None):
     """
     Add TC_TO_DSCP_MAP to DUT and optionally apply to interface via PORT_QOS_MAP.
@@ -665,3 +668,51 @@ def get_outgoing_dscp(incoming_dscp, dscp_to_tc_map, tc_to_dscp_map):
     outgoing_dscp = int(outgoing_dscp_str)
     logger.info("DSCP mapping: {} -> TC={} -> {}".format(incoming_dscp, tc_value, outgoing_dscp))
     return outgoing_dscp
+=======
+def get_upstream_vm_offset(nbrhosts, tbinfo):
+    """
+    Get ports offset of exabgp port
+    """
+    port_offset_list = []
+    if 't0' in tbinfo['topo']['type']:
+        vm_filter = 'T1'
+    elif 't1' in tbinfo['topo']['type']:
+        vm_filter = 'T2'
+    vm_name_list = [vm_name for vm_name in nbrhosts.keys() if vm_name.endswith(vm_filter)]
+    for vm_name in vm_name_list:
+        port_offset = tbinfo['topo']['properties']['topology']['VMs'][vm_name]['vm_offset']
+        port_offset_list.append((port_offset))
+    return port_offset_list
+
+
+def get_upstream_exabgp_port(nbrhosts, tbinfo, exabgp_base_port):
+    """
+    Get exabgp port and ptf receive port
+    """
+    port_offset_list = get_upstream_vm_offset(nbrhosts, tbinfo)
+    return [_ + exabgp_base_port for _ in port_offset_list]
+
+
+def install_route_from_exabgp(operation, ptfip, route, port):
+    """
+    Install or withdraw ip route by exabgp
+    """
+    route_data = [route]
+    url = "http://{}:{}".format(ptfip, port)
+    command = "{} attribute next-hop self nlri {}".format(operation, ' '.join(route_data))
+    data = {"command": command}
+    logger.info("url: {}".format(url))
+    logger.info("command: {}".format(data))
+    r = requests.post(url, data=data, timeout=90)
+    assert r.status_code == 200
+
+
+def announce_route(ptfip, route, port, action=ANNOUNCE):
+    """
+    Announce or withdraw ipv4 or ipv6 route
+    """
+    logger.info("\n========================== announce_route -- {} ==========================".format(action))
+    logger.info(" action:{}\n ptfip:{}\n route:{}\n port:{}".format(action, ptfip, route, port))
+    install_route_from_exabgp(action, ptfip, route, port)
+    logger.info("\n--------------------------------------------------------------------------------")
+>>>>>>> upstream/master

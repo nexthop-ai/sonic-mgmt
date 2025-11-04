@@ -1389,7 +1389,8 @@ class TestQosSai(QosSaiBase):
             "src_port_vlan": dutConfig["testPorts"]["src_port_vlan"],
             "pkts_num_leak_out": dutQosConfig["param"][portSpeedCableLength]["pkts_num_leak_out"],
             "pkts_num_trig_egr_drp": qosConfig["lossy_queue_1"]["pkts_num_trig_egr_drp"],
-            "hwsku": dutTestParams['hwsku']
+            "hwsku": dutTestParams['hwsku'],
+            "ip_type": dutConfig["ip_type"]
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
@@ -1558,7 +1559,8 @@ class TestQosSai(QosSaiBase):
             "hwsku": dutTestParams['hwsku'],
             "dual_tor": dutConfig['dualTor'],
             "dual_tor_scenario": dutConfig['dualTorScenario'],
-            "tc_to_dscp_count_map": tc_to_dscp_count
+            "tc_to_dscp_count_map": tc_to_dscp_count,
+            'ip_type': dutConfig["ip_type"]
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
@@ -1793,7 +1795,8 @@ class TestQosSai(QosSaiBase):
     @pytest.mark.skip("This test is disabled")
     def testQosSaiPgSharedWatermark(
         self, pgProfile, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig,
-        resetWatermark, skip_src_dst_different_asic, change_lag_lacp_timer, blockGrpcTraffic
+        resetWatermark, skip_src_dst_different_asic, change_lag_lacp_timer, blockGrpcTraffic,
+        iptables_drop_ipv6_tx  # noqa: F811
     ):
         """
             Test QoS SAI PG shared watermark test for lossless/lossy traffic
@@ -1866,7 +1869,8 @@ class TestQosSai(QosSaiBase):
             "pkts_num_fill_min": qosConfig[pgProfile]["pkts_num_fill_min"],
             "pkts_num_fill_shared": pktsNumFillShared,
             "cell_size": qosConfig[pgProfile]["cell_size"],
-            "hwsku": dutTestParams['hwsku']
+            "hwsku": dutTestParams['hwsku'],
+            "ip_type": dutConfig["ip_type"]
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
@@ -2017,7 +2021,7 @@ class TestQosSai(QosSaiBase):
     def testQosSaiQSharedWatermark(
         self, get_src_dst_asic_and_duts, queueProfile, ptfhost, dutTestParams, dutConfig, dutQosConfig,
         resetWatermark, skip_src_dst_different_asic, skip_pacific_dst_asic, change_lag_lacp_timer,
-        blockGrpcTraffic
+        blockGrpcTraffic, iptables_drop_ipv6_tx  # noqa: F811
     ):
         """
             Test QoS SAI Queue shared watermark test for lossless/lossy traffic
@@ -2078,7 +2082,8 @@ class TestQosSai(QosSaiBase):
             "pkts_num_trig_drp": triggerDrop,
             "cell_size": qosConfig[queueProfile]["cell_size"],
             "hwsku": dutTestParams['hwsku'],
-            "dut_asic": dutConfig["dutAsic"]
+            "dut_asic": dutConfig["dutAsic"],
+            "ip_type": dutConfig["ip_type"]
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
