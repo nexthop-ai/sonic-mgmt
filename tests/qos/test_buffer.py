@@ -3083,7 +3083,7 @@ def test_buffer_deployment(duthosts, rand_one_dut_hostname, conn_graph_facts, tb
                         .format(expected_profile, profile_info, buffer_profile_asic_info))
 
                 profiles_checked[expected_profile] = buffer_profile_oid
-                if is_ingress_lossless:
+                if buffer_profile_oid and is_ingress_lossless:
                     if not lossless_pool_oid:
                         lossless_pool_oid = buffer_profile_asic_info['SAI_BUFFER_PROFILE_ATTR_POOL_ID']
                     else:
