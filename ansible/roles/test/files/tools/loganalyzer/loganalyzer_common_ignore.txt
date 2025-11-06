@@ -428,3 +428,8 @@ r, ".*ERR pmon.*Failed to unfreeze VDM stats in contextmanager for port.*"
 
 # https://github.com/sonic-net/sonic-buildimage/issues/21186
 r, ".*ERR bgp\#bgpmon:\s+\*ERROR\*\s+Failed\s+with\s+rc:\d+\s+when\s+execute:\s+.*vtysh.*-c.*show\s+bgp\s+summary\s+json.*"
+
+# Ignore SAI version mismatch errors - unknown switch attributes and ACL capability errors
+# These occur when SAI implementation doesn't support certain attributes yet
+r, ".* ERR syncd\d*#syncd: .*SAI_API_SWITCH:brcm_sai_get_switch_attribute:\d+ Unknown switch attribute \d+\[\d+\] passed.*"
+r, ".* ERR syncd\d*#syncd: .*SAI_API_SWITCH:sai_query_attribute_capability:\d+ Acl entry attribute capabilities failed with error -\d+.*"
