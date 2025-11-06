@@ -14,11 +14,7 @@ import ptf.testutils as testutils
 from tests.common.helpers.assertions import pytest_require
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
 from tests.common.utilities import get_upstream_neigh_type, get_neighbor_ptf_port_list, \
-<<<<<<< HEAD
-    get_neighbor_port_list, is_ipv6_only_topology
-=======
     get_neighbor_port_list, is_ipv6_only_topology,  wait_until
->>>>>>> upstream/master
 
 logger = logging.getLogger(__name__)
 
