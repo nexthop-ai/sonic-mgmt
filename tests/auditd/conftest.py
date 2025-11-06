@@ -3,6 +3,20 @@ import pytest
 import logging
 from tests.common.helpers.dut_utils import is_container_running
 from tests.common.helpers.assertions import pytest_assert as py_assert
+from tests.auditd.auditd_container_helper import (  # noqa: F401
+    auditd_module_container_setup
+)
+
+
+def pytest_addoption(parser):
+    """Add command line options for auditd tests"""
+    parser.addoption(
+        "--manage-auditd-containers",
+        action="store_true",
+        default=False,
+        help="Enable auditd container management"
+    )
+
 
 logger = logging.getLogger(__name__)
 
