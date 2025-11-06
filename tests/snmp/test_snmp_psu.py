@@ -1,6 +1,7 @@
 import pytest
 import logging
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.sonic_db import redis_get_keys
 from tests.common.helpers.snmp_helpers import get_snmp_facts
 from natsort import natsorted
 
@@ -85,6 +86,7 @@ def test_snmp_psu_status(duthosts, enum_supervisor_dut_hostname, snmp_psu_module
 
     pytest_assert(
         psus_on >= 1, "At least one PSU should be with operstatus OK")
+<<<<<<< HEAD
 
 
 def redis_get_keys(duthost, db_id, pattern):
@@ -100,3 +102,5 @@ def redis_get_keys(duthost, db_id, pattern):
     output = duthost.shell(cmd)
     content = output['stdout'].strip()
     return content.split('\n') if content else []
+=======
+>>>>>>> 48c8a91a0 (ISS-3621: [snmp] Wait for transceiver status to be populated (#558))
