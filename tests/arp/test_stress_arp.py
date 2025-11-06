@@ -37,10 +37,7 @@ LOOP_TIMES_LEVEL_MAP = {
 
 @pytest.fixture(autouse=True)
 def arp_cache_fdb_cleanup(duthosts, rand_one_dut_hostname, tbinfo):
-<<<<<<< HEAD
-=======
     is_ipv6_only = is_ipv6_only_topology(tbinfo)
->>>>>>> upstream/master
     duthost = duthosts[rand_one_dut_hostname]
     try:
         clear_dut_arp_cache(duthost, is_ipv6=is_ipv6_only)
@@ -59,11 +56,7 @@ def arp_cache_fdb_cleanup(duthosts, rand_one_dut_hostname, tbinfo):
     try:
         dut_list = duthosts if "dualtor-aa" in tbinfo["topo"]["name"] else [duthost]
         for dut in dut_list:
-<<<<<<< HEAD
-            clear_dut_arp_cache(dut)
-=======
             clear_dut_arp_cache(dut, is_ipv6=is_ipv6_only)
->>>>>>> upstream/master
             fdb_cleanup(dut)
     except RunAnsibleModuleFail as e:
         if 'Failed to send flush request: No such file or directory' in str(e):
