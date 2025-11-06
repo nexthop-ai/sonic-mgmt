@@ -412,7 +412,6 @@ def disable_voq_watchdog(duthosts, get_src_dst_asic_and_duts):
     modify_voq_watchdog(duthosts, get_src_dst_asic_and_duts, enable=True)
 
 
-<<<<<<< HEAD
 def update_tc_to_dscp_map(duthost, tc_to_dscp_map, map_name='REMAP_TEST', interface=None):
     """
     Add TC_TO_DSCP_MAP to DUT and optionally apply to interface via PORT_QOS_MAP.
@@ -668,7 +667,8 @@ def get_outgoing_dscp(incoming_dscp, dscp_to_tc_map, tc_to_dscp_map):
     outgoing_dscp = int(outgoing_dscp_str)
     logger.info("DSCP mapping: {} -> TC={} -> {}".format(incoming_dscp, tc_value, outgoing_dscp))
     return outgoing_dscp
-=======
+
+
 def get_upstream_vm_offset(nbrhosts, tbinfo):
     """
     Get ports offset of exabgp port
@@ -715,4 +715,3 @@ def announce_route(ptfip, route, port, action=ANNOUNCE):
     logger.info(" action:{}\n ptfip:{}\n route:{}\n port:{}".format(action, ptfip, route, port))
     install_route_from_exabgp(action, ptfip, route, port)
     logger.info("\n--------------------------------------------------------------------------------")
->>>>>>> upstream/master
