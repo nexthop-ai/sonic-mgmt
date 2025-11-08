@@ -4604,13 +4604,14 @@ class WRRtest(sai_base_test.ThriftInterfaceDataPlane):
             total_received = len(pkts)
             scale_factor = total_received / total_expected if total_expected > 0 else 1
             print("Scale factor: {}, expected scale factor: {}"
-                  .format(scale_factor, expected_scale_factor).format(scale_factor))
+                  .format(scale_factor, expected_scale_factor))
 
             # scale_factor should be >= expected_scale_factor
             assert (scale_factor >= expected_scale_factor)
 
             diff_dict = {}
             adjusted_queue_targets = [int(count * scale_factor) for count in queue_num_of_pkts]
+            adjusted_limit = int(scale_factor * limit)
 
             total_pkts = 0
 
@@ -4632,14 +4633,15 @@ class WRRtest(sai_base_test.ThriftInterfaceDataPlane):
 
             print("Difference for each dscp: ", file=sys.stderr)
             print(diff_dict, file=sys.stderr)
+            print("Adjusted limit: {}".format(adjusted_limit))
 
             for dscp, diff in diff_dict.items():
                 if platform_asic and platform_asic == "broadcom-dnx":
                     logging.info(
                         "On J2C+ can't control how packets are dequeued (CS00012272267) - so ignoring diff check now")
                 elif not dry_run:
-                    assert diff <= limit, "Difference for %d is %d which exceeds limit %d" % (
-                        dscp, diff, limit)
+                    assert diff <= adjusted_limit, "Difference for %d is %d which exceeds limit %d" % (
+                        dscp, diff, adjusted_limit)
 
             # Read counters
             print("DST port counters: ")
