@@ -388,7 +388,6 @@ bgp/test_bgp_router_id.py::test_bgp_router_id_set_without_loopback:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/19916 and '-v6-' in topo_name"
 
-<<<<<<< HEAD
 bgp/test_bgp_sentinel.py:
   skip:
     reason: "BGP_SENTINELS is not supported in unified mode"
@@ -408,16 +407,6 @@ bgp/test_bgp_sentinel.py::test_bgp_sentinel[IPv6:
     reason: "BGP_SENTINELS is not supported in unified mode."
     conditions:
       - "frr_mgmt_config == 'true'"
-
-=======
-bgp/test_bgp_sentinel.py::test_bgp_sentinel[IPv4:
-  skip:
-    reason: "Skip for IPv6-only topologies"
-    conditions:
-      - "'-v6-' in topo_name"
-
-bgp/test_bgp_sentinel.py::test_bgp_sentinel[IPv6:
->>>>>>> upstream/master
   xfail:
     reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style or due to GH issue 23938"
     conditions_logical_operator: or
@@ -498,7 +487,6 @@ bgp/test_bgp_update_timer.py::test_bgp_update_timer_single_route:
 bgp/test_bgpmon.py:
   skip:
     reason: "Not supported on T2 topology or topology backend
-<<<<<<< HEAD
              or Skip for IPv6-only topologies, since there are v6 verison of the test
              or BGP_MONITORS is not supported in unified management framework."
     conditions_logical_operator: or
@@ -512,12 +500,6 @@ bgp/test_bgpmon_v6.py:
     reason: "BGP_MONITORS is not supported in unified management framework"
     conditions:
       - "frr_mgmt_config == 'true'"
-=======
-             or Skip for IPv6-only topologies, since there are v6 verison of the test"
-    conditions:
-      - "'backend' in topo_name or topo_type in ['t2']"
-      - "'-v6-' in topo_name"
->>>>>>> upstream/master
 
 bgp/test_bgpmon_v6.py::test_bgpmon_no_ipv6_resolve_via_default:
   skip:
@@ -2713,15 +2695,11 @@ hash/test_generic_hash.py::test_lag_hash:
   skip:
     reason: 'LAG hash not supported in Cisco 8000'
     conditions:
-<<<<<<< HEAD
-      - "asic_type in ['cisco-8000']"
-=======
       - "asic_type in ['broadcom', 'cisco-8000']"
   xfail:
     reason: 'xfail for IPv6-only topologies, need to add support for IPv6-only - https://github.com/sonic-net/sonic-mgmt/issues/20733'
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20733 and '-v6-' in topo_name"
->>>>>>> upstream/master
 
 hash/test_generic_hash.py::test_lag_hash[CRC-DST_MAC:
   xfail:
@@ -3411,21 +3389,19 @@ pfcwd/test_pfcwd_all_port_storm.py:
       - "topo_type in ['m0', 'mx', 'm1']"
       - *lossyTopos
 
-<<<<<<< HEAD
 pfcwd/test_pfcwd_function.py:
    skip:
      reason: "Some of the pfc watchdog tests can not run on older platforms"
      conditions_logical_operator: or
      conditions:
         - "hwsku in ['Accton-AS5835-54X']"
-=======
+
 pfcwd/test_pfcwd_all_port_storm.py::TestPfcwdAllPortStorm::test_all_port_storm_restore[IPv6.*:
    xfail:
      reason: "Xfail due to https://github.com/sonic-net/sonic-mgmt/issues/21067 or https://github.com/sonic-net/sonic-mgmt/issues/21082"
      conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/21067 and 't0-56' in topo_type and asic_type in ['mellanox']"
       - "https://github.com/sonic-net/sonic-mgmt/issues/21082 and topo_type in ['t0-88-o8c80', 't1-48-lag', 't1-lag', 't1-32-lag', 't1-64-lag'] and asic_type in ['mellanox']"
->>>>>>> upstream/master
 
 pfcwd/test_pfcwd_function.py::TestPfcwdFunc::test_pfcwd_actions:
   xfail:
@@ -3463,10 +3439,7 @@ pfcwd/test_pfcwd_warm_reboot.py:
         - "https://github.com/sonic-net/sonic-mgmt/issues/15942 and asic_type in ['broadcom', 'mellanox']"
         - "is_smartswitch==True"
         - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-mgmt/issues/20675"
-<<<<<<< HEAD
-=======
         - "release in ['202412']"
->>>>>>> upstream/master
 
 pfcwd/test_pfcwd_warm_reboot.py::TestPfcwdWb::test_pfcwd_wb[IPv4-async_storm:
    skip:
@@ -3733,13 +3706,8 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiHeadroomPoolSize:
     conditions_logical_operator: or
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/12292 and hwsku in ['Force10-S6100']
-<<<<<<< HEAD
         and topo_type in ['t1-64-lag'] and hwsku not in ['Arista-7060CX-32S-C32', 'Celestica-DX010-C32', 'Arista-7260CX3-D108C8', 'Arista-7260CX3-D108C10', 'Force10-S6100', 'Arista-7260CX3-Q64', 'Arista-7050CX3-32S-C32', 'Arista-7050CX3-32S-C28S4', 'Arista-7050CX3-32S-D48C8', 'Arista-7060CX-32S-D48C8'] and asic_type not in ['mellanox']
         and asic_type in ['cisco-8000']"
-=======
-       and topo_type in ['t1-64-lag'] and hwsku not in ['Arista-7060CX-32S-C32', 'Celestica-DX010-C32', 'Arista-7260CX3-D108C8', 'Arista-7260CX3-D108C10', 'Force10-S6100', 'Arista-7260CX3-Q64', 'Arista-7050CX3-32S-C32', 'Arista-7050CX3-32S-C28S4', 'Arista-7050CX3-32S-D48C8', 'Arista-7060CX-32S-D48C8'] and asic_type not in ['mellanox']
-       and asic_type in ['cisco-8000']"
->>>>>>> upstream/master
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t1-8', 't2_single_node_max', 't2_single_node_min']) and asic_type not in ['mellanox']"
       - "asic_type in ['vs']"
@@ -4386,7 +4354,6 @@ tacacs/test_ro_disk.py:
     conditions:
       - https://github.com/sonic-net/sonic-mgmt/issues/20787
 
-<<<<<<< HEAD
 #######################################
 #####             tam             #####
 #######################################
@@ -4396,8 +4363,6 @@ tam:
     conditions:
       - "hwsku not in group_vars['broadcom_th5_hwskus']"
 
-=======
->>>>>>> upstream/master
 #######################################
 #####           telemetry         #####
 #######################################
