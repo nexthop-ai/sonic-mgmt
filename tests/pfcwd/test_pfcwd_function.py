@@ -872,11 +872,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
 
     def set_traffic_action(self, duthost, action):
         action = action if action != "dontcare" else "drop"
-<<<<<<< HEAD
-        if duthost.facts["asic_type"] in ["mellanox", "cisco-8000", "marvell-teralynx"] \
-=======
         if duthost.facts["asic_type"] in ["mellanox", "cisco-8000", "innovium"] \
->>>>>>> upstream/master
                 or is_tunnel_qos_remap_enabled(duthost):
             self.rx_action = "forward"
         else:
