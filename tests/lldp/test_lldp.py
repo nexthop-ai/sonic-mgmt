@@ -233,16 +233,9 @@ def test_lldp_neighbor(duthosts, enum_rand_one_per_hwsku_frontend_hostname, loca
                         enum_frontend_asic_index, tbinfo, request)
 
 
-<<<<<<< HEAD
 def test_lldp_neighbor_post_swss_reboot(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost, eos,
                                         sonic, collect_techsupport_all_duts, enum_frontend_asic_index,
                                         tbinfo, request, restart_swss_container, loganalyzer):
-=======
-@pytest.mark.disable_loganalyzer
-def test_lldp_neighbor_post_swss_reboot(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost, eos,
-                                        sonic, collect_techsupport_all_duts, enum_frontend_asic_index,
-                                        tbinfo, request, restart_swss_container):
->>>>>>> upstream/master
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     ignoreRegex = [
         ".*ERR.*",
