@@ -373,12 +373,8 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count, ip=N
         logger.error("path_list is None")
         return "", ""
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-<<<<<<< HEAD
-    ip = ip or duthost.mgmt_ip
-=======
     dut_facts = duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts']
-    ip = f"[{duthost.mgmt_ip}]" if dut_facts.get('is_mgmt_ipv6_only', False) else duthost.mgmt_ip
->>>>>>> upstream/master
+    ip = ip or (f"[{duthost.mgmt_ip}]" if dut_facts.get('is_mgmt_ipv6_only', False) else duthost.mgmt_ip)
     port = env.gnmi_port
     interval = interval_ms / 1000.0
 
@@ -487,12 +483,8 @@ def gnmi_subscribe_streaming_onchange(duthost, ptfhost, path_list, count, ip=Non
 
 def gnoi_reboot(duthost, method, delay, message, ip=None, vrf_name=None):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-<<<<<<< HEAD
-    ip = ip or duthost.mgmt_ip
-=======
     dut_facts = duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts']
-    ip = f"[{duthost.mgmt_ip}]" if dut_facts.get('is_mgmt_ipv6_only', False) else duthost.mgmt_ip
->>>>>>> upstream/master
+    ip = ip or (f"[{duthost.mgmt_ip}]" if dut_facts.get('is_mgmt_ipv6_only', False) else duthost.mgmt_ip)
     port = env.gnmi_port
     # For non-default VRF we need to use the DUT's gnoi_client binary
     # since ip vrf exec needs elevated privileges and gnmi
