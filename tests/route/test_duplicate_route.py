@@ -101,8 +101,6 @@ def verify_expected_loganalyzer_logs(
         ".*ERR.* addRoutePost: Failed to create route.*",
         ]
     ignoreRegex = [
-<<<<<<< HEAD
-=======
         ".*ERR.* create failed, object already exists.*",
         ".*ERR.* bulkCreate: Failed to create object.*",
         ".*ERR.* api SAI_COMMON_API_BULK_CREATE failed in syncd mode.*",
@@ -113,7 +111,6 @@ def verify_expected_loganalyzer_logs(
         ".*ERR.* mlnx_create_route_async .* Entry Already Exists.",
         ".*ERR.* object key SAI_OBJECT_TYPE_ROUTE_ENTRY:.* already exists.*",  # TODO move to expectRegex
         ".*ERR.* addRoutePost: Failed to create route.*",  # TODO move to expectRegex
->>>>>>> upstream/master
     ]
     if loganalyzer:
         # Skip if loganalyzer is disabled
