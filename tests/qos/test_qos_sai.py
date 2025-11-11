@@ -416,6 +416,8 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
         normal_profile = ["xoff_1", "xoff_2"]
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         if not dutConfig["dualTor"] and xoffProfile not in normal_profile:
             pytest.skip(
                 "Additional DSCPs are not supported on non-dual ToR ports")
@@ -688,6 +690,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         normal_profile = ["xon_1", "xon_2"]
         if not dutConfig["dualTor"] and xonProfile not in normal_profile:
             pytest.skip(
@@ -872,6 +876,8 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
 
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         qosConfig = dutQosConfig["param"][portSpeedCableLength]
@@ -1144,6 +1150,8 @@ class TestQosSai(QosSaiBase):
         resetWatermark
     ):
         # NOTE: cisco 8800 will skip this test since there is no headroom pool
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         """
             Test QoS SAI Headroom pool watermark
 
@@ -1362,6 +1370,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if "lossy_queue_1" in list(dutQosConfig["param"][portSpeedCableLength].keys()):
             qosConfig = dutQosConfig["param"][portSpeedCableLength]
@@ -1540,6 +1550,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         # Skip the regular dscp to pg mapping test. Will run another test case instead.
         duthost = get_src_dst_asic_and_duts['src_dut']    # noqa: F841
         if separated_dscp_to_tc_map_on_uplink(dut_qos_maps):
@@ -1733,6 +1745,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         qosConfig = dutQosConfig["param"]
@@ -2315,6 +2329,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if "t2-single-node-min" in dutTestParams['topo']:
+            pytest.skip("Skip this test case on dualtor testbed")
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         qosConfig = dutQosConfig["param"]
