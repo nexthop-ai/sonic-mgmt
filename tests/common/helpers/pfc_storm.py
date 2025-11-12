@@ -250,13 +250,8 @@ class PFCStorm(object):
             self.extra_vars.update({"pfc_storm_stop_defer_time": self.pfc_storm_stop_defer_time})
         if getattr(self, "pfc_asym", None):
             self.extra_vars.update({"pfc_asym": self.pfc_asym})
-        if self.asic_type == "mellanox":
+        if self.asic_type in ["mellanox", "broadcom"]:
             self.extra_vars.update({"pfc_gen_multiprocess": True})
-        elif self.asic_type == "broadcom":
-            # Enable multiprocess for TH5 (BCM78900) ASICs only
-            asic_name = self.dut.get_asic_name()
-            if asic_name == "th5":
-                self.extra_vars.update({"pfc_gen_multiprocess": True})
 
         if self.asic_type != 'vs':
             if self.peer_device.os in self._PFC_GEN_DIR:

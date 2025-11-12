@@ -289,17 +289,24 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
 
             # Common config reload related errors
             r".* ERR swss\d*#orchagent: :- getPort: Failed to get cached bridge port ID.*",
-            r".* ERR syncd\d*#syncd.*_attribute_enum_values_capability.*count.*greater than capability-count 0.*",
 
-            # SAI switch attribute errors (unrelated, and safe to ignore purely from route programming
-            # measurement point of view)
-            r".* ERR syncd\d*#syncd:.*SAI_API_SWITCH:brcm_sai_get_switch_attribute.*"
-            r"Unknown switch attribute.*passed\.",
-            r".* ERR syncd\d*#syncd:.*SAI_API_SWITCH:sai_query_attribute_capability.*"
-            r"Acl entry attribute capabilities failed with error.*",
-            r".* ERR syncd\d*#syncd: message repeated .* times:.*"
-            r"SAI_API_SWITCH:sai_query_attribute_capability.*"
-            r"Acl entry attribute capabilities failed with error.*",
+            # Route already exists errors - race condition during bulk route programming
+            # These can be ignored as the focus of this test is to just measure route programming rate
+            # and not do any scale route correctness testing.
+            r".* ERR swss\d*#orchagent: :- meta_sai_validate_route_entry: object key "
+            r"SAI_OBJECT_TYPE_ROUTE_ENTRY:.*already exists",
+            r".* ERR swss\d*#orchagent: :- meta_generic_validation_create: object key "
+            r"SAI_OBJECT_TYPE_ROUTE_ENTRY:.*already exists",
+            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:_brcm_sai_l3_route_config:\d+ L3 route add failed with error "
+            r"Entry exists.*",
+            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:brcm_sai_xgs_route_create:\d+ L3 route add failed with error -6\.",
+            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:brcm_sai_create_route_entry:\d+ pd route create failed "
+            r"failed with error -6\.",
+            r".* ERR syncd\d*#syncd: :- sendApiResponse: api SAI_COMMON_API_BULK_CREATE failed in syncd mode: "
+            r"SAI_STATUS_FAILURE",
+            r".* ERR swss\d*#orchagent: :- flush_creating_entries: EntityBulker.flush create entries failed, "
+            r"number of entries to create: \d+, status: SAI_STATUS_FAILURE",
+            r".* ERR swss\d*#orchagent: :- addRoutePost: Failed to create route .* with next hop\(s\) .*",
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
 

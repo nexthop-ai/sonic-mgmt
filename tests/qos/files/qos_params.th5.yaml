@@ -52,10 +52,13 @@ qos_params:
                     pgs:
                     - 3
                     - 4
-                    pgs_num: 1
-                    pkts_num_hdrm_full: 1549
-                    pkts_num_hdrm_partial: 1118
-                    pkts_num_trig_pfc: 92000
+                    pgs_num: 2
+                    pkts_num_hdrm_full: 1671
+                    pkts_num_hdrm_partial: 1650
+                    pkts_num_trig_pfc: 91200
+                    pkts_num_trig_pfc_multi:
+                    - 91200
+                    - 45500
                     src_port_ids:
                     - 0
                 lossy_queue_1:

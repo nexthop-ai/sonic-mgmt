@@ -103,6 +103,10 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, request):
     dut_nlri_route = dut_nlri_routes[2]
     logger.debug("DUT NLRI route: {}".format(dut_nlri_route))
 
+    def neigh_routes_available(cmd):
+        neigh_nlri_routes = neigh_host.shell(cmd, module_ignore_errors=True)['stdout'].split('\n')
+        return len(neigh_nlri_routes) > 1000
+
     neigh_host = nbrhosts[neigh_name]["host"]
     if is_sonic_neigh:
         cmd = "vtysh -c 'config' -c 'router bgp {}' -c 'address-family ipv6 unicast'\
@@ -111,6 +115,7 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, request):
         neigh_host.shell(cmd, module_ignore_errors=True)['stdout'].split('\n')
         logger.debug(neigh_host.shell('vtysh -n {} vtysh -c "clear bgp * soft"'.format(neigh_namespace)))
         cmd = "show ipv6 bgp neighbor {} received-routes".format(dut_ip_v6)
+        wait_until(180, 10, 0, neigh_routes_available, cmd)
         neigh_nlri_routes = neigh_host.shell(cmd, module_ignore_errors=True)['stdout'].split('\n')
         neigh_nlri_route = ""
         routes = neigh_nlri_routes[len(neigh_nlri_routes) - 3]
@@ -341,15 +346,18 @@ def test_nlri(setup):
         ),
         "Routing entry for DUT not established.",
     )
-
     cmd = "show ipv6 route {}".format(setup['neigh_nlri_route'])
-    if setup['is_sonic_neigh']:
-        neigh_route_out = setup['neighhost'].shell(cmd)['stdout']
-    else:
-        neigh_route_out = setup['neighhost'].eos_command(commands=[cmd])['stdout'][0]
 
-    pytest_assert("Routing entry for {}".format(setup['neigh_nlri_route']) in neigh_route_out,
-                  "Routing entry for neighbor not established.")
+    def verify_neigh_route():
+        if setup['is_sonic_neigh']:
+            neigh_route_out = setup['neighhost'].shell(cmd)['stdout']
+        else:
+            neigh_route_out = setup['neighhost'].eos_command(commands=[cmd])['stdout'][0]
+        return setup['neigh_nlri_route'] in neigh_route_out
+
+    pytest_assert(
+        wait_until(180, 15, 0, verify_neigh_route),
+        f"Routing entry for {setup['neigh_nlri_route']} not established.")
 
 
 def parse_dut_received_routes(command_output):

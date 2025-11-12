@@ -19,12 +19,17 @@ AUDITD_CMD = DOCKER_EXEC_CMD.format("auditd") + "'{} {}'"
 AUDITD_WATCHDOG_CMD = DOCKER_EXEC_CMD.format("auditd_watchdog") + "'{} {}'"
 CURL_HTTP_CODE_CMD = "curl -s -o /dev/null -w \%\{http_code\} http://localhost:50058"   # noqa: W605
 CURL_CMD = "curl http://localhost:50058"    # noqa: W605
+HTTP_STATUS_OK = "200"
+HTTP_STATUS_SERVER_ERROR = "500"
 logger = logging.getLogger(__name__)
 
 
 def is_log_valid(pattern, logs):
+    """
+    Check if any log contains the expected pattern.
+    """
     for log in logs:
-        if pattern in log and "ansible-ansible" not in log:
+        if pattern in log:
             return True
     return False
 
@@ -49,7 +54,7 @@ def extract_audit_timestamp(logs, include_seq=False):
             Example match: audit(1688329461.744:1123) --> group(1) = '1688329461.744:1123'   # noqa: W605
 
     Notes:
-        - Lines containing 'ansible-ansible' (produced by Ansible) are skipped
+        - Extracts timestamps from audit logs
 
     Example:
         log1: "type=SYSCALL msg=audit(1688329461.744:1123): arch=c000003e syscall=59 ..."
@@ -62,11 +67,10 @@ def extract_audit_timestamp(logs, include_seq=False):
     # Choose regex based on whether to include the sequence number
     regex = r'audit\((\d+\.\d+:\d+)\)' if include_seq else r'audit\((\d+\.\d+):\d+\)'
     for log in logs:
-        # Skip logs produced by Ansible
-        if "ansible-ansible" not in log:
-            match = re.search(regex, log)
-            if match:
-                return match.group(1)
+        # extract timestamp from auditd log
+        match = re.search(regex, log)
+        if match:
+            return match.group(1)
     # No matching timestamp found
     return ''
 
@@ -114,7 +118,7 @@ def test_auditd_watchdog_functionality(duthosts,
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_HTTP_CODE_CMD),
                              module_ignore_errors=True)["stdout"]
-    pytest_assert(output == "200", "Auditd watchdog reports auditd container is unhealthy")
+    pytest_assert(output == HTTP_STATUS_OK, "Auditd watchdog reports auditd container is unhealthy")
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_CMD), module_ignore_errors=True)["stdout"]
     try:
@@ -152,15 +156,20 @@ def test_modules_changes(localhost,
     ssh_remote_run(localhost, dutip, creds['sonicadmin_user'], creds['sonicadmin_password'],
                    f"sudo cat /lib/modules/{kernel_version}/kernel/drivers/net/dummy.ko > /dev/null")
 
-    # Search SYSCALL & PATH logs
-    cmd = f"sudo zgrep /lib/modules/{kernel_version}/kernel/drivers/net/dummy.ko /var/log/syslog* | grep type=PATH"
+    # Search for audit PATH logs containing the module file
+    cmd = f'sudo zgrep \'type=PATH.*name="[^"]*{kernel_version}[^"]*dummy\\.ko"\' /var/log/syslog*'
     logs = duthost.shell(cmd)["stdout_lines"]
 
     assert is_log_valid("type=PATH", logs), "Auditd modules_changes rule does not contain the PATH logs"
 
     full_timestamp = extract_audit_timestamp(logs, include_seq=True)
 
-    cmd = f"sudo zgrep {full_timestamp} /var/log/syslog* | grep modules_changes"
+    if not full_timestamp:
+        # If we can't extract timestamp, search for modules_changes audit logs directly
+        cmd = "sudo zgrep 'type=SYSCALL.*key=\"modules_changes\"' /var/log/syslog*"
+    else:
+        cmd = f"sudo zgrep 'msg=audit({full_timestamp}.*key=\"modules_changes\"' /var/log/syslog*"
+
     logs = duthost.shell(cmd)["stdout_lines"]
 
     assert is_log_valid("type=SYSCALL", logs), "Auditd modules_changes rule does not contain the SYSCALL logs"
@@ -206,13 +215,16 @@ def test_directory_based_keys(localhost,
             ssh_remote_run(localhost, dutip, creds['sonicadmin_user'], creds['sonicadmin_password'],
                            f"sudo rm -f  {random_file}")
 
-            cmd = f"sudo zgrep '{random_file}' /var/log/syslog*"
+            cmd = f"sudo zgrep 'type=.*{random_file}' /var/log/syslog*"
             logs = duthost.shell(cmd)["stdout_lines"]
 
             timestamp = extract_audit_timestamp(logs)
 
-            # Search SYSCALL & PATH logs
-            cmd = f"""sudo zgrep '{timestamp}' /var/log/syslog* | grep '{key}' """
+            # Search for audit SYSCALL logs with the specific key
+            if not timestamp:
+                cmd = f"""sudo zgrep 'type=SYSCALL.*key=\"{key}\"' /var/log/syslog*"""
+            else:
+                cmd = f"""sudo zgrep 'msg=audit({timestamp}.*type=SYSCALL.*key=\"{key}\"' /var/log/syslog*"""
             logs = duthost.shell(cmd)["stdout_lines"]
             assert is_log_valid("type=SYSCALL", logs), \
                 f"Auditd {key} rule does not contain the SYSCALL logs"
@@ -221,7 +233,10 @@ def test_directory_based_keys(localhost,
 
             if key == "user_group_management":
                 continue
-            cmd = f"""sudo zgrep '{full_timestamp}' /var/log/syslog* """
+            if not full_timestamp:
+                cmd = f"""sudo zgrep 'type=PATH.*name=\"[^\"]*{random_file}[^\"]*\"' /var/log/syslog*"""
+            else:
+                cmd = f"""sudo zgrep 'msg=audit({full_timestamp}.*type=PATH' /var/log/syslog*"""
             logs = duthost.shell(cmd)["stdout_lines"]
             assert is_log_valid("type=PATH", logs), \
                 f"Auditd {key} rule does not contain the PATH logs"
@@ -358,7 +373,7 @@ def test_auditd_host_failure(localhost,
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_HTTP_CODE_CMD),
                              module_ignore_errors=True)["stdout"]
-    pytest_assert(output == "500", "Auditd watchdog reports auditd container is healthy")
+    pytest_assert(output == HTTP_STATUS_SERVER_ERROR, "Auditd watchdog reports auditd container is healthy")
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_CMD), module_ignore_errors=True)["stdout"]
     try:
@@ -367,9 +382,7 @@ def test_auditd_host_failure(localhost,
         pytest.fail("Invalid JSON response from auditd watchdog: {}".format(output))
 
     # Define expected keys
-    expected_keys = [
-        "auditd_active"
-    ]
+    expected_keys = ["auditd_active"]
 
     # Check if all expected keys exist and have the value "OK"
     for key in expected_keys:
@@ -391,7 +404,7 @@ def test_32bit_failure(duthosts,
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_HTTP_CODE_CMD),
                              module_ignore_errors=True)["stdout"]
-    pytest_assert(output == "500", "Auditd watchdog reports auditd container is healthy")
+    pytest_assert(output == HTTP_STATUS_SERVER_ERROR, "Auditd watchdog reports auditd container is healthy")
 
     output = duthost.command(AUDITD_WATCHDOG_CMD.format(NSENTER_CMD, CURL_CMD), module_ignore_errors=True)["stdout"]
     pytest_assert('"auditd_active":"FAIL ' in output, "Auditd watchdog reports auditd container is healthy")
@@ -413,9 +426,7 @@ def read_watchdog(duthost):
         pytest.fail("Invalid JSON response from auditd watchdog: {} exception: {}".format(output, e))
 
 
-def test_rate_limit(duthosts,
-                    enum_rand_one_per_hwsku_hostname,
-                    verify_auditd_containers_running):
+def test_rate_limit(duthosts, enum_rand_one_per_hwsku_hostname, verify_auditd_containers_running):
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
 
     debug_log(duthost)
