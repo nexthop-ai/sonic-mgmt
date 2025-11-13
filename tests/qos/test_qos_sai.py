@@ -1551,8 +1551,6 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
         # Skip the regular dscp to pg mapping test. Will run another test case instead.
         duthost = get_src_dst_asic_and_duts['src_dut']    # noqa: F841
         if separated_dscp_to_tc_map_on_uplink(dut_qos_maps):
