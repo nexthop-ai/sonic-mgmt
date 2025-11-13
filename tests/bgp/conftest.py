@@ -48,7 +48,7 @@ def check_results(results):
         pt_assert(False, 'Some processes for updating nbr hosts configuration returned failed results')
 
 
-def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config, zmq_enabled, tbinfo):
+def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config):
     try:
         module_name = request.module.__name__
         # Extract module path from the file path (relative to tests directory)
@@ -57,10 +57,6 @@ def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config, zmq_ena
             module_path = fspath_str.split('/tests/')[-1]
         else:
             module_path = module_name.replace('.', '/') + '.py'
-
-        if zmq_enabled == 'true' and not is_chassis(duthost) and tbinfo["topo"]["type"] == 't2':
-            logger.info(f"Module {module_path} skipped for zmq_enabled on t2 non chassis")
-            return True
 
         # Check if this module has skip conditions for frr_mgmt_config
         session = request.session
@@ -118,32 +114,21 @@ def _check_if_module_skipped_for_mode(request, duthost, frr_mgmt_config, zmq_ena
         return False
 
 
-@pytest.fixture(
-    scope='module', autouse=True,
-    params=[{'frr_mgmt_config': 'false', 'routing_config_mode': 'separated',
-             'zmq_enabled': 'false', 'mode_name': 'legacy-mode-zmq-disabled'},
-            {'frr_mgmt_config': 'false', 'routing_config_mode': 'separated',
-             'zmq_enabled': 'true', 'mode_name': 'legacy-mode-zmq-enabled'},
-            {'frr_mgmt_config': 'true', 'routing_config_mode': 'unified',
-             'zmq_enabled': 'false', 'mode_name': 'unified-mode-zmq-disabled'},
-            {'frr_mgmt_config': 'true', 'routing_config_mode': 'unified',
-             'zmq_enabled': 'true', 'mode_name': 'unified-mode-zmq-enabled'}
-            ],
-    ids=['legacy-mode-zmq-disabled', 'legacy-mode-zmq-enabled',
-         'unified-mode-zmq-disabled', 'unified-mode-zmq-enabled']
-)
-def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
+@pytest.fixture(scope='module', autouse=True, params=[
+    {'frr_mgmt_config': 'false', 'routing_config_mode': 'separated', 'mode_name': 'legacy-mode'},
+    {'frr_mgmt_config': 'true', 'routing_config_mode': 'unified', 'mode_name': 'unified-mode'}
+], ids=['legacy-mode', 'unified-mode'])
+def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname):
     global _original_dut_frr_mgmt_modes
     duthost = duthosts[rand_one_dut_hostname]
     config_params = request.param
     test_routing_cfg_mode = config_params['routing_config_mode']
     test_frr_mgmt_mode = config_params['frr_mgmt_config']
-    test_zmq_enabled = config_params['zmq_enabled']
 
     logger.info(f"{'=' * 30} Testing in {config_params['mode_name'].upper()} mode {'=' * 30}")
 
     # Check if module is marked to be skipped for this mode
-    if _check_if_module_skipped_for_mode(request, duthost, test_frr_mgmt_mode, test_zmq_enabled, tbinfo):
+    if _check_if_module_skipped_for_mode(request, duthost, test_frr_mgmt_mode):
         logger.info(f"Skipping {config_params['mode_name']} - "
                     f"module marked to skip for {test_frr_mgmt_mode}")
         pytest.skip(f"Module is marked to skip for {config_params['mode_name']} mode")
@@ -165,60 +150,16 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             routing_mode = 'unified'
 
         frr_mgmt_mode = 'true' if redis_get('frr_mgmt_framework_config') == 'true' else 'false'
-        zmq_mode = 'true' if redis_get('orch_northbond_route_zmq_enabled') == 'true' else 'false'
         logger.info(f"Current modes - routing: {routing_mode}, "
-                    f"frr_mgmt: {frr_mgmt_mode}, zmq: {zmq_mode}")
-        return routing_mode, frr_mgmt_mode, zmq_mode
-
-    def set_zmq_in_redis(zmq_value):
-        redis_key = '"DEVICE_METADATA|localhost" "orch_northbond_route_zmq_enabled"'
-        if zmq_value == 'true':
-            cmd = f'redis-cli -n 4 HSET {redis_key} "{zmq_value}"'
-        else:
-            cmd = f'redis-cli -n 4 HDEL {redis_key}'
-
-        logger.info(f"{'Enabling' if zmq_value == 'true' else 'Disabling'} ZMQ in Redis")
-        output = duthost.shell(cmd, module_ignore_errors=True)
-        if output.get('rc', 0) != 0:
-            logger.error(f"Failed to set ZMQ: {output.get('stderr', '')}")
-            return False
-
-        save_output = duthost.shell("sudo config save -y", module_ignore_errors=True)
-        if save_output.get('rc', 0) != 0:
-            raise False
-        return True
-
-    def configure_zmq(zmq_enabled, operation_name="ZMQ Configuration"):
-        get_cmd = "redis-cli -n 4 HGET \"DEVICE_METADATA|localhost\" \"orch_northbond_route_zmq_enabled\""
-        zmq_output = duthost.shell(get_cmd, module_ignore_errors=True)['stdout'].strip()
-        current_zmq = 'true' if zmq_output == 'true' else 'false'
-
-        if current_zmq == zmq_enabled:
-            logger.info(f"ZMQ already configured to {zmq_enabled} - no change needed")
-            return True
-
-        try:
-            if not set_zmq_in_redis(zmq_enabled):
-                raise Exception("Failed to set ZMQ in Redis")
-
-            return True
-        except Exception as e:
-            logger.info(f"ZMQ configuration failed {e} - Reverting ZMQ configuration to {current_zmq}")
-            set_zmq_in_redis(current_zmq)
-            return False
+                    f"frr_mgmt: {frr_mgmt_mode}")
+        return routing_mode, frr_mgmt_mode
 
     # Helper function to execute migration command
     # frr_unified_cfg_mgmt_migrator.py used only to update metadata
     # and/or config_db transformation.  Then config_reload is handled separately
     # based on config mode + zmq_enabled
-    def execute_migration(routing_cfg_mode, frr_mgmt_mode, zmq_enabled, cfg_reload='true',
+    def execute_migration(routing_cfg_mode, frr_mgmt_mode, cfg_reload='true',
                           operation_name="Migration"):
-        # Configure ZMQ setting before config migration so it gets applied during the config reload
-        if dut_zmq_mode != zmq_enabled:
-            zmq_op_name = f"{operation_name} ZMQ setup"
-            if not configure_zmq(zmq_enabled, operation_name=zmq_op_name):
-                logger.error(f"Failed to configure ZMQ setting for {operation_name}")
-                return False
 
         # when frr_mgmt_mode = 'true' and zmq mode changes, we need to run the migrator script.
         # Otherwise, the config reload might might cause losing configuration
@@ -253,36 +194,33 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
         return True
 
     # Get current configuration
-    dut_routing_cfg_mode, dut_frr_mgmt_mode, dut_zmq_mode = get_current_frr_mgmt_modes()
+    dut_routing_cfg_mode, dut_frr_mgmt_mode = get_current_frr_mgmt_modes()
     # Store original configuration only once
     if _original_dut_frr_mgmt_modes is None:
         _original_dut_frr_mgmt_modes = {
             'routing_config_mode': dut_routing_cfg_mode,
             'frr_mgmt_config': dut_frr_mgmt_mode,
-            'zmq_enabled': dut_zmq_mode
         }
 
     if (dut_routing_cfg_mode == test_routing_cfg_mode and
-            dut_frr_mgmt_mode == test_frr_mgmt_mode and
-            dut_zmq_mode == test_zmq_enabled):
+            dut_frr_mgmt_mode == test_frr_mgmt_mode):
         logger.info(f"DUT already in {config_params['mode_name']} mode - no changes needed")
     else:
-        if not execute_migration(test_routing_cfg_mode, test_frr_mgmt_mode, test_zmq_enabled,
+        if not execute_migration(test_routing_cfg_mode, test_frr_mgmt_mode,
                                  cfg_reload='true', operation_name=f"{config_params['mode_name']} switch"):
             pytest.fail(f"Failed to switch DUT to {config_params['mode_name']} mode")
 
     yield
 
     # Only restore after the last mode has been tested
-    if config_params['mode_name'] == 'unified-mode-zmq-enabled':
+    if config_params['mode_name'] == 'unified-mode':
         logger.info(f"{'=' * 30} Restoring original frr mgmt mode {'=' * 30}")
         # Get current configuration
-        current_routing_mode, current_frr_mgmt_mode, current_zmq_mode = get_current_frr_mgmt_modes()
+        current_routing_mode, current_frr_mgmt_mode = get_current_frr_mgmt_modes()
 
         # Check if restoration is needed
         if (current_routing_mode == _original_dut_frr_mgmt_modes['routing_config_mode'] and
-                current_frr_mgmt_mode == _original_dut_frr_mgmt_modes['frr_mgmt_config'] and
-                current_zmq_mode == _original_dut_frr_mgmt_modes['zmq_enabled']):
+                current_frr_mgmt_mode == _original_dut_frr_mgmt_modes['frr_mgmt_config']):
             logger.info("DUT already in original frr mgmt config mode - no restoration needed")
         else:
             logger.info(f"Restoring DUT to original frr mgmt config mode: {_original_dut_frr_mgmt_modes}")
@@ -291,7 +229,6 @@ def bgp_switch_frr_mgmt_mode(request, duthosts, rand_one_dut_hostname, tbinfo):
             # tests/conftest.py fixture core_dump_and_config_check
             if not execute_migration(_original_dut_frr_mgmt_modes['routing_config_mode'],
                                      _original_dut_frr_mgmt_modes['frr_mgmt_config'],
-                                     _original_dut_frr_mgmt_modes['zmq_enabled'],
                                      cfg_reload='false',
                                      operation_name="Restoration"):
                 pytest.fail("Failed to restore original frr mgmt config mode")
