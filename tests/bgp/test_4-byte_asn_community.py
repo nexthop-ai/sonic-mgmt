@@ -330,8 +330,8 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
 
     dut_ipv4_network = duthost.shell("show run bgp | grep 'ip prefix-list PL_Loopback'")['stdout'].split()[6]
     dut_ipv6_network = duthost.shell("show run bgp | grep 'ipv6 prefix-list PL_Loopback'")['stdout'].split()[6]
-    neigh_ipv4_network = nbrhosts[neigh]["host"].shell("show run bgp | grep 'ip prefix-list'")['stdout'].split()[6]
-    neigh_ipv6_network = nbrhosts[neigh]["host"].shell("show run bgp | grep 'ipv6 prefix-list'")['stdout'].split()[6]
+    neigh_ipv4_network = nbrhosts[neigh]["host"].shell("show run bgp | grep 'ip prefix-list PL'")['stdout'].split()[6]
+    neigh_ipv6_network = nbrhosts[neigh]["host"].shell("show run bgp | grep 'ipv6 prefix-list PL'")['stdout'].split()[6]
 
     setup_info = {
         'bgp_neigh': SonicBGPRouter(neighbors[neigh], neigh_asn[neigh]),

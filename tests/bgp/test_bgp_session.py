@@ -1,6 +1,7 @@
 import logging
 import pytest
 import time
+from bgp_helpers import is_chassis
 from tests.common.platform.device_utils import fanout_switch_port_lookup
 from tests.common.utilities import wait_until
 from tests.common.helpers.assertions import pytest_assert
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 vrfname = 'default'
 
 pytestmark = [
-    pytest.mark.topology("t0", "t1", 'm1', 'lt2', 'ft2'),
+    pytest.mark.topology("t0", "t1", 'm1', 'lt2', 'ft2', 't2'),
 ]
 
 
@@ -36,8 +37,11 @@ def enable_container_autorestart(duthosts, rand_one_dut_hostname):
 
 
 @pytest.fixture(scope='module')
-def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
+def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts, tbinfo):
     duthost = duthosts[rand_one_dut_hostname]
+
+    if tbinfo['topo']['type'] == 't2' and is_chassis(duthost):
+        pytest.skip("t2 chassis dut")
 
     config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
     bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts, vrf_name=vrfname)
