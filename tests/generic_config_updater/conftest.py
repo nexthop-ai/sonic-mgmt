@@ -103,9 +103,10 @@ def ignore_expected_loganalyzer_exceptions(duthosts, selected_dut_hostname, loga
             ".*ERR ctrmgrd.py: Join failed.*",
 
             # DO NOT UPSTREAM
-            # Ignore errors from sharpd
+            # Ignore errors from sharpd/bfdd
             # https://app.devrev.ai/nexthop/works/ISS-3399
-            ".*ERR bgp#sharpd.*INTERFACE_STATE: Cannot find IF Vrf_.* in VRF.*"
+            ".*ERR bgp#sharpd.*INTERFACE_STATE: Cannot find IF Vrf_.* in VRF.*",
+            ".*ERR bgp#bfdd.*INTERFACE_STATE: Cannot find IF Vrf_.* in VRF.*"
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
 
