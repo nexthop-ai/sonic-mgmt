@@ -20,8 +20,20 @@ pytestmark = [
 TAM_ASICDB_TIMEOUT = 180
 TAM_ASICDB_INTERVAL = 10
 
+# IP family specific collector configurations
+TAM_COLLECTOR_IPV4 = {
+    "src_ip": "11.22.33.44",
+    "dst_ip": "10.20.30.40",
+}
+
+TAM_COLLECTOR_IPV6 = {
+    "src_ip": "2001:db8:1::44",
+    "dst_ip": "2001:db8:2::40",
+}
+
 # TAM Mirror on Drop configuration template
 # Note: ports will be dynamically populated in the fixture
+# IP addresses will be set based on ip_family parameter
 TAM_MOD_CONFIG_TEMPLATE = {
     "TAM": {
         "device": {
@@ -31,8 +43,8 @@ TAM_MOD_CONFIG_TEMPLATE = {
     },
     "TAM_COLLECTOR": {
         "COLLECTOR1": {
-            "src_ip": "11.22.33.44",
-            "dst_ip": "10.20.30.40",
+            "src_ip": "",  # Will be set based on IP family
+            "dst_ip": "",  # Will be set based on IP family
             "dst_port": "10000",
             "dscp_value": "32",
             "vrf": "default"
@@ -135,8 +147,8 @@ def verify_tam_mod_config_applied(duthost):
     )
 
 
-@pytest.fixture(scope="module")
-def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
+@pytest.fixture(scope="module", params=["ipv4", "ipv6"], ids=["IPv4_collector", "IPv6_collector"])
+def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
     """
     Apply TAM Mirror on Drop config with dynamically selected ports and clean up after.
 
@@ -145,13 +157,19 @@ def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
     2. Verifies TAM config is applied to both CONFIG_DB and ASIC_DB
     3. Cleans up TAM configurations after test completes
 
+    Parametrized to run with both IPv4 and IPv6 collector configurations.
+
     Returns:
-        tuple: (duthost, ingress_ports, collector_ports) where:
+        tuple: (duthost, ingress_ports, collector_ports, ip_family) where:
             - duthost: DUT host object
             - ingress_ports: dict of {port_name: ptf_index} for ingress traffic
             - collector_ports: list of PTF indices where collector is reachable
+            - ip_family: str, either "ipv4" or "ipv6"
     """
     duthost = duthosts[rand_one_dut_hostname]
+    ip_family = request.param
+
+    logger.info(f"Setting up TAM MoD configuration with {ip_family.upper()} collector")
 
     # Get available ports
     logger.info("Discovering available ports...")
@@ -162,14 +180,14 @@ def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
     ingress_port_names = list(available_ports.keys())
     logger.info(f"Selected ingress ports: {ingress_port_names}")
 
-    # Get collector egress ports based on routing
-    collector_config = _get_collector_config(duthost)
-    collector_ports = _get_collector_egress_ports(duthost, collector_config["dst_ip"], available_ports)
-    logger.info(f"Collector reachable on PTF ports: {collector_ports}")
+    # Create and apply TAM config with selected ports and IP family
+    logger.info(f"Applying TAM Mirror on Drop configuration with {ip_family.upper()} addresses...")
+    tam_config = _get_tam_config(ip_family)
 
-    # Create and apply TAM config with selected ports
-    logger.info("Applying TAM Mirror on Drop configuration...")
-    tam_config = json.loads(json.dumps(TAM_MOD_CONFIG_TEMPLATE))  # Deep copy
+    # Get collector egress ports based on routing
+    collector_config = _get_collector_config(ip_family)
+    collector_ports = _get_collector_egress_ports(duthost, collector_config["dst_ip"], available_ports, ip_family)
+    logger.info(f"Collector reachable on PTF ports: {collector_ports}")
 
     # Apply config to CONFIG_DB using sonic-cfggen
     tam_cfg_path = "/tmp/tam_mod_config.json"
@@ -192,16 +210,33 @@ def tam_mod_config(duthosts, rand_one_dut_hostname, tbinfo):
             # Individual port: map port name to PTF index
             ingress_ports_for_test[port_name] = port_value
 
-    yield duthost, ingress_ports_for_test, collector_ports
+    yield duthost, ingress_ports_for_test, collector_ports, ip_family
 
-    # Cleanup: remove TAM configurations
-    logger.info("Cleaning up TAM configurations...")
+    # Remove blackhole route if it was added during test
+    # Get collector config to determine the destination IP
+    if ip_family == "ipv4":
+        collector_dst_ip = TAM_COLLECTOR_IPV4["dst_ip"]
+        remove_blackhole_cmd = f"vtysh -c 'configure terminal' -c 'no ip route {collector_dst_ip}/32 blackhole'"
+    else:  # ipv6
+        collector_dst_ip = TAM_COLLECTOR_IPV6["dst_ip"]
+        remove_blackhole_cmd = f"vtysh -c 'configure terminal' -c 'no ipv6 route {collector_dst_ip}/128 blackhole'"
+
+    logger.info(f"Removing any blackhole routes for {ip_family.upper()} collector IP: {collector_dst_ip}")
+    duthost.shell(remove_blackhole_cmd, module_ignore_errors=True)
+
+    # Remove TAM configurations from CONFIG_DB
+    logger.info(f"Cleaning up TAM configurations for {ip_family.upper()}...")
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM|device"', module_ignore_errors=True)
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM_COLLECTOR|COLLECTOR1"', module_ignore_errors=True)
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM_SESSION|DROPMONITOR"', module_ignore_errors=True)
-    pytest_assert(wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0,
-                  lambda: tam_asicdb_state(duthost, False)), "ASIC_DB still has some TAM keys")
-    logger.info("TAM cleanup completed")
+
+    # Wait for ASIC_DB to be cleaned up
+    cleanup_result = wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0,
+                                lambda: tam_asicdb_state(duthost, False))
+    if cleanup_result:
+        logger.info(f"TAM cleanup completed {ip_family.upper()}")
+    else:
+        pytest.fail(f"TAM cleanup failed for {ip_family.upper()}: ASIC_DB still has some TAM keys")
 
 
 def _get_available_ports(duthost, tbinfo):
@@ -258,7 +293,7 @@ def _get_available_ports(duthost, tbinfo):
     return available_ports
 
 
-def _get_collector_egress_ports(duthost, collector_ip, available_ports):
+def _get_collector_egress_ports(duthost, collector_ip, available_ports, ip_family="ipv4"):
     """
     Get the egress ports where collector is reachable.
     Uses 'ip route get <collector-ip> fibmatch' to determine all egress interface(s).
@@ -270,13 +305,18 @@ def _get_collector_egress_ports(duthost, collector_ip, available_ports):
         duthost: DUT host object
         collector_ip: Collector IP address (string)
         available_ports: Dict of available ports {port_name: ptf_index or [ptf_indices]}
+        ip_family: IP family ("ipv4" or "ipv6")
 
     Returns:
         list: List of individual PTF port indices where collector is reachable
     """
     try:
         # Use 'ip route get <ip> fibmatch' to get all ECMP paths
-        cmd = f"ip route get {collector_ip} fibmatch"
+        # For IPv6, use 'ip -6 route get'
+        if ip_family == "ipv6":
+            cmd = f"ip -6 route get {collector_ip} fibmatch"
+        else:
+            cmd = f"ip route get {collector_ip} fibmatch"
         result = duthost.shell(cmd, module_ignore_errors=True)
 
         if result["rc"] != 0:
@@ -355,8 +395,10 @@ def _get_router_mac(duthost):
     return out["stdout"].strip().lower()
 
 
-def _get_collector_config(duthost):
-    config = TAM_MOD_CONFIG_TEMPLATE["TAM_COLLECTOR"]["COLLECTOR1"]
+def _get_collector_config(ip_family):
+    tam_config = _get_tam_config(ip_family)
+    """Get collector config from the TAM config template with proper type conversion."""
+    config = tam_config["TAM_COLLECTOR"]["COLLECTOR1"].copy()
     config["dst_port"] = int(config["dst_port"])
     config["dscp_value"] = int(config["dscp_value"])
     return config
@@ -482,13 +524,24 @@ class IPFIXCollector:
 
     def _is_ipfix_report(self, packet):
         """Check if the packet is an IPFIX report matching our collector config."""
-        if IP not in packet or UDP not in packet:
+        # Check for both IPv4 and IPv6
+        has_ipv4 = IP in packet
+        has_ipv6 = IPv6 in packet
+
+        if not (has_ipv4 or has_ipv6) or UDP not in packet:
             return False
 
-        ip_layer = packet[IP]
+        # Get the appropriate IP layer
+        if has_ipv4:
+            ip_layer = packet[IP]
+        else:
+            ip_layer = packet[IPv6]
+
         udp_layer = packet[UDP]
 
         # Check if it matches our collector configuration
+        # For IPv4: use ip_layer.src and ip_layer.dst
+        # For IPv6: use ip_layer.src and ip_layer.dst (same attribute names)
         if (not (ip_layer.src == self.collector_config["src_ip"] and
            ip_layer.dst == self.collector_config["dst_ip"] and
            udp_layer.dport == self.collector_config["dst_port"])):
@@ -507,7 +560,8 @@ class IPFIXCollector:
 
         # TODO - Need to verify DSCP values,
         # they seem incorrect
-        # dscp = (ip_layer.tos >> 2) & 0x3F
+        # For IPv4: dscp = (ip_layer.tos >> 2) & 0x3F
+        # For IPv6: dscp = (ip_layer.tc >> 2) & 0x3F
         # pytest_assert( dscp == int( self.collector_config["dscp_value"] ) )
 
         return True
@@ -532,12 +586,27 @@ class IPFIXCollector:
             self.captured_reports[port] = []
 
 
+def _get_tam_config(ip_family):
+    # Build tam_config with IP addresses based on IP family (same pattern as fixture)
+    tam_config = json.loads(json.dumps(TAM_MOD_CONFIG_TEMPLATE))  # Deep copy
+    if ip_family == "ipv4":
+        tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV4["src_ip"]
+        tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV4["dst_ip"]
+    else:  # ipv6
+        tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV6["src_ip"]
+        tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV6["dst_ip"]
+
+    return tam_config
+
+
 @pytest.mark.disable_loganalyzer
 def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     """
     Test basic TAM Mirror on Drop(stateless, flow aware) functionality with TTL expiry drops.
 
-    1. Configure TAM MoD with dynamically selected ports
+    This test is parametrized to run with both IPv4 and IPv6 collector configurations.
+
+    1. Configure TAM MoD with dynamically selected ports and IP family
     2. Send packets with TTL=1 that will expire and be dropped on ingress ports
     3. Verify IPFIX reports are sent to the collector on the designated egress port
 
@@ -545,11 +614,15 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     not distributed across multiple ports. We collect on all possible ports and identify
     which one receives the reports.
     """
-    duthost, ingress_ports, collector_ports = tam_mod_config
+    duthost, ingress_ports, collector_ports, ip_family = tam_mod_config
 
-    # Get router MAC and collector config
+    logger.info(f"Running test with {ip_family.upper()} collector configuration")
+
+    # Get router MAC
     router_mac = _get_router_mac(duthost)
-    collector_config = _get_collector_config(duthost)
+
+    # Get collector config using helper function
+    collector_config = _get_collector_config(ip_family)
 
     # Select one ingress port for packet injection
     ingress_port_name = list(ingress_ports.keys())[0]
@@ -578,8 +651,19 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
 
     # Blackhole collector IP and verify that all ASIC DB configuration is removed
-    cmd = f"vtysh -c 'configure terminal' -c 'ip route {collector_config['dst_ip']}/32 blackhole'"
-    duthost.shell(cmd,  module_ignore_errors=True)
+    # Use appropriate command based on IP family
+    if ip_family == "ipv4":
+        blackhole_cmd = "vtysh -c 'configure terminal'" +\
+                        f" -c 'ip route {collector_config['dst_ip']}/32 blackhole'"
+        remove_blackhole_cmd = "vtysh -c 'configure terminal'" +\
+                               f" -c 'no ip route {collector_config['dst_ip']}/32 blackhole'"
+    else:  # ipv6
+        blackhole_cmd = f"vtysh -c 'configure terminal' -c 'ipv6 route {collector_config['dst_ip']}/128 blackhole'"
+        remove_blackhole_cmd = "vtysh -c 'configure terminal'" +\
+                               f" -c 'no ipv6 route {collector_config['dst_ip']}/128 blackhole'"
+
+    logger.info(f"Adding blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
+    duthost.shell(blackhole_cmd, module_ignore_errors=True)
     wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, False))
 
     # Verify that now no drop reports are sent
@@ -587,8 +671,8 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     packet_test.run_packet_test(is_ipv4=False, expect_reports=False)
 
     # Now, remove the blackhole, the TAM configuration should be recreated
-    cmd = f"vtysh -c 'configure terminal' -c 'no ip route {collector_config['dst_ip']}/32 blackhole'"
-    duthost.shell(cmd,  module_ignore_errors=True)
+    logger.info(f"Removing blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
+    duthost.shell(remove_blackhole_cmd, module_ignore_errors=True)
     wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, True))
 
     # Verify that now reports are generated on drops again
