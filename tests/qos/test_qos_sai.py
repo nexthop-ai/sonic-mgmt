@@ -1743,8 +1743,7 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
+
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         qosConfig = dutQosConfig["param"]
@@ -2327,8 +2326,6 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         qosConfig = dutQosConfig["param"]
