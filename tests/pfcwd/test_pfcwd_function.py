@@ -949,7 +949,9 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             pfc_wd_restore_time_large = request.config.getoption("--restore-time")
             # wait time before we check the logs for the 'restore' signature. 'pfc_wd_restore_time_large' is in ms.
             self.timers['pfc_wd_wait_for_restore_time'] = int(pfc_wd_restore_time_large / 1000 * 2)
-            actions = ['dontcare', 'drop', 'forward']
+            # actions = ['dontcare', 'drop', 'forward']
+            # Temporarily disable forward action until NOS-463 is fixed
+            actions = ['dontcare', 'drop']
             # A temporary workaround for TH5 platform as forward action is not working
             if duthost.sonichost._facts['asic_type'] == "cisco-8000" or "7060X6" in duthost.facts['hwsku'].upper():
                 actions = ['dontcare', 'drop']
