@@ -5,6 +5,7 @@ import ptf.testutils as testutils
 from scapy.all import Ether, IP, UDP, TCP, Raw
 import time
 import random
+from ipaddress import ip_address
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.tam.ifa_common import IFA2Header, IFA2MetadataHeader, IFAMetadata
@@ -21,6 +22,16 @@ pytestmark = [
 TAM_ASICDB_TIMEOUT = 180
 TAM_ASICDB_INTERVAL = 10
 
+TAM_CONFIG = {
+    "TAM": {
+        "device": {
+            "device-id": "12345",
+            "enterprise-id": "54321",
+            "ifa": "true"
+        }
+    }
+}
+
 
 def tam_asicdb_has_keys(duthost):
     out = duthost.shell('sonic-db-cli ASIC_DB KEYS "*TAM*"')
@@ -30,9 +41,6 @@ def tam_asicdb_has_keys(duthost):
 
 def wait_for_tam_asicdb_applied(duthost, timeout=TAM_ASICDB_TIMEOUT, interval=TAM_ASICDB_INTERVAL):
     return wait_until(timeout, interval, 0, lambda: tam_asicdb_has_keys(duthost))
-
-
-TAM_CONFIG = {"TAM": {"device": {"device-id": "12345", "enterprise-id": "54321", "ifa": "true"}}}
 
 
 def verify_config_applied(duthost):
@@ -57,6 +65,30 @@ def verify_config_applied(duthost):
 
 
 @pytest.fixture(scope="module")
+def upstream_peer_ipv4(tam_transit_mode_config, tbinfo):
+    """
+    Get an upstream peer IPv4 address that routes to front panel ports.
+
+    This fixture computes the peer IP once per test module and reuses it across
+    all tests. The peer IP is selected from minigraph facts and is guaranteed to:
+    - Route to front panel ports (not VLAN interfaces)
+    - Be reachable from PTF adapter
+    - Skip backend PortChannels (chassis internal connections)
+
+    Args:
+        tam_transit_mode_config: Fixture that provides duthost with TAM config
+        tbinfo: Testbed information
+
+    Returns:
+        str: IPv4 address of an upstream peer (e.g., "10.0.0.57")
+    """
+    duthost = tam_transit_mode_config
+    peer_ip = _get_upstream_peer_ip(duthost, tbinfo, ip_version=4)
+    logger.info(f"Module-level upstream peer IPv4 selected: {peer_ip}")
+    return peer_ip
+
+
+@pytest.fixture(scope="module")
 def tam_transit_mode_config(duthosts, rand_one_dut_hostname):
     """
     Apply TAM device config to enable IFA transit mode, and clean up after.
@@ -72,9 +104,12 @@ def tam_transit_mode_config(duthosts, rand_one_dut_hostname):
     # Verify TAM config is applied to both CONFIG_DB and ASIC_DB
     verify_config_applied(duthost)
 
+    logger.info("TAM transit mode config applied successfully")
+
     yield duthost
 
     # Cleanup: remove TAM|device
+    logger.info("Cleaning up TAM config")
     duthost.shell('sonic-db-cli CONFIG_DB DEL "TAM|device"', module_ignore_errors=True)
 
 
@@ -108,7 +143,62 @@ def _get_config_device_id(duthost):
     return int(show["stdout"].strip())
 
 
-def build_ifa2_probe(ptfadapter, router_mac, ptf_src_port, next_hdr="UDP", sent_ttl=64):
+def _get_upstream_peer_ip(duthost, tbinfo, ip_version=4):
+    """
+    Get a peer IP address from minigraph that will route to front panel ports.
+
+    Returns:
+        str: Peer IP address (e.g., "10.0.0.57" for IPv4 or "fc00::72" for IPv6)
+
+    Raises:
+        pytest.fail: If no suitable peer IP address is found
+    """
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+
+    # Try PortChannel interfaces first (most common on T0 topologies)
+    for intf in mg_facts.get("minigraph_portchannel_interfaces", []):
+        # Skip backend PortChannels (used for chassis internal connections)
+        if duthost.is_backend_portchannel(intf["attachto"], mg_facts):
+            continue
+
+        if "peer_addr" in intf:
+            try:
+                addr = ip_address(intf["peer_addr"])
+                if addr.version == ip_version:
+                    logger.info(
+                        "Using peer IP {} from PortChannel {} (version={})".format(
+                            intf["peer_addr"], intf["attachto"], ip_version
+                        )
+                    )
+                    return intf["peer_addr"]
+            except ValueError:
+                # Invalid IP address, skip
+                continue
+
+    # Fall back to physical interfaces for other topologies
+    for intf in mg_facts.get("minigraph_interfaces", []):
+        if "peer_addr" in intf:
+            try:
+                addr = ip_address(intf["peer_addr"])
+                if addr.version == ip_version:
+                    logger.info(
+                        "Using peer IP {} from interface {} (version={})".format(
+                            intf["peer_addr"], intf["attachto"], ip_version
+                        )
+                    )
+                    return intf["peer_addr"]
+            except ValueError:
+                # Invalid IP address, skip
+                continue
+
+    # No suitable peer IP found
+    pytest.fail(
+        "Could not find any IPv{} peer address in minigraph. "
+        "Checked minigraph_portchannel_interfaces and minigraph_interfaces.".format(ip_version)
+    )
+
+
+def build_ifa2_probe(ptfadapter, router_mac, ptf_src_port, dst_ip, next_hdr="UDP", sent_ttl=64):
     """
     Build an IFA2 probe packet with configurable next header (UDP or TCP) and TTL.
     """
@@ -124,7 +214,7 @@ def build_ifa2_probe(ptfadapter, router_mac, ptf_src_port, next_hdr="UDP", sent_
 
     probe = (
         Ether(src=src_mac, dst=router_mac)
-        / IP(src="100.0.0.1", dst="192.168.1.200", ttl=sent_ttl, proto=253)
+        / IP(src="100.0.0.1", dst=dst_ip, ttl=sent_ttl, proto=253)
         / ifah
         / l4
         / ifamh
@@ -139,7 +229,7 @@ def send_probe(ptfadapter, ptf_src_port, probe, count=5):
     testutils.send(ptfadapter, ptf_src_port, probe, count=count)
 
 
-def verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=12345, timeout=10):
+def verify_ifa2_egress(ptfadapter, sent_ttl, device_id=12345, timeout=10):
     """
     Poll dataplane and verify an egress packet with IFA2 header and IFAMetadata carrying the
     specified device_id. Also checks that TTL was decremented by 1.
@@ -190,7 +280,7 @@ def verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=12345, time
 
 @pytest.mark.disable_loganalyzer
 @pytest.mark.parametrize("next_hdr", ["UDP", "TCP"])
-def test_ifa_transit_mode_metadata_insertion(tam_transit_mode_config, ptfadapter, tbinfo, next_hdr):
+def test_ifa_transit_mode_metadata_insertion(tam_transit_mode_config, ptfadapter, tbinfo, upstream_peer_ipv4, next_hdr):
     """
     Configure TAM IFA transit mode and verify that upon receiving an IP packet with
     protocol 253 (IFA2), the DUT inserts IFA metadata on egress.
@@ -210,20 +300,26 @@ def test_ifa_transit_mode_metadata_insertion(tam_transit_mode_config, ptfadapter
     router_mac = _get_router_mac(duthost)
 
     logger.info(f"Using ingress {ingr_port_name}/PTF{ptf_src_port} -> egress {egr_port_name}/PTF{ptf_dst_port}")
+    logger.info(f"Using destination IP: {upstream_peer_ipv4}")
 
     # Build, send, and verify IFA metadata insertion
     sent_ttl = 64
     expected_device_id = _get_config_device_id(duthost)
     probe = build_ifa2_probe(
-        ptfadapter=ptfadapter, router_mac=router_mac, ptf_src_port=ptf_src_port, next_hdr=next_hdr, sent_ttl=sent_ttl
+        ptfadapter=ptfadapter,
+        router_mac=router_mac,
+        ptf_src_port=ptf_src_port,
+        dst_ip=upstream_peer_ipv4,
+        next_hdr=next_hdr,
+        sent_ttl=sent_ttl,
     )
     send_probe(ptfadapter, ptf_src_port, probe, count=5)
-    verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=expected_device_id, timeout=10)
+    verify_ifa2_egress(ptfadapter, sent_ttl, device_id=expected_device_id, timeout=10)
 
 
 @pytest.mark.disable_loganalyzer
 @pytest.mark.parametrize("next_hdr", ["UDP", "TCP"])
-def test_ifa_device_id_update(tam_transit_mode_config, ptfadapter, tbinfo, next_hdr):
+def test_ifa_device_id_update(tam_transit_mode_config, ptfadapter, tbinfo, upstream_peer_ipv4, next_hdr):
     """
     After enabling IFA transit mode, change the TAM device-id and verify that
     subsequent IFA metadata carries the updated device id.
@@ -234,14 +330,21 @@ def test_ifa_device_id_update(tam_transit_mode_config, ptfadapter, tbinfo, next_
     (_, ptf_src_port), _ = _pick_two_active_ptf_ports(duthost, ptfadapter, tbinfo)
     router_mac = _get_router_mac(duthost)
 
+    logger.info(f"Using destination IP: {upstream_peer_ipv4}")
+
     # First, verify baseline behavior with currently configured device-id
     sent_ttl = 64
     baseline_device_id = _get_config_device_id(duthost)
     probe = build_ifa2_probe(
-        ptfadapter=ptfadapter, router_mac=router_mac, ptf_src_port=ptf_src_port, next_hdr=next_hdr, sent_ttl=sent_ttl
+        ptfadapter=ptfadapter,
+        router_mac=router_mac,
+        ptf_src_port=ptf_src_port,
+        dst_ip=upstream_peer_ipv4,
+        next_hdr=next_hdr,
+        sent_ttl=sent_ttl,
     )
     send_probe(ptfadapter, ptf_src_port, probe, count=5)
-    verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=baseline_device_id, timeout=10)
+    verify_ifa2_egress(ptfadapter, sent_ttl, device_id=baseline_device_id, timeout=10)
 
     # Update device-id and verify it takes effect
     new_device_id = 67890
@@ -259,8 +362,9 @@ def test_ifa_device_id_update(tam_transit_mode_config, ptfadapter, tbinfo, next_
         ptfadapter=ptfadapter,
         router_mac=router_mac,
         ptf_src_port=ptf_src_port,
+        dst_ip=upstream_peer_ipv4,
         next_hdr=next_hdr,
         sent_ttl=sent_ttl,
     )
     send_probe(ptfadapter, ptf_src_port, probe2, count=5)
-    verify_ifa2_egress(ptfadapter, ptf_src_port, sent_ttl, device_id=new_device_id, timeout=10)
+    verify_ifa2_egress(ptfadapter, sent_ttl, device_id=new_device_id, timeout=10)

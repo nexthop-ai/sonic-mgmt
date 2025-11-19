@@ -6,10 +6,11 @@ from scapy.all import Ether, IP, UDP, TCP, Raw, IPv6
 import time
 import threading
 import re
+import copy
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
-from ipfix_common import IPFIXHeader
+from ipfix_common import IPFIXHeader, PsampModHeader
 
 logger = logging.getLogger(__name__)
 
@@ -458,17 +459,32 @@ class PacketTest:
             # Stop collector
             self.collector.stop_collection()
 
-    def run_packet_test(self, is_ipv4, expect_reports):
-        self.collector.cleanup()
-        self.send_packets(is_ipv4=is_ipv4)
-
+    def validate_mod_packets(self, expect_reports):
         # Verify that there were IPFIX packets sent out on one of the ports to the collector
         report_count = self.collector.get_report_count()
         logger.info(f"Found {report_count} IPFIX reports on collector")
-        if expect_reports:
-            pytest_assert(report_count > 0, "At least one report must have been sent")
-        else:
+
+        # If no reports were expected and there are no packets, we are good
+        if not expect_reports:
             pytest_assert(report_count == 0, "No report must have been sent")
+            return
+
+        # Reports are expected, validate the contents
+        pytest_assert(report_count > 0, "At least one report must have been sent")
+
+        # Iterate over the packets and verify that there at least one expected frame
+        for _, packets in self.collector.captured_reports.items():
+            for packet in packets:
+                result, reason = self.collector._is_valid_mod_packet(packet)
+                pytest_assert(result, f"Invalid MOD Packet, reason:{reason}")
+                return
+
+        pytest_assert(False, "MOD frames not received as expected")
+
+    def run_packet_test(self, is_ipv4, expect_reports):
+        self.collector.cleanup()
+        self.send_packets(is_ipv4=is_ipv4)
+        self.validate_mod_packets(expect_reports)
 
 
 class IPFIXCollector:
@@ -547,16 +563,17 @@ class IPFIXCollector:
            udp_layer.dport == self.collector_config["dst_port"])):
             return False
 
+    def _is_valid_mod_packet(self, packet):
         # Verify that it is an IPFix packet
         udp_payload = bytes(packet[UDP].payload)
 
-        if len(udp_payload) < 20:  # Minimum IPFIX header size
-            return False
+        if len(udp_payload) < 44:  # Minimum IPFIX+Psamp header size
+            return (False, f"Invalid UDP payload length {len(udp_payload)}")
 
         # Check if it looks like IPFIX (version 10)
         header = IPFIXHeader(udp_payload[:20])
         if header.version != 10:
-            return False
+            return (False, f"Invalid IPFIX version {header.version}")
 
         # TODO - Need to verify DSCP values,
         # they seem incorrect
@@ -564,7 +581,30 @@ class IPFIXCollector:
         # For IPv6: dscp = (ip_layer.tc >> 2) & 0x3F
         # pytest_assert( dscp == int( self.collector_config["dscp_value"] ) )
 
-        return True
+        psamp_header = PsampModHeader(udp_payload[16:])
+
+        inner_packet = Ether(udp_payload[44:])
+
+        has_inner_ip = IP in inner_packet
+        has_inner_ipv6 = IPv6 in inner_packet
+
+        # If the inner packet is not IP, ignore it
+        if not (has_inner_ip or has_inner_ipv6):
+            return (True, "")
+
+        # If the source IP address of the inner packet does not match our traffic
+        # ignore it
+        if (has_inner_ip and inner_packet[IP].src != "10.1.1.100") or \
+           (has_inner_ipv6 and inner_packet[IPv6].src != "2000:10:1:1::100"):
+            return (True, "")
+
+        # This is a packet we are intersted in.  Validate some of the psamp header
+        # TODO - Need to verify based on type of drop
+        # Verify that the ingress drop reason code is non-zero.
+        if psamp_header.drop_reason_ip == 0:
+            return (False, "Invalid ingress drop-reason-code")
+
+        return (True, "")
 
     def get_report_count(self, port=None):
         """Get the number of captured IPFIX reports.
@@ -588,7 +628,7 @@ class IPFIXCollector:
 
 def _get_tam_config(ip_family):
     # Build tam_config with IP addresses based on IP family (same pattern as fixture)
-    tam_config = json.loads(json.dumps(TAM_MOD_CONFIG_TEMPLATE))  # Deep copy
+    tam_config = copy.deepcopy(TAM_MOD_CONFIG_TEMPLATE)  # Deep copy
     if ip_family == "ipv4":
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV4["src_ip"]
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV4["dst_ip"]
