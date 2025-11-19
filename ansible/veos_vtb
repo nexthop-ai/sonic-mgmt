@@ -24,6 +24,7 @@ all:
           - t1-smartswitch
           - t1-smartswitch-ha
           - t1-small
+          - t1-small-v6
           - t0
           - t0-16
           - t0-28
@@ -38,6 +39,7 @@ all:
           - t0-118
           - t0-backend
           - t0-small
+          - t0-small-v6
           - t0-88-o8c80
           - dualtor
           - dualtor-56
