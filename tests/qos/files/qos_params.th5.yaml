@@ -138,6 +138,34 @@ qos_params:
                     pkts_num_dismiss_pfc: 350
                     pkts_num_margin: 370
                     pkts_num_trig_pfc: 92000
+            800000_5m:
+                hdrm_pool_size:
+                    dscps:
+                    - 3
+                    - 4
+                    dst_port_id: 0
+                    ecn: 1
+                    margin: 15
+                    pgs:
+                    - 3
+                    - 4
+                    pgs_num: 2
+                    pkts_num_hdrm_full: 336 # Actual Heardoom pool size - 1 (One packet is sent to detect the PFC)
+                    pkts_num_hdrm_partial: 320 # Headroom Partial < Actual Heardoom pool size < Headroom Partial + 2 * margin + 1
+                    pkts_num_trig_pfc: 90540
+                    pkts_num_trig_pfc_multi: # Max packets that can be sent without invoking PFC.
+                    - 90540
+                    - 45690
+                    src_port_ids:
+                    - 0
+                lossy_queue_1:
+                    dscp: 8
+                    ecn: 1
+                    pg: 0
+                    pkts_num_margin: 100
+                    pkts_num_trig_egr_drp: 121570
+                pkts_num_egr_mem: 0
+                pkts_num_leak_out: 0
             400000_300m:
                 lossy_queue_1:
                     dscp: 8
