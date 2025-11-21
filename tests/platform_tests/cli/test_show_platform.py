@@ -493,6 +493,55 @@ def test_show_platform_temperature(duthosts, enum_rand_one_per_hwsku_hostname):
     # TODO: Test values against platform-specific expected data
 
 
+def verify_show_platform_voltage_output(raw_output_lines, hostname):
+    """
+    @summary: Verify output of `show platform voltage`. Expected output is
+              "Sensor not detected" or a table of voltage status data with 8 columns.
+    """
+    NUM_EXPECTED_COLS = 8
+
+    pytest_assert(len(raw_output_lines) > 0, "There must be at least one line of output on '{}'".format(hostname))
+    if len(raw_output_lines) == 1:
+        pytest_assert(raw_output_lines[0].strip() == "Sensor not detected",
+                      "Unexpected sensor status output on '{}'".format(hostname))
+    else:
+        pytest_assert(len(raw_output_lines) > 2,
+                      "There must be at least two lines of output if any sensor is detected on '{}'".format(hostname))
+        second_line = raw_output_lines[1]
+        field_ranges = util.get_field_range(second_line)
+        field_names = util.get_fields(raw_output_lines[0], field_ranges)
+        pytest_assert(len(field_ranges) == NUM_EXPECTED_COLS, "Output should consist of {} columns on '{}'".
+                      format(NUM_EXPECTED_COLS, hostname))
+
+        voltages = []
+        for line in raw_output_lines[2:]:
+            field_values = util.get_fields(line, field_ranges)
+            row = {}
+            for field_index, field_name in enumerate(field_names):
+                row[field_name] = field_values[field_index]
+            voltages.append(row)
+
+        for v in voltages:
+            pytest_assert(
+                v["Warning"] == "False",
+                "Voltage {} is in warning state on '{}'".format(v["Sensor"], hostname)
+            )
+        # TODO: NOS-1367 - Add stricter checks based on platform.json sensor info.
+
+
+def test_show_platform_voltage(duthosts, enum_rand_one_per_hwsku_hostname):
+    """
+    @summary: Verify output of `show platform voltage`
+    """
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    cmd = " ".join([CMD_SHOW_PLATFORM, "voltage"])
+
+    logging.info("Verifying output of '{}' on '{}'...".format(cmd, duthost.hostname))
+    voltage_output_lines = duthost.command(cmd)["stdout_lines"]
+
+    verify_show_platform_voltage_output(voltage_output_lines, duthost.hostname)
+
+
 def test_show_platform_ssdhealth(duthosts, enum_supervisor_dut_hostname):
     """
     @summary: Verify output of `show platform ssdhealth`
