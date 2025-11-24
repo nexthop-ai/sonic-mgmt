@@ -563,6 +563,8 @@ class IPFIXCollector:
            udp_layer.dport == self.collector_config["dst_port"])):
             return False
 
+        return True
+
     def _is_valid_mod_packet(self, packet):
         # Verify that it is an IPFix packet
         udp_payload = bytes(packet[UDP].payload)
