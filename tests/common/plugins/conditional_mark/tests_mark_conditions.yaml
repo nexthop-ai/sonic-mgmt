@@ -3760,6 +3760,13 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPgHeadroomWatermark:
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min']) and asic_type not in ['mellanox']"
 
+qos/test_qos_sai.py::TestQosSai::testQosSaiPgMinThreshold[:
+  skip:
+    reason: "Unsupported topology."
+    conditions_logical_operator: or
+    conditions:
+      - "topo_name in (constants['QOS_SAI_TOPO'] + ['t0-16'])"
+
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgSharedWatermark[None-wm_pg_shared_lossy]:
   xfail:
     reason: "Image issue on Arista platforms / Unsupported testbed type."
