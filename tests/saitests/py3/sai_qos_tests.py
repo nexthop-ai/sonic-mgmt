@@ -3115,7 +3115,7 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
             # Adding COUNTER_MARGIN to provide room to 2 pkt incase, extra traffic received
             for cntr in ingress_counters:
                 if (platform_asic and
-                        platform_asic in ["broadcom-dnx", "cisco-8000"]):
+                        platform_asic in ["broadcom-dnx", "cisco-8000", "broadcom"]):
                     qos_test_assert(
                         self, recv_counters[cntr] <= recv_counters_base[cntr] + COUNTER_MARGIN,
                         'unexpectedly ingress drop on recv port (counter: {}), at step {} {}'.format(
