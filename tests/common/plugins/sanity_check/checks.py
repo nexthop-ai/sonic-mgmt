@@ -138,7 +138,14 @@ def check_interfaces(duthosts, tbinfo):
             phy_interfaces = [k for k, v in list(cfg_facts["PORT"].items()) if
                               "admin_status" in v and v["admin_status"] == "up"]
             if "PORTCHANNEL_INTERFACE" in cfg_facts:
-                ip_interfaces = list(cfg_facts["PORTCHANNEL_INTERFACE"].keys())
+                for portchannel in cfg_facts["PORTCHANNEL_INTERFACE"]:
+                    portchannel_ips = cfg_facts["PORTCHANNEL_INTERFACE"][portchannel]
+                    if use_ipv6:
+                        if any(is_ipv6_address(addr.split("/")[0]) for addr in portchannel_ips):
+                            ip_interfaces.append(portchannel)
+                    else:
+                        if any(is_ipv4_address(addr.split("/")[0]) for addr in portchannel_ips):
+                            ip_interfaces.append(portchannel)
             if "VLAN_INTERFACE" in cfg_facts:
                 for vlan in cfg_facts["VLAN_INTERFACE"]:
                     if use_ipv6:
