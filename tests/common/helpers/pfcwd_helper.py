@@ -327,6 +327,18 @@ def set_pfc_timers():
     return pfc_timers
 
 
+def update_pfc_poll_interval(duthost, poll_interval):
+    """
+    Update PFC watchdog poll interval on the DUT
+
+    Args:
+        duthost: DUT host object
+        poll_interval (int): Poll interval in milliseconds (100-3000)
+    """
+    logger.info("Setting PFC watchdog poll interval to {}ms".format(poll_interval))
+    duthost.command("pfcwd interval {}".format(poll_interval))
+
+
 def select_test_ports(test_ports):
     """
     Select a subset of ports from the generated port info

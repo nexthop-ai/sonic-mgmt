@@ -5,7 +5,8 @@ import pytest
 from tests.common.fixtures.conn_graph_facts import enum_fanout_graph_facts      # noqa: F401
 from tests.common.helpers.pfc_storm import PFCMultiStorm
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
-from tests.common.helpers.pfcwd_helper import start_wd_on_ports, start_background_traffic     # noqa: F401
+from tests.common.helpers.pfcwd_helper import start_wd_on_ports, update_pfc_poll_interval, \
+    start_background_traffic  # noqa: F401
 from tests.common.helpers.pfcwd_helper import EXPECT_PFC_WD_DETECT_RE, EXPECT_PFC_WD_RESTORE_RE, \
     fetch_vendor_specific_diagnosis_re, verify_all_ports_pfc_storm_in_expected_state
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_enum_rand_one_per_hwsku_frontend_host_m # noqa F401, E501
@@ -120,6 +121,7 @@ def storm_test_setup_restore(setup_pfc_test, enum_fanout_graph_facts, duthosts, 
     pfc_wd_restore_time = 200
     peer_params = populate_peer_info(asic_type, port_list, neighbors, pfc_queue_index, pfc_frames_number)
     storm_hndle = set_storm_params(duthost, enum_fanout_graph_facts, fanouthosts, peer_params)
+    update_pfc_poll_interval(duthost, 200)
     start_wd_on_ports(duthost, ports, pfc_wd_restore_time, pfc_wd_detect_time)
 
     yield storm_hndle

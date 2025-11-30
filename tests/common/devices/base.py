@@ -105,15 +105,27 @@ class AnsibleHostBase(object):
         res = self.module(*module_args, **complex_args)[self.hostname]
 
         if verbose:
-            logger.debug(
-                "{}::{}#{}: [{}] AnsibleModule::{} Result => {}".format(
-                    filename,
-                    function_name,
-                    line_number,
-                    self.hostname,
-                    self.module_name, json.dumps(res, cls=AnsibleHostBase.CustomEncoder)
+            try:
+                result_json = json.dumps(res, cls=AnsibleHostBase.CustomEncoder)
+                logger.debug(
+                    "{}::{}#{}: [{}] AnsibleModule::{} Result => {}".format(
+                        filename,
+                        function_name,
+                        line_number,
+                        self.hostname,
+                        self.module_name, result_json
+                    )
                 )
-            )
+            except (TypeError, ValueError):
+                logger.debug(
+                    "{}::{}#{}: [{}] AnsibleModule::{} Result => <non-serializable result: {}>".format(
+                        filename,
+                        function_name,
+                        line_number,
+                        self.hostname,
+                        self.module_name, str(type(res))
+                    )
+                 )
         else:
             logger.debug(
                 "{}::{}#{}: [{}] AnsibleModule::{} done, is_failed={}, rc={}".format(

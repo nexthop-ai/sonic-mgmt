@@ -5,6 +5,7 @@ import ipaddress
 
 from tests.common.devices.base import AnsibleHostBase
 from tests.common.platform.device_utils import fanout_switch_port_lookup
+from tests.common.platform.lldp_utils import wait_for_lldp_neighbors
 from tests.common.utilities import wait, wait_until
 from netaddr import IPAddress
 from tests.common.helpers.assertions import pytest_assert
@@ -98,6 +99,8 @@ def setup(duthosts, enum_rand_one_per_hwsku_frontend_hostname, tbinfo):
          'up_ports': up_ports,
          'upport_alias_list': upport_alias_list
     }
+
+    wait_for_lldp_neighbors(duthost, ESTABLISH_LLDP_NEIGHBOR_TIMEOUT)
 
     yield setup_info
 
