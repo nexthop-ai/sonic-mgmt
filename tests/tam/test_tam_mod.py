@@ -61,6 +61,29 @@ TAM_MOD_CONFIG_TEMPLATE = {
 }
 
 
+MATCHED_FLOWS = [
+    ("10.1.1.0/24", "20.2.2.0/24", "6", "1000", "80"),
+    ("30.3.3.0/24", "40.4.4.0/24", "6", "1000", "80")
+]
+
+
+MATCHED_FLOWS_IPV6 = [
+    ("2000:10:1:1::0/120", "2000:20:2:2::0/120", "6", "1000", "80"),
+    ("2000:30:3:3::0/120", "2000:40:4:4::0/120", "6", "1000", "80"),
+]
+
+
+UNMATCHED_FLOWS = [
+    ("100.1.1.1", "101.2.2.2", "6", "1001", "81"),
+    ("101.3.3.3", "101.4.4.4", "17", "5001", "6001")
+]
+
+
+UNMATCHED_FLOWS_IPV6 = [
+    ("2001:10:1:1::100/120", "2001:20:2:2::100/120", "6", "1000", "80"),
+]
+
+
 def tam_asicdb_state(duthost, shouldExist):
     """
     Verify that ASIC_DB contains all required TAM objects:
@@ -120,7 +143,7 @@ def wait_for_tam_asicdb_applied(duthost, timeout=TAM_ASICDB_TIMEOUT, interval=TA
     return wait_until(timeout, interval, 0, lambda: tam_asicdb_state(duthost, True))
 
 
-def verify_tam_mod_config_applied(duthost):
+def verify_tam_mod_config_applied(duthost, ip_family, flow_aware):
     """
     Verify that TAM Mirror on Drop config has been applied:
     - CONFIG_DB contains TAM tables with expected fields
@@ -141,6 +164,19 @@ def verify_tam_mod_config_applied(duthost):
     lines = show.get("stdout_lines", []) or []
     pytest_assert(lines, "CONFIG_DB: TAM_SESSION|DROPMONITOR not found or empty")
 
+    if flow_aware:
+        # Check TAM flow group config
+        show = duthost.shell('sonic-db-cli CONFIG_DB HGETALL "TAM_FLOW_GROUP|FG1"', module_ignore_errors=False)
+        lines = show.get("stdout_lines", []) or []
+        pytest_assert(lines, "CONFIG_DB: TAM_FLOW_GROUP|FG1 not found or empty")
+        num_flow_rules = len(MATCHED_FLOWS) if ip_family == "ipv4" else len(MATCHED_FLOWS_IPV6)
+        for idx in range(1, num_flow_rules + 1):
+            rule_key = f"FG1|RULE{idx}"
+            show = duthost.shell(f'sonic-db-cli CONFIG_DB HGETALL "TAM_FLOW_GROUP|{rule_key}"',
+                                 module_ignore_errors=False)
+            lines = show.get("stdout_lines", []) or []
+            pytest_assert(lines, f"CONFIG_DB: TAM_FLOW_GROUP|{rule_key} not found or empty")
+
     # Ensure orchagent applied TAM config into ASIC_DB
     pytest_assert(
         wait_for_tam_asicdb_applied(duthost, TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL),
@@ -148,8 +184,18 @@ def verify_tam_mod_config_applied(duthost):
     )
 
 
-@pytest.fixture(scope="module", params=["ipv4", "ipv6"], ids=["IPv4_collector", "IPv6_collector"])
-def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
+@pytest.fixture(scope="module", params=["ipv4", "ipv6"], ids=["IPv4_collector", "IPv6_collector",])
+def ip_family_param(request):
+    return request.param
+
+
+@pytest.fixture(scope="module", params=[False, True,], ids=["flow_unaware", "flow_aware",])
+def flow_aware_param(request):
+    return request.param
+
+
+@pytest.fixture(scope="module")
+def tam_mod_config(ip_family_param, flow_aware_param, duthosts, rand_one_dut_hostname, tbinfo):
     """
     Apply TAM Mirror on Drop config with dynamically selected ports and clean up after.
 
@@ -168,7 +214,8 @@ def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
             - ip_family: str, either "ipv4" or "ipv6"
     """
     duthost = duthosts[rand_one_dut_hostname]
-    ip_family = request.param
+    ip_family = ip_family_param
+    flow_aware = flow_aware_param
 
     logger.info(f"Setting up TAM MoD configuration with {ip_family.upper()} collector")
 
@@ -181,12 +228,14 @@ def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
     ingress_port_names = list(available_ports.keys())
     logger.info(f"Selected ingress ports: {ingress_port_names}")
 
+    ingress_port = (ingress_port_names[0], available_ports[ingress_port_names[0]])
+
     # Create and apply TAM config with selected ports and IP family
     logger.info(f"Applying TAM Mirror on Drop configuration with {ip_family.upper()} addresses...")
-    tam_config = _get_tam_config(ip_family)
+    tam_config = _get_tam_config(ip_family, ingress_port[0], flow_aware)
 
     # Get collector egress ports based on routing
-    collector_config = _get_collector_config(ip_family)
+    collector_config = _get_collector_config(tam_config)
     collector_ports = _get_collector_egress_ports(duthost, collector_config["dst_ip"], available_ports, ip_family)
     logger.info(f"Collector reachable on PTF ports: {collector_ports}")
 
@@ -197,7 +246,7 @@ def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
     pytest_assert(res["rc"] == 0, f"Failed to apply TAM MoD config: {res}")
 
     # Verify TAM config is applied to both CONFIG_DB and ASIC_DB
-    verify_tam_mod_config_applied(duthost)
+    verify_tam_mod_config_applied(duthost, ip_family, flow_aware)
 
     # Build ingress_ports dict for test: map port/LAG names to individual PTF indices
     # For LAGs, we need to expand to individual member ports for packet injection
@@ -211,7 +260,7 @@ def tam_mod_config(request, duthosts, rand_one_dut_hostname, tbinfo):
             # Individual port: map port name to PTF index
             ingress_ports_for_test[port_name] = port_value
 
-    yield duthost, ingress_ports_for_test, collector_ports, ip_family
+    yield duthost, ingress_port, collector_ports, collector_config, ip_family, flow_aware
 
     # Remove blackhole route if it was added during test
     # Get collector config to determine the destination IP
@@ -396,38 +445,12 @@ def _get_router_mac(duthost):
     return out["stdout"].strip().lower()
 
 
-def _get_collector_config(ip_family):
-    tam_config = _get_tam_config(ip_family)
+def _get_collector_config(tam_config):
     """Get collector config from the TAM config template with proper type conversion."""
     config = tam_config["TAM_COLLECTOR"]["COLLECTOR1"].copy()
     config["dst_port"] = int(config["dst_port"])
     config["dscp_value"] = int(config["dscp_value"])
     return config
-
-
-def build_ttl_expiry_packet(ptfadapter, router_mac, ptf_src_port, is_ipv4=True):
-    """
-    TTL=1 ensures packet will be dropped due to TTL expiry during forwarding.
-    """
-    src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
-
-    # Create packet with TTL=1
-    if is_ipv4:
-        packet = (
-            Ether(src=src_mac, dst=router_mac)
-            / IP(src="10.1.1.100", dst="20.2.2.100", ttl=1)  # TTL=1 will expire
-            / TCP(sport=1000, dport=80)  # Matches L4 ports and protocol 6
-            / Raw(b"TTL expiry test packet for MoD V4")
-        )
-    else:
-        packet = (
-            Ether(src=src_mac, dst=router_mac)
-            / IPv6(src="2000:10:1:1::100", dst="2000:20:2:2::100", hlim=1)  # TTL=1 will expire
-            / TCP(sport=1000, dport=80)  # Matches L4 ports and protocol 6
-            / Raw(b"TTL expiry test packet for MoD V6")
-        )
-
-    return packet
 
 
 class PacketTest:
@@ -437,6 +460,30 @@ class PacketTest:
         self.collector = collector
         self.router_mac = router_mac
 
+    def _build_ttl_expiry_packet(self, ptfadapter, router_mac, ptf_src_port, is_ipv4=True):
+        """
+        TTL=1 ensures packet will be dropped due to TTL expiry during forwarding.
+        """
+        src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
+
+        # Create packet with TTL=1
+        if is_ipv4:
+            packet = (
+                Ether(src=src_mac, dst=router_mac)
+                / IP(src="10.1.1.100", dst="20.2.2.100", ttl=1)  # TTL=1 will expire
+                / TCP(sport=1000, dport=80)  # Matches L4 ports and protocol 6
+                / Raw(b"TTL expiry test packet for MoD V4")
+            )
+        else:
+            packet = (
+                Ether(src=src_mac, dst=router_mac)
+                / IPv6(src="2000:10:1:1::100", dst="2000:20:2:2::100", hlim=1)  # TTL=1 will expire
+                / TCP(sport=1000, dport=80)  # Matches L4 ports and protocol 6
+                / Raw(b"TTL expiry test packet for MoD V6")
+            )
+
+        return packet
+
     def send_packets(self, is_ipv4=True):
         try:
             # Start collecting IPFIX reports on all possible collector ports
@@ -444,8 +491,8 @@ class PacketTest:
             logger.info(f"Started IPFIX collection on PTF ports {self.collector.collector_ports}")
 
             # Build packets with TTL=1 that will expire and be dropped
-            ttl_expiry_packet = build_ttl_expiry_packet(self.ptfadapter, self.router_mac,
-                                                        self.ptf_ingress_port, is_ipv4=is_ipv4)
+            ttl_expiry_packet = self._build_ttl_expiry_packet(self.ptfadapter, self.router_mac,
+                                                              self.ptf_ingress_port, is_ipv4=is_ipv4)
 
             logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
             for i in range(10):  # Send multiple packets to ensure drops are detected
@@ -487,6 +534,117 @@ class PacketTest:
         self.validate_mod_packets(expect_reports)
 
 
+class PacketTestFlowAware(PacketTest):
+    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac):
+        super().__init__(ptfadapter, ptf_ingress_port, collector, router_mac)
+        self.num_matched_packets = 10
+        self.num_unmatched_packets = 10
+
+    def _build_ttl_expiry_packet(self, ptfadapter, router_mac, ptf_src_port,
+                                 src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port,
+                                 l4_dst_port, is_ipv4=True):
+        """
+        TTL=1 ensures packet will be dropped due to TTL expiry during forwarding.
+        """
+        src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
+
+        index = src_ip_prefix.rfind(".") + 1 if is_ipv4 else src_ip_prefix.rfind(":") + 1
+        src_ip = src_ip_prefix[:index] + "100"
+
+        index = dst_ip_prefix.rfind(".") + 1 if is_ipv4 else dst_ip_prefix.rfind(":") + 1
+        dst_ip = dst_ip_prefix[:index] + "100"
+
+        # Create packet with TTL=1
+        ip = IP(src=src_ip, dst=dst_ip, ttl=1) if is_ipv4 \
+            else IPv6(src=src_ip, dst=dst_ip, hlim=1)
+
+        if ip_protocol == "6":
+            l4 = TCP(sport=int(l4_src_port), dport=int(l4_dst_port))
+        elif ip_protocol == "17":
+            l4 = UDP(sport=int(l4_src_port), dport=int(l4_dst_port))
+        else:
+            pytest_assert(False, f"Unsupported IP protocol: {ip_protocol}")
+        payload = Raw(b"TTL expiry test packet for MoD V4") if is_ipv4 \
+            else Raw(b"TTL expiry test packet for MoD V6")
+        packet = Ether(src=src_mac, dst=router_mac) / ip / l4 / payload
+
+        return packet
+
+    def send_packets(self, is_ipv4=True):
+        try:
+            # Start collecting IPFIX reports on all possible collector ports
+            self.collector.start_collection(timeout=30)
+            logger.info(f"Started IPFIX collection on PTF ports {self.collector.collector_ports}")
+
+            matched_flows = MATCHED_FLOWS if is_ipv4 else MATCHED_FLOWS_IPV6
+            unmatched_flows = UNMATCHED_FLOWS if is_ipv4 else UNMATCHED_FLOWS_IPV6
+
+            # Build packets with TTL=1 that will expire and be dropped
+            for src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port in matched_flows:
+                ttl_expiry_packet = self._build_ttl_expiry_packet(
+                    self.ptfadapter, self.router_mac,
+                    self.ptf_ingress_port, src_ip_prefix, dst_ip_prefix,
+                    ip_protocol, l4_src_port, l4_dst_port, is_ipv4=is_ipv4
+                )
+
+                logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
+                for i in range(self.num_matched_packets):  # Send multiple packets to ensure drops are detected
+                    testutils.send(self.ptfadapter, self.ptf_ingress_port, ttl_expiry_packet)
+                    time.sleep(0.1)  # Small delay between packets
+
+            # Send packets that should not match any flow rule
+            for src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port in unmatched_flows:
+                ttl_expiry_packet = self._build_ttl_expiry_packet(
+                    self.ptfadapter, self.router_mac,
+                    self.ptf_ingress_port, src_ip_prefix, dst_ip_prefix,
+                    ip_protocol, l4_src_port, l4_dst_port, is_ipv4=is_ipv4
+                )
+
+                logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
+                for i in range(self.num_unmatched_packets):  # Send multiple packets to ensure drops are detected
+                    testutils.send(self.ptfadapter, self.ptf_ingress_port, ttl_expiry_packet)
+                    time.sleep(0.1)  # Small delay between packets
+
+            # Wait for IPFIX reports to be generated and sent
+            time.sleep(5)
+
+        finally:
+            # Stop collector
+            self.collector.stop_collection()
+
+    def validate_mod_packets(self, expect_reports, ipv4=True):
+        # Verify that there were IPFIX packets sent out on one of the ports to the collector
+        report_count = self.collector.get_report_count()
+        logger.info(f"Found {report_count} IPFIX reports on collector")
+
+        # If no reports were expected and there are no packets, we are good
+        if not expect_reports:
+            pytest_assert(report_count == 0, "No report must have been sent")
+            return
+
+        matched_flows = MATCHED_FLOWS if ipv4 else MATCHED_FLOWS_IPV6
+        matched_reports = []
+        for src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port in matched_flows:
+            matched_reports.extend(
+                self.collector.get_matched_reports_by_packet_fields(
+                    src_ip_prefix=src_ip_prefix, dst_ip_prefix=dst_ip_prefix, ip_protocol=ip_protocol,
+                    l4_src_port=l4_src_port, l4_dst_port=l4_dst_port
+                )
+            )
+        pytest_assert(len(matched_reports) > 0,
+                      "Expected at least one matched report, got none")
+
+        unmatched_flows = UNMATCHED_FLOWS if ipv4 else UNMATCHED_FLOWS_IPV6
+        for src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port in unmatched_flows:
+            unmatched_reports = self.collector.get_matched_reports_by_packet_fields(
+                src_ip_prefix=src_ip_prefix, dst_ip_prefix=dst_ip_prefix,
+                ip_protocol=ip_protocol, l4_src_port=l4_src_port,
+                l4_dst_port=l4_dst_port
+            )
+        pytest_assert(len(unmatched_reports) == 0,
+                      f"Expected 0 unmatched reports, got {len(unmatched_reports)}")
+
+
 class IPFIXCollector:
     """
     IPFIX collector that captures and validates IPFIX reports.
@@ -506,6 +664,8 @@ class IPFIXCollector:
 
     def start_collection(self, timeout=30):
         """Start collecting IPFIX reports in a separate thread."""
+        self.ptfadapter.dataplane.flush()
+        self.cleanup()
         self.collecting = True
         self.collection_thread = threading.Thread(target=self._collect_reports, args=(timeout,))
         self.collection_thread.start()
@@ -532,7 +692,7 @@ class IPFIXCollector:
             try:
                 pkt = Ether(res.packet)
                 if self._is_ipfix_report(pkt):
-                    self.captured_reports[res.port].append(pkt)
+                    self.captured_reports[res.port].append(self._parse_packet(pkt))
                     logger.info(f"Captured IPFIX report on port {res.port}: {pkt.summary()}")
 
             except Exception as e:
@@ -562,6 +722,7 @@ class IPFIXCollector:
            ip_layer.dst == self.collector_config["dst_ip"] and
            udp_layer.dport == self.collector_config["dst_port"])):
             return False
+        return True
 
         return True
 
@@ -608,6 +769,44 @@ class IPFIXCollector:
 
         return (True, "")
 
+    def _parse_packet(self, packet):
+        """Parse the packet and return a dictionary of interesting fields."""
+        # Verify that it is an IPFix packet
+        udp_payload = bytes(packet[UDP].payload)
+
+        if len(udp_payload) < 44:  # Minimum IPFIX+Psamp header size
+            logger.debug(f"Invalid UDP payload length {len(udp_payload)}")
+            return {}
+
+        # Check if it looks like IPFIX (version 10)
+        header = IPFIXHeader(udp_payload[:20])
+        if header.version != 10:
+            logger.debug(f"Invalid IPFIX version {header.version}")
+            return {}
+
+        psamp_header = PsampModHeader(udp_payload[16:])
+
+        inner_packet = Ether(udp_payload[44:])
+
+        has_inner_ip = IP in inner_packet
+        has_inner_ipv6 = IPv6 in inner_packet
+
+        # If the inner packet is not IP, ignore it
+        if not (has_inner_ip or has_inner_ipv6):
+            logger.debug("Inner packet is not IP")
+            return {}
+
+        return {
+            "drop_reason_ip": psamp_header.drop_reason_ip,
+            "drop_reason_ep_or_mmu": psamp_header.drop_reason_ep_or_mmu,
+            "is_ipv4": has_inner_ip,
+            "src_ip": inner_packet[IP].src if has_inner_ip else inner_packet[IPv6].src,
+            "dst_ip": inner_packet[IP].dst if has_inner_ip else inner_packet[IPv6].dst,
+            "ip_protocol": inner_packet[IP].proto if has_inner_ip else inner_packet[IPv6].nh,
+            "l4_src_port": inner_packet[TCP].sport if TCP in inner_packet else inner_packet[UDP].sport,
+            "l4_dst_port": inner_packet[TCP].dport if TCP in inner_packet else inner_packet[UDP].dport,
+        }
+
     def get_report_count(self, port=None):
         """Get the number of captured IPFIX reports.
 
@@ -622,27 +821,93 @@ class IPFIXCollector:
         """Get captured reports for a specific port."""
         return self.captured_reports.get(port, [])
 
+    def get_matched_reports(self, match_func):
+        """Get the captured IPFIX reports that match the given function on the given port.
+
+        Args:
+            port: Port to check
+            match_func: Function that takes a report and returns True if it matches
+        """
+        matched_reports = []
+        for reports in self.captured_reports.values():
+            matched_reports.extend([report for report in reports if match_func(report)])
+        return matched_reports
+
+    def get_matched_reports_by_packet_fields(self, **kwargs):
+        """Get the captured IPFIX reports that match the given partial fields on the given port.
+
+        Args:
+            port: Port to check
+            kwargs: Dictionary of fields to match. If the field is not present in the report, it is ignored.
+        """
+        def _match_ip_prefix(ip, prefix):
+            index = prefix.rfind(".") + 1 if "." in prefix else prefix.rfind(":") + 1
+            prefix = prefix[:index]
+            return ip.startswith(prefix)
+
+        def _match_func(report):
+            for k, v in kwargs.items():
+                if k == "src_ip_prefix":
+                    return _match_ip_prefix(report["src_ip"], v)
+                if k == "dst_ip_prefix":
+                    return _match_ip_prefix(report["dst_ip"], v)
+                if k not in report:
+                    continue
+                if report[k] != v:
+                    return False
+                return True
+
+        return self.get_matched_reports(_match_func)
+
     def cleanup(self):
         # Delete all the old reports
         for port in self.collector_ports:
             self.captured_reports[port] = []
 
 
-def _get_tam_config(ip_family):
+def _get_tam_config(ip_family, ports, flow_aware):
     # Build tam_config with IP addresses based on IP family (same pattern as fixture)
     tam_config = copy.deepcopy(TAM_MOD_CONFIG_TEMPLATE)  # Deep copy
+    flow_rules = None
     if ip_family == "ipv4":
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV4["src_ip"]
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV4["dst_ip"]
+        flow_rules = MATCHED_FLOWS
     else:  # ipv6
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV6["src_ip"]
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV6["dst_ip"]
+        flow_rules = MATCHED_FLOWS_IPV6
+
+    if not flow_aware:
+        return tam_config
+
+    if not isinstance(ports, list):
+        ports = [ports]
+
+    # Add ports to flow group
+    tam_config["TAM_FLOW_GROUP"] = {}
+    tam_config["TAM_FLOW_GROUP"]["FG1"] = {
+        "aging_interval": "1000",
+        "ports": ports
+    }
+
+    tam_config["TAM_SESSION"]["DROPMONITOR"]["flow_group"] = ["FG1"]
+
+    for idx, (src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port) in enumerate(flow_rules, start=1):
+        rule_key = f"FG1|RULE{idx}"
+        tam_config["TAM_FLOW_GROUP"][rule_key] = {
+            "src_ip_prefix": src_ip_prefix,
+            "dst_ip_prefix": dst_ip_prefix,
+            "ip_protocol": ip_protocol,
+            "l4_src_port": l4_src_port,
+            "l4_dst_port": l4_dst_port
+        }
 
     return tam_config
 
 
 @pytest.mark.disable_loganalyzer
-def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
+def test_mod_stateless(tam_mod_config, ptfadapter, tbinfo):
     """
     Test basic TAM Mirror on Drop(stateless, flow aware) functionality with TTL expiry drops.
 
@@ -656,19 +921,16 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
     not distributed across multiple ports. We collect on all possible ports and identify
     which one receives the reports.
     """
-    duthost, ingress_ports, collector_ports, ip_family = tam_mod_config
+    duthost, ingress_port, collector_ports, collector_config, ip_family, flow_aware = tam_mod_config
 
     logger.info(f"Running test with {ip_family.upper()} collector configuration")
 
     # Get router MAC
     router_mac = _get_router_mac(duthost)
 
-    # Get collector config using helper function
-    collector_config = _get_collector_config(ip_family)
-
     # Select one ingress port for packet injection
-    ingress_port_name = list(ingress_ports.keys())[0]
-    port_value = ingress_ports[ingress_port_name]
+    ingress_port_name = ingress_port[0]
+    port_value = ingress_port[1]
 
     # If it's a LAG (list of indices), pick the first member port
     if isinstance(port_value, list):
@@ -681,16 +943,17 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
 
     logger.info(f"Possible collector ports (based on routing): {collector_ports}")
     logger.info(f"Collector config: {collector_config}")
-
     # Set up single IPFIX collector for all possible collector ports
     # Reports will be sent to only ONE of these ports, but we collect on all
     collector = IPFIXCollector(ptfadapter, collector_ports, collector_config)
 
-    packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac)
+    packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac) if not flow_aware \
+        else PacketTestFlowAware(ptfadapter, ptf_ingress_port, collector, router_mac)
 
     # Run both IPv4 and Ipv6 test packets
     packet_test.run_packet_test(is_ipv4=True, expect_reports=True)
-    packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
+    if not flow_aware:  # TODO: Revisit this when flow aware is fixed for IPv6
+        packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
 
     # Blackhole collector IP and verify that all ASIC DB configuration is removed
     # Use appropriate command based on IP family
@@ -710,7 +973,8 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
 
     # Verify that now no drop reports are sent
     packet_test.run_packet_test(is_ipv4=True, expect_reports=False)
-    packet_test.run_packet_test(is_ipv4=False, expect_reports=False)
+    if not flow_aware:
+        packet_test.run_packet_test(is_ipv4=False, expect_reports=False)
 
     # Now, remove the blackhole, the TAM configuration should be recreated
     logger.info(f"Removing blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
@@ -719,4 +983,5 @@ def test_mod_stateless_flow_unaware_basic(tam_mod_config, ptfadapter, tbinfo):
 
     # Verify that now reports are generated on drops again
     packet_test.run_packet_test(is_ipv4=True, expect_reports=True)
-    packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
+    if not flow_aware:
+        packet_test.run_packet_test(is_ipv4=False, expect_reports=True)
