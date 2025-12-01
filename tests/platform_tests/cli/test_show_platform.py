@@ -454,54 +454,16 @@ def test_show_platform_fan(duthosts, enum_supervisor_dut_hostname):
                   " No Fans are displayed with OK status on '{}'".format(duthost.hostname))
 
 
-def verify_show_platform_temperature_output(raw_output_lines, hostname):
+def verify_show_platform_sensor_output(raw_output_lines, hostname, not_detected_str):
     """
-    @summary: Verify output of `show platform temperature`. Expected output is
-              "Thermal Not detected" or a table of thermal status data with 8 columns.
-    """
-    num_expected_clos = 8
-
-    pytest_assert(len(raw_output_lines) > 0, "There must be at least one line of output on '{}'".format(hostname))
-    if len(raw_output_lines) == 1:
-        if six.PY2:
-            pytest_assert(raw_output_lines[0].encode('utf-8').strip() == "Thermal Not detected",
-                          "Unexpected thermal status output on '{}'".format(hostname))
-        else:
-            pytest_assert(raw_output_lines[0].strip() == "Thermal Not detected",
-                          "Unexpected thermal status output on '{}'".format(hostname))
-    else:
-        pytest_assert(len(raw_output_lines) > 2,
-                      "There must be at least two lines of output if any thermal is detected on '{}'".format(hostname))
-        second_line = raw_output_lines[1]
-        field_ranges = util.get_field_range(second_line)
-        pytest_assert(len(field_ranges) == num_expected_clos, "Output should consist of {} columns on '{}'".
-                      format(num_expected_clos, hostname))
-
-
-def test_show_platform_temperature(duthosts, enum_rand_one_per_hwsku_hostname):
-    """
-    @summary: Verify output of `show platform temperature`
-    """
-    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
-    cmd = " ".join([CMD_SHOW_PLATFORM, "temperature"])
-
-    logging.info("Verifying output of '{}' on '{}'...".format(cmd, duthost.hostname))
-    temperature_output_lines = duthost.command(cmd)["stdout_lines"]
-    verify_show_platform_temperature_output(temperature_output_lines, duthost.hostname)
-
-    # TODO: Test values against platform-specific expected data
-
-
-def verify_show_platform_voltage_output(raw_output_lines, hostname):
-    """
-    @summary: Verify output of `show platform voltage`. Expected output is
-              "Sensor not detected" or a table of voltage status data with 8 columns.
+    @summary: Verify output of `show platform temperature/voltage/current`. Expected output is
+              "Thermal/Sensor not detected" or a table of thermal status data with 8 columns.
     """
     NUM_EXPECTED_COLS = 8
 
     pytest_assert(len(raw_output_lines) > 0, "There must be at least one line of output on '{}'".format(hostname))
     if len(raw_output_lines) == 1:
-        pytest_assert(raw_output_lines[0].strip() == "Sensor not detected",
+        pytest_assert(raw_output_lines[0].strip() == not_detected_str,
                       "Unexpected sensor status output on '{}'".format(hostname))
     else:
         pytest_assert(len(raw_output_lines) > 2,
@@ -512,33 +474,63 @@ def verify_show_platform_voltage_output(raw_output_lines, hostname):
         pytest_assert(len(field_ranges) == NUM_EXPECTED_COLS, "Output should consist of {} columns on '{}'".
                       format(NUM_EXPECTED_COLS, hostname))
 
-        voltages = []
+        sensors = []
         for line in raw_output_lines[2:]:
             field_values = util.get_fields(line, field_ranges)
             row = {}
             for field_index, field_name in enumerate(field_names):
                 row[field_name] = field_values[field_index]
-            voltages.append(row)
+            sensors.append(row)
 
-        for v in voltages:
+        for sensor in sensors:
             pytest_assert(
-                v["Warning"] == "False",
-                "Voltage {} is in warning state on '{}'".format(v["Sensor"], hostname)
+                sensor["Warning"] == "False",
+                "Voltage {} is in warning state on '{}'".format(sensor["Sensor"], hostname)
             )
         # TODO: NOS-1367 - Add stricter checks based on platform.json sensor info.
+
+
+def test_show_platform_temperature(duthosts, enum_rand_one_per_hwsku_hostname):
+    """
+    @summary: Verify output of `show platform temperature`
+    """
+    NOT_DETECTED_STR = "Thermal Not detected"
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    cmd = " ".join([CMD_SHOW_PLATFORM, "temperature"])
+
+    logging.info("Verifying output of '{}' on '{}'...".format(cmd, duthost.hostname))
+    temperature_output_lines = duthost.command(cmd)["stdout_lines"]
+    verify_show_platform_sensor_output(temperature_output_lines, duthost.hostname, NOT_DETECTED_STR)
+
+    # TODO: Test values against platform-specific expected data
 
 
 def test_show_platform_voltage(duthosts, enum_rand_one_per_hwsku_hostname):
     """
     @summary: Verify output of `show platform voltage`
     """
+    NOT_DETECTED_STR = "Sensor not detected"
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     cmd = " ".join([CMD_SHOW_PLATFORM, "voltage"])
 
     logging.info("Verifying output of '{}' on '{}'...".format(cmd, duthost.hostname))
     voltage_output_lines = duthost.command(cmd)["stdout_lines"]
 
-    verify_show_platform_voltage_output(voltage_output_lines, duthost.hostname)
+    verify_show_platform_sensor_output(voltage_output_lines, duthost.hostname, NOT_DETECTED_STR)
+
+
+def test_show_platform_current(duthosts, enum_rand_one_per_hwsku_hostname):
+    """
+    @summary: Verify output of `show platform current`
+    """
+    NOT_DETECTED_STR = "Sensor not detected"
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    cmd = " ".join([CMD_SHOW_PLATFORM, "current"])
+
+    logging.info("Verifying output of '{}' on '{}'...".format(cmd, duthost.hostname))
+    current_output_lines = duthost.command(cmd)["stdout_lines"]
+
+    verify_show_platform_sensor_output(current_output_lines, duthost.hostname, NOT_DETECTED_STR)
 
 
 def test_show_platform_ssdhealth(duthosts, enum_supervisor_dut_hostname):
