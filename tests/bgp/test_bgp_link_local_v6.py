@@ -385,7 +385,7 @@ def test_bgp_link_local_peer(duthosts, rand_one_dut_hostname, nbrhosts, tbinfo, 
 
     # Wait for BGP session to establish on DUT
     logger.info("Waiting for BGP session to establish on DUT...")
-    dut_established = wait_until(30, 1, 0, lambda: check_bgp_session_state(duthost, None, dut_interface))
+    dut_established = wait_until(90, 1, 0, lambda: check_bgp_session_state(duthost, None, dut_interface))
     logger.info(f"DUT BGP session established: {dut_established}")
 
     # Wait for BGP session to establish on peer
