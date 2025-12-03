@@ -1110,7 +1110,6 @@ class EverflowIPv4Tests(BaseEverflowTest):
         else:
             # For single-asic SKUs, recircle port is Ethernet-Rec0
             recircle_port = "Ethernet-Rec0"
-
         try:
             everflow_utils.verify_mirror_packets_on_recircle_port(
                 self,
@@ -1123,7 +1122,8 @@ class EverflowIPv4Tests(BaseEverflowTest):
                 dest_port_type,
                 queue,
                 asic_ns,
-                recircle_port
+                recircle_port,
+                valid_across_namespace=everflow_dut.is_multi_asic,
             )
         finally:
             remote_dut.shell(remote_dut.get_vtysh_cmd_for_namespace(
