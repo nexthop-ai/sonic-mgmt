@@ -1017,7 +1017,7 @@ class TestShowVlan():
 
 
 # Tests to be run in t1 topology
-@pytest.mark.topology('t1')
+@pytest.mark.topology('t1', 'lt2', 'ft2')
 class TestConfigInterface():
     def check_speed_change(self, duthost, asic_index, interface, change_speed):
         db_cmd = 'sudo {} CONFIG_DB HGET "PORT|{}" speed'\
@@ -1355,7 +1355,7 @@ def test_show_acl_table(setup, setup_config_mode, tbinfo):
     Checks whether 'show acl table DATAACL' lists the interface names
     as per the configured naming mode
     """
-    if tbinfo['topo']['type'] not in ['t1', 't2']:
+    if tbinfo['topo']['type'] not in ['t1', 't2', 'lt2', 'ft2']:
         pytest.skip('Unsupported topology')
 
     if not setup['physical_interfaces']:
@@ -1394,7 +1394,7 @@ def test_show_interfaces_neighbor_expected(setup, setup_config_mode, tbinfo, dut
     Checks whether 'show interfaces neighbor expected' lists the
     interface names as per the configured naming mode
     """
-    if tbinfo['topo']['type'] not in ['t1', 't2']:
+    if tbinfo['topo']['type'] not in ['t1', 't2', 'lt2', 'ft2']:
         pytest.skip('Unsupported topology')
 
     dutHostGuest, mode, ifmode = setup_config_mode
@@ -1444,7 +1444,7 @@ def test_show_interfaces_neighbor_expected(setup, setup_config_mode, tbinfo, dut
                 )
 
 
-@pytest.mark.topology('t1', 't2')
+@pytest.mark.topology('t1', 't2', 'lt2', 'ft2')
 class TestNeighbors():
 
     @pytest.fixture(scope="class", autouse=True)
@@ -1534,7 +1534,7 @@ class TestNeighbors():
                     ).format(addr, detail['interface'], ndp_output)
 
 
-@pytest.mark.topology('t1', 't2')
+@pytest.mark.topology('t1', 't2', 'lt2', 'ft2')
 class TestShowIP():
 
     @pytest.fixture(scope="class", autouse=True)
