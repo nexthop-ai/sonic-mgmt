@@ -53,8 +53,10 @@ class TestWatchdogApi(PlatformApiTestBase):
         if (
             duthost.facts["platform"] == "armhf-nokia_ixs7215_52x-r0"
             or duthost.facts["platform"] == "arm64-nokia_ixs7215_52xb-r0"
-            or duthost.facts["platform"].startswith("x86_64-nexthop_")
         ):
+            duthost.shell("watchdogutil disarm")
+        elif duthost.facts["platform"].startswith("x86_64-nexthop_"):
+            duthost.shell("systemctl disable watchdog.timer --now")
             duthost.shell("watchdogutil disarm")
 
         assert not watchdog.is_armed(platform_api_conn)
@@ -66,9 +68,8 @@ class TestWatchdogApi(PlatformApiTestBase):
             if duthost.facts['platform'] == 'armhf-nokia_ixs7215_52x-r0' or \
                     duthost.facts['platform'] == 'arm64-nokia_ixs7215_52xb-r0':
                 duthost.shell("systemctl start cpu_wdt.service")
-
-            if duthost.facts["platform"].startswith("x86_64-nexthop_"):
-                duthost.shell("systemctl start watchdog.timer")
+            elif duthost.facts["platform"].startswith("x86_64-nexthop_"):
+                duthost.shell("systemctl enable watchdog.timer --now")
 
     @pytest.fixture(scope='module')
     def conf(self, request,
