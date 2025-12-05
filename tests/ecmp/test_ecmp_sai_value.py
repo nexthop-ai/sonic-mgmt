@@ -43,14 +43,14 @@ seed_cmd_td3 = [
     'bcmcmd "getreg RTAG7_HASH_SEED_B_PIPE0"',
 ]
 
-seed_cmd_th5 = []
+seed_cmd_th5_th6 = []
 for i in range(8):
-    seed_cmd_th5.append('bcmcmd "dsh -c \'get RTAG7_HASH_SEED_Ar{' + str(i) + '}.ipipe0\'"')
+    seed_cmd_th5_th6.append('bcmcmd "dsh -c \'get RTAG7_HASH_SEED_Ar{' + str(i) + '}.ipipe0\'"')
 for i in range(8):
-    seed_cmd_th5.append('bcmcmd "dsh -c \'get RTAG7_HASH_SEED_Br{' + str(i) + '}.ipipe0\'"')
+    seed_cmd_th5_th6.append('bcmcmd "dsh -c \'get RTAG7_HASH_SEED_Br{' + str(i) + '}.ipipe0\'"')
 
 offset_cmd = 'bcmcmd  "dump RTAG7_PORT_BASED_HASH 0 392 OFFSET_ECMP"'
-offset_cmd_th5 = 'bcmcmd "bsh -c \'pt dump RTAG7_PORT_BASED_HASH 0 351 OFFSET_ECMP\'"'
+offset_cmd_th5_th6 = 'bcmcmd "bsh -c \'pt dump RTAG7_PORT_BASED_HASH 0 351 OFFSET_ECMP\'"'
 
 
 @pytest.fixture
@@ -94,7 +94,7 @@ def parse_hash_seed(output, asic_name):
 
 def parse_ecmp_offset(outputs, asic_name):
     # Regular expression pattern to extract OFFSET_ECMP values (hexadecimal)
-    if asic_name == "th5":
+    if asic_name in ("th5", "th6"):
         pattern = r'OFFSET_ECMP_PRIMARY=(0x?[0-9a-fA-F]?)'
     else:
         pattern = r'OFFSET_ECMP=(0x?[0-9a-fA-F]?)'
@@ -167,13 +167,13 @@ def check_hash_seed_value(duthost, asic_name, topo_type):
         seed_cmd_input = seed_cmd_td2
     elif asic_name == "td3":
         seed_cmd_input = seed_cmd_td3
-    elif asic_name == "th5":
-        seed_cmd_input = seed_cmd_th5
+    elif asic_name in ("th5", "th6"):
+        seed_cmd_input = seed_cmd_th5_th6
     else:
         seed_cmd_input = seed_cmd
     for cmd in seed_cmd_input:
-        if asic_name == "th5":
-            # TH5 output format is slightly different. Expected pattern comes in a different line
+        if asic_name in ("th5", "th6"):
+            # TH5/TH6 output format is slightly different. Expected pattern comes in a different line
             output = duthost.command(cmd, module_ignore_errors=True)["stdout_lines"][3].strip()
         else:
             output = duthost.command(cmd, module_ignore_errors=True)["stdout_lines"][2].strip()
@@ -193,9 +193,9 @@ def check_ecmp_offset_value(duthost, asic_name, topo_type, hwsku):
     """
     pytest_assert(wait_until(300, 20, 0, check_syncd_is_running, duthost), "syncd is not running!")
 
-    if asic_name == "th5":
-        output = duthost.shell(offset_cmd_th5, module_ignore_errors=True)['stdout']
-        logger.info(f"Offset cmd: {offset_cmd_th5}, output: {output}")
+    if asic_name in ("th5", "th6"):
+        output = duthost.shell(offset_cmd_th5_th6, module_ignore_errors=True)['stdout']
+        logger.info(f"Offset cmd: {offset_cmd_th5_th6}, output: {output}")
     else:
         output = duthost.shell(offset_cmd, module_ignore_errors=True)['stdout']
 
@@ -242,7 +242,8 @@ def test_ecmp_hash_seed_value(localhost, duthosts, tbinfo, enum_rand_one_per_hws
     hostvars = get_host_visible_vars(duthost.host.options['inventory'], duthost.hostname)
     hwsku = duthost.facts['hwsku']
     supported_platforms = ['broadcom_td2_hwskus', 'broadcom_td3_hwskus', 'broadcom_th_hwskus',
-                           'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus']
+                           'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus',
+                           'broadcom_th6_hwskus']
     asic_name = None
     for platform in supported_platforms:
         supported_skus = hostvars.get(platform, [])
@@ -295,7 +296,8 @@ def test_ecmp_offset_value(localhost, duthosts, tbinfo, enum_rand_one_per_hwsku_
     hostvars = get_host_visible_vars(duthost.host.options['inventory'], duthost.hostname)
     hwsku = duthost.facts['hwsku']
     supported_platforms = ['broadcom_td2_hwskus', 'broadcom_td3_hwskus', 'broadcom_th_hwskus',
-                           'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus']
+                           'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus',
+                           'broadcom_th6_hwskus']
     asic_name = None
     for platform in supported_platforms:
         supported_skus = hostvars.get(platform, [])
