@@ -334,7 +334,7 @@ bgp/test_bgp_port_disable.py:
   skip:
     reason: "Not supperted on master."
     conditions:
-      - "release in ['master', '202505']"
+      - "release in ['master', 'main', '202505']"
 
 bgp/test_bgp_queue.py:
   skip:
@@ -457,7 +457,7 @@ bgp/test_bgp_suppress_fib.py:
     reason: "Not supported before release 202411."
     conditions_logical_operator: or
     conditions:
-      - "release in ['201811', '201911', '202012', '202205', '202211', '202305', '202311', '202405', 'master']"
+      - "release in ['201811', '201911', '202012', '202205', '202211', '202305', '202311', '202405', 'master', 'main']"
       - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-mgmt/issues/14449"
 
 bgp/test_bgp_update_timer.py::test_bgp_update_timer_session_down:
