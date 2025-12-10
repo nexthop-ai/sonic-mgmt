@@ -134,6 +134,10 @@ def config_dut_ports(duthost, ports, vlan):
         duthost.command('config vlan member del %s %s' % (vlan, ports[i]), module_ignore_errors=True)
         duthost.command('config interface ip add %s %s/24' %
                         (ports[i], var['dut_intf_ips'][i]))
+<<<<<<< HEAD
+=======
+    time.sleep(5)
+>>>>>>> upstream/master
 
 # ----------------------------------------------------------------------------------$
 
@@ -208,11 +212,30 @@ def config_sflow(duthost, sflow_status='enable'):
 
 @pytest.fixture(scope='module')
 def config_sflow_feature(request, duthost):
+<<<<<<< HEAD
     # Enable sFlow feature on DUT if enable_sflow_feature argument was passed
     if request.config.getoption("--enable_sflow_feature"):
         feature_status, _ = duthost.get_feature_status()
         if feature_status['sflow'] == 'disabled':
             duthost.shell("sudo config feature state sflow enabled")
+=======
+    feature_status, _ = duthost.get_feature_status()
+
+    if 'sflow' not in feature_status:
+        pytest.skip("sflow feature is not supported")
+
+    sflow_disabled_by_default = feature_status['sflow'] == 'disabled'
+    if sflow_disabled_by_default:
+        logger.info("sflow feature is disabled by default, enabling it for this test run")
+        duthost.shell("sudo config feature state sflow enabled")
+        time.sleep(2)
+
+    yield
+
+    if sflow_disabled_by_default:
+        logger.info("Disabling sflow feature")
+        duthost.shell("sudo config feature state sflow disabled")
+>>>>>>> upstream/master
 # ----------------------------------------------------------------------------------
 
 
