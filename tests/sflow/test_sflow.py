@@ -217,7 +217,6 @@ def config_sflow_feature(request, duthost):
     if sflow_disabled_by_default:
         logger.info("sflow feature is disabled by default, enabling it for this test run")
         duthost.shell("sudo config feature state sflow enabled")
-        time.sleep(2)
 
     yield
 
