@@ -299,25 +299,18 @@ bgp/test_bgp_allow_list.py:
 
 bgp/test_bgp_bbr.py:
   skip:
-<<<<<<< HEAD
     reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported. BGP_BBR is not supported in unified management framework."
-=======
-    reason: "Only supported on t1 topo. But Cisco 8111 or 8122 T1(compute ai) platform is not supported. Not needed for isolated topo."
->>>>>>> upstream/master
     conditions_logical_operator: or
     conditions:
       - "'t1' not in topo_type"
       - "platform in ['x86_64-8111_32eh_o-r0', 'x86_64-8122_64eh_o-r0', 'x86_64-8122_64ehf_o-r0']"
       - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-mgmt/issues/17598"
-<<<<<<< HEAD
       - "frr_mgmt_config == 'true'"
-=======
       - "'isolated' in topo_name"
   xfail:
     reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20217 and '-v6-' in topo_name"
->>>>>>> upstream/master
 
 bgp/test_bgp_bbr.py::test_bbr_status_consistent_after_reload[enabled]:
   xfail:
@@ -399,11 +392,8 @@ bgp/test_bgp_port_disable.py:
   skip:
     reason: "Not supported on public branches."
     conditions:
-<<<<<<< HEAD
       - "release in ['master', 'main', '202505']"
-=======
       - "'internal' not in branch"
->>>>>>> upstream/master
 
 bgp/test_bgp_queue.py:
   skip:
@@ -4800,8 +4790,6 @@ srv6/test_srv6_vlan_forwarding.py::test_srv6_uN_no_vlan_flooding[False]:
       - "'t0-isolated-d256u256s2' in topo_name and platform in ['x86_64-nvidia_sn5640-r0']"
 
 #######################################
-<<<<<<< HEAD
-=======
 #####             ssh             #####
 #######################################
 ssh/test_ssh_default_password:
@@ -4825,7 +4813,6 @@ stress/test_stress_routes.py:
       - "'t0-isolated-d256u256s2' in topo_name and platform in ['x86_64-nvidia_sn5640-r0']"
 
 #######################################
->>>>>>> upstream/master
 #####     sub_port_interfaces     #####
 #######################################
 sub_port_interfaces:
