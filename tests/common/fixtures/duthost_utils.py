@@ -583,6 +583,7 @@ def is_support_psu(duthosts, rand_one_dut_hostname):
         # instead of returning dummy value
         return True
 
+
 def separated_dscp_to_tc_map_on_uplink(dut_qos_maps_module):
     """
     A helper function to check if separated DSCP_TO_TC_MAP is applied to
