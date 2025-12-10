@@ -581,6 +581,7 @@ def is_support_psu(duthosts, rand_one_dut_hostname):
     else:
         # TODO: Add support for non-mellanox devices
         # instead of returning dummy value
+        return True
 
 def separated_dscp_to_tc_map_on_uplink(dut_qos_maps_module):
     """
