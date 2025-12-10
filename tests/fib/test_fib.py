@@ -654,11 +654,8 @@ def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,               
                        "single_fib_for_duts": single_fib_for_duts,
                        "ipver": ipver,
                        "topo_name": tbinfo['topo']['name'],
-<<<<<<< HEAD
                        "ecmp_inner_header_hash_supported": ecmp_inner_header_hash_supported,
-=======
                        "is_v6_topo": is_ipv6_only_topology(tbinfo),
->>>>>>> upstream/master
                        },
                log_file=log_file,
                qlen=PTF_QLEN,
@@ -824,12 +821,9 @@ def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                
                        "single_fib_for_duts": single_fib_for_duts,
                        "ipver": nvgre_ipver,
                        "topo_name": tbinfo['topo']['name'],
-<<<<<<< HEAD
                        "ecmp_inner_header_hash_supported": ecmp_inner_header_hash_supported,
-=======
                        "topo_type": tbinfo['topo']['type'],
                        "is_v6_topo": is_ipv6_only_topology(tbinfo),
->>>>>>> upstream/master
                        },
                log_file=log_file,
                qlen=PTF_QLEN,
