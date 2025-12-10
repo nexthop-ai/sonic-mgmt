@@ -20,54 +20,7 @@ def enable_zmq(duthost):
 
     yield
 
-<<<<<<< HEAD
     cleanup_zmq_fixture(duthost, initial_mgmt_vrf_enabled, subtype, enable_mgmt_vrf=False)
-=======
-    # revert change
-    command = 'sonic-db-cli CONFIG_DB hdel "DEVICE_METADATA|localhost" subtype'
-    result = duthost.shell(command, module_ignore_errors=True)
-    logger.debug("revert subtype subtype: {}".format(result))
-    save_reload_config(duthost)
-
-
-def gnmi_set(duthost, ptfhost, delete_list, update_list, replace_list):
-    ip = duthost.mgmt_ip
-    port = 8080
-    cmd = '/root/env-python3/bin/python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
-    cmd += '--timeout 30 --notls '
-    cmd += '--notls '
-    cmd += '-t %s -p %u ' % (ip, port)
-    cmd += '-xo sonic-db '
-    cmd += '-m set-update '
-    xpath = ''
-    xvalue = ''
-    for path in delete_list:
-        path = path.replace('sonic-db:', '')
-        xpath += ' ' + path
-        xvalue += ' ""'
-    for update in update_list:
-        update = update.replace('sonic-db:', '')
-        result = update.rsplit(':', 1)
-        xpath += ' ' + result[0]
-        xvalue += ' ' + result[1]
-    for replace in replace_list:
-        replace = replace.replace('sonic-db:', '')
-        result = replace.rsplit(':', 1)
-        xpath += ' ' + result[0]
-        if '#' in result[1]:
-            xvalue += ' ""'
-        else:
-            xvalue += ' ' + result[1]
-    cmd += '--xpath ' + xpath
-    cmd += ' '
-    cmd += '--value ' + xvalue
-    output = ptfhost.shell(cmd, module_ignore_errors=True)
-    error = "GRPC error\n"
-    if error in output['stdout']:
-        result = output['stdout'].split(error, 1)
-        raise Exception("GRPC error:" + result[1])
-    return
->>>>>>> upstream/master
 
 
 def test_gnmi_zmq(duthosts,
