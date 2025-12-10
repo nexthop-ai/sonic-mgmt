@@ -375,13 +375,8 @@ jobs:
     - get_impacted_area
     condition: contains(dependencies.get_impacted_area.outputs['GetImpactArea.PR_CHECKERS'], 't2_checker')
     variables:
-<<<<<<< HEAD
-      TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['GetImpactArea.TEST_SCRIPTS'] ]
-    timeoutInMinutes: 240
-=======
       TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['SetVariableTask.TEST_SCRIPTS'] ]
     timeoutInMinutes: ${{ parameters.TIMEOUT_IN_MINUTES_PR_TEST }}
->>>>>>> upstream/master
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
