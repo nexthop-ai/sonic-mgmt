@@ -11,6 +11,14 @@ import copy
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from ipfix_common import IPFIXHeader, PsampModHeader
+from tests.common.utilities import get_dscp_to_queue_value
+from tests.packet_trimming.packet_trimming_helper import (
+    create_blocking_scheduler,
+    ConfigTrimming,
+    get_interface_peer_addresses,
+    get_queue_trim_counters_json
+)
+from tests.packet_trimming.constants import DEFAULT_DSCP
 
 logger = logging.getLogger(__name__)
 
@@ -454,12 +462,14 @@ def _get_collector_config(tam_config):
 
 
 class PacketTest:
-    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac, ip_family):
+    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac, ip_family,
+                 drop_stage="ingress"):
         self.ptfadapter = ptfadapter
         self.ptf_ingress_port = ptf_ingress_port
         self.collector = collector
         self.router_mac = router_mac
         self.ip_family = ip_family
+        self.drop_stage = drop_stage
 
     def _is_ipv4(self):
         return self.ip_family == "ipv4"
@@ -471,7 +481,7 @@ class PacketTest:
         src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
 
         # Create packet with TTL=1
-        if self._is_ipv4:
+        if self._is_ipv4():
             packet = (
                 Ether(src=src_mac, dst=router_mac)
                 / IP(src="10.1.1.100", dst="20.2.2.100", ttl=1)  # TTL=1 will expire
@@ -488,18 +498,47 @@ class PacketTest:
 
         return packet
 
+    def _build_mmu_packet(self, ptfadapter, router_mac, ptf_src_port):
+
+        src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
+
+        # Create packet with TTL=1
+        if self._is_ipv4():
+            packet = (
+                Ether(src=src_mac, dst=router_mac)
+                / IP(src="10.1.1.100", dst="10.0.0.1", tos=DEFAULT_DSCP << 2)
+                / TCP(sport=1000, dport=80)
+                / Raw(b"Packet"*1000)
+            )
+        else:
+            packet = (
+                Ether(src=src_mac, dst=router_mac)
+                / IPv6(src="2000:10:1:1::100", dst="fc00::2", tc=DEFAULT_DSCP << 2)
+                / TCP(sport=1000, dport=80)
+                / Raw(b"Packet"*1000)
+            )
+
+        return packet
+
     def send_packets(self):
+        if self.drop_stage == "ingress":
+            # Build packets with TTL=1 that will expire and be dropped
+            packet = self._build_ttl_expiry_packet(self.ptfadapter, self.router_mac,
+                                                   self.ptf_ingress_port)
+            count = 10
+        elif self.drop_stage == "mmu":
+            packet = self._build_mmu_packet(self.ptfadapter, self.router_mac, self.ptf_ingress_port)
+            count = 10000
+        else:
+            pytest_assert(False, f"Invalid drop stage:{self.drop_stage}")
+
         try:
             # Start collecting IPFIX reports on all possible collector ports
             self.collector.start_collection(timeout=30)
             logger.info(f"Started IPFIX collection on PTF ports {self.collector.collector_ports}")
 
-            # Build packets with TTL=1 that will expire and be dropped
-            ttl_expiry_packet = self._build_ttl_expiry_packet(self.ptfadapter, self.router_mac,
-                                                              self.ptf_ingress_port)
-
-            logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
-            testutils.send(self.ptfadapter, self.ptf_ingress_port, ttl_expiry_packet, count=10)
+            logger.info("Sending packets and trigger MoD...")
+            testutils.send(self.ptfadapter, self.ptf_ingress_port, packet, count=count)
 
             # Wait for IPFIX reports to be generated and sent
             time.sleep(5)
@@ -524,7 +563,7 @@ class PacketTest:
         # Iterate over the packets and verify that there at least one expected frame
         for _, packets in self.collector.captured_reports.items():
             for packet in packets:
-                result, reason = self.collector._is_valid_mod_packet(packet)
+                result, reason = self.collector._is_valid_mod_packet(packet, self.drop_stage)
                 if result:
                     # Found a packet we were looking for.  Done
                     return
@@ -541,17 +580,19 @@ class PacketTest:
 
 
 class PacketTestFlowAware(PacketTest):
-    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac, ip_family):
-        super().__init__(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family)
+    def __init__(self, ptfadapter, ptf_ingress_port, collector, router_mac, ip_family,
+                 drop_stage="ingress"):
+        super().__init__(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, drop_stage)
         self.num_matched_packets = 10
         self.num_unmatched_packets = 10
 
     def _build_ttl_expiry_packet(self, ptfadapter, router_mac, ptf_src_port,
                                  src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port,
-                                 l4_dst_port, is_ipv4=True):
+                                 l4_dst_port):
         """
         TTL=1 ensures packet will be dropped due to TTL expiry during forwarding.
         """
+        is_ipv4 = self._is_ipv4()
         src_mac = ptfadapter.dataplane.get_mac(0, ptf_src_port)
 
         index = src_ip_prefix.rfind(".") + 1 if is_ipv4 else src_ip_prefix.rfind(":") + 1
@@ -576,7 +617,8 @@ class PacketTestFlowAware(PacketTest):
 
         return packet
 
-    def send_packets(self, is_ipv4=True):
+    def send_packets(self):
+        is_ipv4 = self._is_ipv4()
         try:
             # Start collecting IPFIX reports on all possible collector ports
             self.collector.start_collection(timeout=30)
@@ -590,8 +632,7 @@ class PacketTestFlowAware(PacketTest):
                 ttl_expiry_packet = self._build_ttl_expiry_packet(
                     self.ptfadapter, self.router_mac,
                     self.ptf_ingress_port, src_ip_prefix, dst_ip_prefix,
-                    ip_protocol, l4_src_port, l4_dst_port, is_ipv4=is_ipv4
-                )
+                    ip_protocol, l4_src_port, l4_dst_port)
 
                 logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
                 for i in range(self.num_matched_packets):  # Send multiple packets to ensure drops are detected
@@ -603,13 +644,11 @@ class PacketTestFlowAware(PacketTest):
                 ttl_expiry_packet = self._build_ttl_expiry_packet(
                     self.ptfadapter, self.router_mac,
                     self.ptf_ingress_port, src_ip_prefix, dst_ip_prefix,
-                    ip_protocol, l4_src_port, l4_dst_port, is_ipv4=is_ipv4
-                )
+                    ip_protocol, l4_src_port, l4_dst_port)
 
                 logger.info("Sending packets with TTL=1 that should expire and trigger MoD...")
-                for i in range(self.num_unmatched_packets):  # Send multiple packets to ensure drops are detected
-                    testutils.send(self.ptfadapter, self.ptf_ingress_port, ttl_expiry_packet)
-                    time.sleep(0.1)  # Small delay between packets
+                testutils.send(self.ptfadapter, self.ptf_ingress_port, ttl_expiry_packet,
+                               count=self.num_unmatched_packets)
 
             # Wait for IPFIX reports to be generated and sent
             time.sleep(5)
@@ -732,7 +771,7 @@ class IPFIXCollector:
 
         return True
 
-    def _is_valid_mod_packet(self, packet):
+    def _is_valid_mod_packet(self, packet, drop_stage):
         # Verify that it is an IPFix packet
         udp_payload = bytes(packet[UDP].payload)
 
@@ -770,8 +809,10 @@ class IPFIXCollector:
         # This is a packet we are intersted in.  Validate some of the psamp header
         # TODO - Need to verify based on type of drop
         # Verify that the ingress drop reason code is non-zero.
-        if psamp_header.drop_reason_ip == 0:
+        if drop_stage == "ingress" and psamp_header.drop_reason_ip == 0:
             return (False, "Invalid ingress drop-reason-code")
+        elif drop_stage == "mmu" and psamp_header.drop_reason_ep_or_mmu == 0:
+            return (False, "Invalid MMU drop-reason-code")
 
         return (True, "Valid")
 
@@ -935,7 +976,7 @@ def test_mod_stateless(tam_mod_config, ptfadapter, tbinfo):
     # For now IPv6 is not supported with IPv6. Skip it.
     # TODO: Revisit this when flow aware is fixed for IPv6
     if flow_aware and ip_family == "ipv6":
-        pytest.skip("Skipping unsupported test")
+        pytest.skip("Skipping unsupported test variant")
 
     logger.info(f"Running test with {ip_family.upper()} collector configuration")
 
@@ -995,3 +1036,95 @@ def test_mod_stateless(tam_mod_config, ptfadapter, tbinfo):
 
     # Verify that now reports are generated on drops again
     packet_test.run_packet_test(expect_reports=True)
+
+
+@pytest.mark.disable_loganalyzer
+def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_maps_module):
+    """Verify TAM MoD reports MMU/queue drops (egress blocked, port up).
+
+    Flow:
+    1. Use TAM MoD config (drop-monitor + IPFIX collector).
+    2. Pick an ingress front-panel/lag port and corresponding egress interface.
+    3. Map a DSCP to a specific egress queue using QoS maps.
+    4. Attach a blocking scheduler to that queue (disables TX, keeps port up).
+    5. Send enough DSCP-marked traffic to overflow MMU buffer and cause drops.
+    6. Verify MoD/IPFIX reports are exported to the collector.
+    """
+    duthost, ingress_ports, collector_ports, collector_config, ip_family, flow_aware = tam_mod_config
+
+    if flow_aware:
+        pytest.skip("Skipping unsupported test variant")
+
+    logger.info(f"Running MMU drop MoD test with {ip_family.upper()} collector configuration")
+
+    # Router MAC and collector config
+    router_mac = _get_router_mac(duthost)
+
+    # Select ingress port and its PTF index
+    ingress_port_name = ingress_ports[0]
+    port_value = ingress_ports[1]
+    if isinstance(port_value, list):
+        ptf_ingress_port = port_value[0]
+        logger.info(
+            f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for MMU drop injection"
+        )
+    else:
+        ptf_ingress_port = port_value
+        logger.info(f"Using ingress port {ingress_port_name}/PTF{ptf_ingress_port} for MMU drop injection")
+
+    # Use the same interface as egress for congestion (simple but effective)
+    egress_interface = ingress_port_name
+
+    # Derive queue to block from QoS maps using DEFAULT_DSCP
+    port_qos_map = dut_qos_maps_module["port_qos_map"]
+    pytest_assert(
+        ingress_port_name in port_qos_map,
+        f"Ingress port {ingress_port_name} not present in port_qos_map",
+    )
+
+    dscp_to_tc_map_name = port_qos_map[ingress_port_name]["dscp_to_tc_map"].split("|")[-1].strip("]")
+    tc_to_queue_map_name = port_qos_map[ingress_port_name]["tc_to_queue_map"].split("|")[-1].strip("]")
+
+    dscp_to_tc_map = dut_qos_maps_module["dscp_to_tc_map"][dscp_to_tc_map_name]
+    tc_to_queue_map = dut_qos_maps_module["tc_to_queue_map"][tc_to_queue_map_name]
+
+    block_queue = get_dscp_to_queue_value(DEFAULT_DSCP, dscp_to_tc_map, tc_to_queue_map)
+    pytest_assert(block_queue is not None, "Failed to derive queue for DEFAULT_DSCP from QoS maps")
+
+    logger.info(
+        f"Using queue {block_queue} on egress interface {egress_interface} for "
+        "MMU-drop congestion (DSCP={DEFAULT_DSCP})"
+    )
+
+    # Get peer IPv4/IPv6 address for the egress interface to use as traffic destination
+    ipv4_peer, ipv6_peer = get_interface_peer_addresses(mg_facts, egress_interface)
+    if ip_family == "ipv4":
+        pytest_assert(ipv4_peer, f"No IPv4 peer address for interface {egress_interface}")
+        dst_ip = ipv4_peer
+    else:
+        pytest_assert(ipv6_peer, f"No IPv6 peer address for interface {egress_interface}")
+        dst_ip = ipv6_peer
+
+    logger.info(f"Using destination {dst_ip} on interface {egress_interface} for MMU drop traffic")
+
+    # Ensure blocking scheduler exists
+    create_blocking_scheduler(duthost)
+
+    # Set up IPFIX collector on all possible collector ports
+    logger.info(f"Collector ports (from routing): {collector_ports}")
+    logger.info(f"Collector config: {collector_config}")
+    collector = IPFIXCollector(ptfadapter, collector_ports, collector_config)
+
+    def _wait_for_drop_count(prevCount):
+        currCount = get_queue_trim_counters_json(duthost, egress_interface)
+        return currCount['UC1']['droppacket'] > prevCount
+
+    # Block only the selected queue on the chosen egress interface
+    with ConfigTrimming(duthost, egress_interface, block_queue):
+        packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, drop_stage="mmu")
+        queue_counters_before = get_queue_trim_counters_json(duthost, egress_interface)
+        packet_test.run_packet_test(expect_reports=True)
+        # Verify that indeed packets were dropped
+        pytest_assert(wait_until(30, 5, 0, lambda: _wait_for_drop_count(queue_counters_before['UC1']['droppacket'])),
+                      "PacketTest is buggy, it had passed, but the dropcounter has not incremented. "
+                      f"droppacket:{queue_counters_before['UC1']['droppacket']}")
