@@ -8,7 +8,9 @@ import pytest
 import ipaddress
 
 from tests.common.helpers.ptf_tests_helper import (
-    select_test_interface_and_ptf_port
+    select_test_interface_and_ptf_port,
+    get_interface_ip_address,
+    detect_portchannel_egress_member
 )
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
@@ -78,28 +80,28 @@ class TestQosRemap:
         except Exception as e:
             logger.error("Error during cleanup: {}".format(str(e)))
 
-    def setup_qos_mappings(self, duthost, tbinfo):
-        """Setup QoS mappings on DUT.
+    def setup_qos_mappings(self, duthost, interface_name):
+        """Setup QoS mappings on DUT for the specified interface.
 
-        Apply tc_to_dscp_map.
+        Apply tc_to_dscp_map to the given interface.
+
+        Args:
+            duthost: DUT host object
+            interface_name: Interface name to apply QoS mappings to
+
+        Returns:
+            bool: True if successful, False otherwise
         """
-        interface_name, ptf_port_index = select_test_interface_and_ptf_port(duthost, tbinfo)
-        if not interface_name or not ptf_port_index:
-            logger.error("Could not find interface with PTF port mapping")
-            return None, None
-
-        logger.info("Selected interface: {} (PTF port: {})".format(interface_name, ptf_port_index))
-
         # Apply tc_to_dscp_map
-        logger.info("Applying tc_to_dscp_map (custom), using default Azure for dscp_to_tc and tc_to_queue")
+        logger.info("Applying tc_to_dscp_map (custom) to interface {}".format(interface_name))
 
         if not update_tc_to_dscp_map(duthost, CUSTOM_TC_TO_DSCP, map_name='REMAP_TEST', interface=interface_name):
             logger.error("Failed to apply TC_TO_DSCP_MAP to {}".format(interface_name))
-            return None, None
-        logger.info("✓ TC_TO_DSCP_MAP applied")
+            return False
+        logger.info("✓ TC_TO_DSCP_MAP applied to {}".format(interface_name))
 
         logger.info("QoS mappings setup complete")
-        return interface_name, ptf_port_index
+        return True
 
     def test_qos_mappings(self, duthost, tbinfo, ptfadapter):
         """Setup and test QoS mappings with queue counter verification and DSCP remapping with dataplane poll."""
@@ -108,27 +110,53 @@ class TestQosRemap:
         if duthost.facts["asic_type"].lower() != "broadcom":
             pytest.skip(f"Test only supports Broadcom ASICs. Current ASIC: {duthost.facts['asic_type']}")
 
-        interface_name, ptf_port_index = self.setup_qos_mappings(duthost, tbinfo)
+        # Randomly select interface or PortChannel
+        interface_name, ptf_port_index = select_test_interface_and_ptf_port(duthost, tbinfo)
+        pytest_assert(interface_name and ptf_port_index is not None,
+                      "Could not find interface with PTF port mapping")
 
-        pytest_assert(interface_name and ptf_port_index,
-                      "Failed to setup QoS mappings")
-
-        logger.info("Starting QoS mapping verification for interface: {}".format(interface_name))
-
-        # Get interface IP from minigraph
+        # Get IP address for the selected interface
         mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
-        interface_ip = next((intf['addr'] for intf in mg_facts.get('minigraph_interfaces', [])
-                            if intf['attachto'] == interface_name), None)
+        interface_ip = get_interface_ip_address(interface_name, mg_facts)
         pytest_assert(interface_ip, "Could not find IP address for interface {}".format(interface_name))
+        logger.info("Selected: {} (PTF port: {}), IP: {}".format(interface_name, ptf_port_index, interface_ip))
 
-        # Setup packet IPs in same subnet
+        # Calculate source and destination IPs
         interface_network = ipaddress.ip_interface(interface_ip)
         src_ip = str(interface_network.ip - 1)
         dst_ip = str(interface_network.ip + 1)
-
-        # Get MACs and mappings
         router_mac = duthost.facts["router_mac"]
-        ptf_mac = ptfadapter.dataplane.get_mac(0, ptf_port_index)
+
+        # If PortChannel, detect actual egress member
+        portchannels = mg_facts.get('minigraph_portchannels', {})
+        if interface_name in portchannels:
+            logger.info("{} is a PortChannel, detecting egress member".format(interface_name))
+
+            # Create test packet for detection
+            test_packet = testutils.simple_tcp_packet(
+                eth_dst=router_mac, ip_src=src_ip, ip_dst=dst_ip,
+                ip_dscp=0, tcp_sport=1234, tcp_dport=80)
+
+            # Detect actual egress member
+            detected_interface, detected_ptf_port = detect_portchannel_egress_member(
+                duthost, tbinfo, ptfadapter, interface_name, test_packet
+            )
+            if detected_interface and detected_ptf_port is not None:
+                logger.info("Detected egress member: {} (PTF port {})".format(
+                    detected_interface, detected_ptf_port))
+                interface_name = detected_interface
+                ptf_port_index = detected_ptf_port
+            else:
+                pytest.fail("Could not detect egress member for PortChannel {}".format(interface_name))
+        else:
+            logger.info("Using interface {} (PTF port {})".format(interface_name, ptf_port_index))
+
+        # Setup QoS mappings on the final interface
+        logger.info("Setting up QoS mappings on interface: {}".format(interface_name))
+        pytest_assert(self.setup_qos_mappings(duthost, interface_name),
+                      "Failed to setup QoS mappings on interface {}".format(interface_name))
+
+        logger.info("Starting QoS mapping verification for interface: {}".format(interface_name))
 
         # Verify that interface has DSCP_TO_TC and TC_TO_QUEUE set to AZURE
         config_facts = duthost.asic_instance().config_facts(source="running")["ansible_facts"]
@@ -159,7 +187,7 @@ class TestQosRemap:
 
         logger.info("Interface: {} IP: {}".format(interface_name, interface_ip))
         logger.info("Packet IPs: {} -> {}".format(src_ip, dst_ip))
-        logger.info("Router MAC: {}, PTF MAC: {}".format(router_mac, ptf_mac))
+        logger.info("Router MAC: {}".format(router_mac))
 
         # ========== PHASE 1: Queue Counter Verification ==========
         logger.info("\n" + "="*80)
@@ -178,7 +206,7 @@ class TestQosRemap:
             pytest_assert(incoming_dscp is not None, "Could not find DSCP for TC {}".format(tc_value))
 
             pkt = testutils.simple_tcp_packet(
-                eth_dst=router_mac, eth_src=ptf_mac, ip_src=src_ip, ip_dst=dst_ip,
+                eth_dst=router_mac, ip_src=src_ip, ip_dst=dst_ip,
                 ip_dscp=incoming_dscp, tcp_sport=1234, tcp_dport=80)
 
             for _ in range(QUEUE_COUNTER_VERIFICATION_PACKETS):
@@ -229,7 +257,7 @@ class TestQosRemap:
 
             # Send test packets
             pkt = testutils.simple_tcp_packet(
-                eth_dst=router_mac, eth_src=ptf_mac, ip_src=src_ip, ip_dst=dst_ip,
+                eth_dst=router_mac, ip_src=src_ip, ip_dst=dst_ip,
                 ip_dscp=incoming_dscp, tcp_sport=1234, tcp_dport=80)
 
             for _ in range(DSCP_REMAPPING_VERIFICATION_PACKETS):
