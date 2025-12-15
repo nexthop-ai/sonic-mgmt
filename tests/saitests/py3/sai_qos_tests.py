@@ -1141,8 +1141,8 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
                   (tos >> 2), file=sys.stderr)
 
             cnt = 0
-            dscp_received = False
-            while not dscp_received:
+            dscp_matched = False
+            while not dscp_matched:
                 result = self.dataplane.poll(
                     device_number=0, port_number=dst_port_id, timeout=3)
                 if isinstance(result, self.dataplane.PollFailure):
@@ -1151,15 +1151,16 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
 
                 recv_pkt = scapy.Ether(result.packet)
                 cnt += 1
+                dscp_received = (recv_pkt.payload.tos) >> 2
 
                 # Verify dscp flag
                 try:
-                    if (recv_pkt.payload.tos == tos and
+                    if (dscp_received == dscp and
                             recv_pkt.payload.src == src_port_ip and
                             recv_pkt.payload.dst == dst_port_ip and
                             recv_pkt.payload.ttl == exp_ttl and
                             recv_pkt.payload.id == exp_ip_id):
-                        dscp_received = True
+                        dscp_matched = True
                         print("dscp: %d, total received: %d" %
                               (tos >> 2, cnt), file=sys.stderr)
                 except AttributeError:
@@ -1183,8 +1184,8 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
                   (dscp), file=sys.stderr)
 
             cnt = 0
-            dscp_received = False
-            while not dscp_received:
+            dscp_matched = False
+            while not dscp_matched:
                 result = self.dataplane.poll(
                     device_number=0, port_number=dst_port_id, timeout=3)
                 if isinstance(result, self.dataplane.PollFailure):
@@ -1201,7 +1202,7 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
                             recv_pkt.payload.src == src_port_ip and
                             recv_pkt.payload.dst == dst_port_ip and
                             recv_pkt.payload.hlim == exp_ttl):
-                        dscp_received = True
+                        dscp_matched = True
                         print("dscp: %d, total received: %d" %
                               (dscp, cnt), file=sys.stderr)
                 except AttributeError:
@@ -1605,20 +1606,20 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
                     total_recv_cnt += 1
 
                     # verify dscp flag
-                    tos = dscps[dscp_recv_cnt] << 2
-                    tos |= 1
+                    dscp_expected  = dscps[dscp_recv_cnt]
+                    dscp_received = recv_pkt.payload.tos >> 2
                     try:
-                        if (recv_pkt.payload.tos == tos) and (recv_pkt.payload.src == src_port_ip) and \
+                        if (dscp_received == dscp_expected) and (recv_pkt.payload.src == src_port_ip) and \
                             (recv_pkt.payload.dst == dst_port_ip) and \
                            (recv_pkt.payload.ttl == exp_ttl) and (recv_pkt.payload.id == exp_ip_id):
 
                             dscp_recv_cnt += 1
                             print("dscp: %d, total received: %d" %
-                                  (tos >> 2, total_recv_cnt), file=sys.stderr)
+                                  (dscp_received, total_recv_cnt), file=sys.stderr)
 
                     except AttributeError:
                         print("dscp: %d, total received: %d, attribute error!" % (
-                            tos >> 2, total_recv_cnt), file=sys.stderr)
+                            dscp_expected, total_recv_cnt), file=sys.stderr)
                         continue
 
         finally:
