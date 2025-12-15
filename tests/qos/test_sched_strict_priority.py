@@ -28,7 +28,11 @@ import time
 from tests.common.helpers.assertions import pytest_assert
 import ptf.testutils as testutils
 from tests.qos.qos_helpers import find_dscp_for_queue
-from tests.common.helpers.ptf_tests_helper import select_test_interface_and_ptf_port
+from tests.common.helpers.ptf_tests_helper import (
+    select_test_interface_and_ptf_port,
+    get_interface_ip_address,
+    detect_portchannel_egress_member
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,7 @@ class StrictPriorityRateLimitingDriver:
         self.testbed_info = testbed_info
         self.target_queue = TEST_CONFIG['queue']
 
-        # Step 1: Choose interface and get PTF port mapping
+        # Step 1: Choose interface/PortChannel and get PTF port mapping
         self.test_interface, self.ptf_port_index = select_test_interface_and_ptf_port(duthost, testbed_info)
         if not self.test_interface or self.ptf_port_index is None:
             raise Exception("Could not find interface with PTF port mapping")
@@ -68,11 +72,33 @@ class StrictPriorityRateLimitingDriver:
         # Step 2: Find correct DSCP for target queue
         self.dscp_value = find_dscp_for_queue(duthost, self.target_queue)
 
-        # Step 3: Get interface IP configuration for packet creation
-        self.source_ip, self.destination_ip = self._get_test_packet_ips()
+        # Step 3: Get interface IP and calculate source/destination IPs
+        mg_facts = duthost.get_extended_minigraph_facts(testbed_info)
+        self.interface_ip = get_interface_ip_address(self.test_interface, mg_facts)
+        if not self.interface_ip:
+            raise Exception(f"Could not find IP address for interface {self.test_interface}")
 
-        # Step 4: Create the packet template
+        interface_network = ipaddress.ip_interface(self.interface_ip)
+        self.source_ip = str(interface_network.ip - 1)
+        self.destination_ip = str(interface_network.ip + 1)
+
         self.test_packet_template = self._create_test_packet_template()
+
+        # Step 4: If PortChannel, detect actual egress member
+        portchannels = mg_facts.get('minigraph_portchannels', {})
+        if self.test_interface in portchannels:
+            logger.info(f"{self.test_interface} is a PortChannel, detecting egress member")
+
+            # Detect actual egress member
+            detected_interface, detected_ptf_port = detect_portchannel_egress_member(
+                duthost, testbed_info, ptf_adapter, self.test_interface, self.test_packet_template
+            )
+            if detected_interface and detected_ptf_port is not None:
+                logger.info(f"Detected egress member: {detected_interface} (PTF port {detected_ptf_port})")
+                self.test_interface = detected_interface
+                self.ptf_port_index = detected_ptf_port
+            else:
+                raise Exception(f"Could not detect egress member for PortChannel {self.test_interface}")
 
         logger.info(f"Initialized Strict Priority Rate Limiting Test Driver for DUT: {duthost.hostname}")
         logger.info(f"Test interface: {self.test_interface}, Target queue: {self.target_queue}")
@@ -80,44 +106,6 @@ class StrictPriorityRateLimitingDriver:
         logger.info(f"DSCP: {self.dscp_value} (maps to Queue {self.target_queue})")
         logger.info(f"Packet IPs: {self.source_ip} -> {self.destination_ip}")
         logger.info(f"Test config: {TEST_CONFIG}")
-
-    def _get_test_packet_ips(self):
-        """
-        Step 3: Get IP configuration for packet creation that will go through chosen interface TX
-
-        Returns:
-            tuple: (src_ip, dst_ip) for packet creation
-        """
-        try:
-            # Get interface IP configuration from minigraph
-            mg_facts = self.duthost.get_extended_minigraph_facts(self.testbed_info)
-
-            # Look for interface IP in minigraph
-            interface_ip = None
-            for intf_info in mg_facts.get('minigraph_interfaces', []):
-                if intf_info['attachto'] == self.test_interface:
-                    interface_ip = intf_info['addr']
-                    break
-
-            if not interface_ip:
-                raise Exception(f"Could not find IP address for interface {self.test_interface}")
-
-            # Create IPs in same subnet to ensure routing through this interface
-            interface_network = ipaddress.ip_interface(interface_ip)
-
-            # Source IP: Use an IP from the interface subnet (PTF side)
-            source_ip = str(interface_network.ip - 1)
-
-            # Destination IP: Use next IP in subnet to force routing back out same interface
-            destination_ip = str(interface_network.ip + 1)
-
-            logger.info(f"Interface {self.test_interface} IP: {interface_ip}")
-            logger.info(f"Packet IPs: {source_ip} -> {destination_ip} (will route through {self.test_interface})")
-            return source_ip, destination_ip
-
-        except Exception as e:
-            logger.error(f"Error getting packet IPs for interface {self.test_interface}: {e}")
-            raise Exception(f"Cannot proceed without valid IP configuration for interface {self.test_interface}: {e}")
 
     def _create_test_packet_template(self):
         """
@@ -128,13 +116,11 @@ class StrictPriorityRateLimitingDriver:
         """
         try:
             router_mac = self.duthost.facts["router_mac"]
-            ptf_mac = self.ptf_adapter.dataplane.get_mac(0, self.ptf_port_index)
 
             # Create packet with correct DSCP for target queue
             test_packet = testutils.simple_tcp_packet(
                 pktlen=TEST_CONFIG['packet_size'],
                 eth_dst=router_mac,  # Send to DUT's router MAC for L3 routing
-                eth_src=ptf_mac,     # PTF port MAC
                 ip_src=self.source_ip,  # Source IP in interface subnet
                 ip_dst=self.destination_ip,  # Destination IP that will route through target interface
                 ip_tos=self.dscp_value << 2,  # DSCP is upper 6 bits of ToS field
@@ -180,7 +166,7 @@ class StrictPriorityRateLimitingDriver:
             rate_mbps = (traffic_rate_bytes_per_sec * 8) / 1000000
 
             logger.info(f"Sending PTF traffic: {traffic_rate_bytes_per_sec} bytes/s "
-                        f"({rate_mbps:.1f} Mbps, {packets_per_second} pps) for {test_duration_seconds}s")
+                        f"({rate_mbps: .1f} Mbps, {packets_per_second} pps) for {test_duration_seconds}s")
             logger.info(f"Interface: {self.test_interface} (PTF port {self.ptf_port_index}), "
                         f"DSCP: {self.dscp_value} -> Queue {self.target_queue}")
 
@@ -211,13 +197,13 @@ class StrictPriorityRateLimitingDriver:
                 if (i + 1) % 5000 == 0:
                     elapsed = time.time() - start_time
                     current_rate_pps = (i + 1) / elapsed if elapsed > 0 else 0
-                    logger.info(f"Progress: {i + 1}/{total_packets} packets ({current_rate_pps:.0f} pps)")
+                    logger.info(f"Progress: {i + 1}/{total_packets} packets ({current_rate_pps: .0f} pps)")
 
                 # Early exit if we've exceeded the target duration significantly
                 elapsed = time.time() - start_time
                 if elapsed > test_duration_seconds * 1.5:  # 50% tolerance
                     logger.warning(f"Stopping early due to timing: sent {packets_sent}/{total_packets} "
-                                   f"packets in {elapsed:.2f}s")
+                                   f"packets in {elapsed: .2f}s")
                     break
 
             end_time = time.time()
@@ -225,21 +211,21 @@ class StrictPriorityRateLimitingDriver:
             actual_rate_pps = packets_sent / actual_duration if actual_duration > 0 else 0
             actual_rate_bytes_per_sec = actual_rate_pps * packet_size_bytes  # Convert to bytes per second
             actual_rate_mbps = (actual_rate_bytes_per_sec * 8) / 1000000     # Convert to Mbps for display
-            logger.info(f"Traffic completed: {packets_sent} packets in {actual_duration:.2f}s")
-            logger.info(f"Actual rate: {actual_rate_bytes_per_sec:.0f} bytes/s "
-                        f"({actual_rate_mbps:.1f} Mbps, {actual_rate_pps:.1f} pps)")
+            logger.info(f"Traffic completed: {packets_sent} packets in {actual_duration: .2f}s")
+            logger.info(f"Actual rate: {actual_rate_bytes_per_sec: .0f} bytes/s "
+                        f"({actual_rate_mbps: .1f} Mbps, {actual_rate_pps: .1f} pps)")
 
             # Calculate accuracy and validate bandwidth achievement
             if traffic_rate_bytes_per_sec > 0:
                 accuracy_percent = (actual_rate_bytes_per_sec / traffic_rate_bytes_per_sec) * 100
-                logger.info(f"Rate accuracy: {accuracy_percent:.1f}% of target")
+                logger.info(f"Rate accuracy: {accuracy_percent: .1f}% of target")
 
                 # Check if we achieved acceptable bandwidth
                 if accuracy_percent < TEST_CONFIG['bandwidth_tolerance_min']:
                     target_mbps = (traffic_rate_bytes_per_sec * 8) / 1000000
-                    logger.error(f"Failed to achieve target bandwidth: {actual_rate_mbps:.1f} Mbps "
-                                 f"vs target {target_mbps:.1f} Mbps ({accuracy_percent:.1f}%)")
-                    pytest.skip(f"Cannot achieve desired bandwidth: got {accuracy_percent:.1f}% of target rate")
+                    logger.error(f"Failed to achieve target bandwidth: {actual_rate_mbps: .1f} Mbps "
+                                 f"vs target {target_mbps: .1f} Mbps ({accuracy_percent: .1f}%)")
+                    pytest.skip(f"Cannot achieve desired bandwidth: got {accuracy_percent: .1f}% of target rate")
 
             time.sleep(2)
 
@@ -371,8 +357,8 @@ class StrictPriorityRateLimitingDriver:
         # Log the rates for clarity
         cir_mbps = (TEST_CONFIG['cir_bytes_per_sec'] * 8) / 1000000  # Convert to Mbps for display
         pir_mbps = (TEST_CONFIG['pir_bytes_per_sec'] * 8) / 1000000  # Convert to Mbps for display
-        logger.info(f"Setting rate limits: CIR={cir_mbps:.1f} Mbps ({TEST_CONFIG['cir_bytes_per_sec']} bytes/s), "
-                    f"PIR={pir_mbps:.1f} Mbps ({TEST_CONFIG['pir_bytes_per_sec']} bytes/s)")
+        logger.info(f"Setting rate limits: CIR={cir_mbps: .1f} Mbps ({TEST_CONFIG['cir_bytes_per_sec']} bytes/s), "
+                    f"PIR={pir_mbps: .1f} Mbps ({TEST_CONFIG['pir_bytes_per_sec']} bytes/s)")
 
         try:
             # Create scheduler policy
@@ -437,7 +423,7 @@ class StrictPriorityRateLimitingDriver:
                         'raw_data': interface_counters
                     }
                 else:
-                    logger.warning(f"Interface {self.test_interface} not found in counters output")
+                    logger.warning(f"Interface {self.test_interface} not in counters output")
                     return {}
             else:
                 logger.warning("Failed to get interface counters from Ansible module")
