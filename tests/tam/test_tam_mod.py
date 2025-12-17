@@ -116,7 +116,7 @@ def tam_asicdb_state(duthost, shouldExist):
     ]
 
     for tam_object in required_tam_objects:
-        out = duthost.shell(f'sonic-db-cli ASIC_DB KEYS "*{tam_object}:oid:*"')
+        out = duthost.shell(f'sonic-db-cli ASIC_DB KEYS "*{tam_object}:oid:*"')  # noqa: E231
         lines = out.get("stdout_lines", [])
         if shouldExist and not lines:
             logger.warning(f"ASIC_DB missing {tam_object} objects")
@@ -191,6 +191,30 @@ def verify_tam_mod_config_applied(duthost, ip_family, flow_aware):
         wait_for_tam_asicdb_applied(duthost, TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL),
         "ASIC_DB missing TAM keys; orchagent may not have processed TAM config.",
     )
+
+
+def _get_blackhole_commands(ip_family, collector_dst_ip):
+    """
+    Get blackhole route add and remove commands for the given IP family.
+
+    Args:
+        ip_family: "ipv4" or "ipv6"
+        collector_dst_ip: Collector destination IP address
+
+    Returns:
+        tuple: (blackhole_cmd, remove_blackhole_cmd)
+    """
+    if ip_family == "ipv4":
+        blackhole_cmd = (f"vtysh -c 'configure terminal' "
+                        f"-c 'ip route {collector_dst_ip}/32 blackhole'")  # noqa: E128
+        remove_blackhole_cmd = (f"vtysh -c 'configure terminal' "
+                               f"-c 'no ip route {collector_dst_ip}/32 blackhole'")  # noqa: E128
+    else:  # ipv6
+        blackhole_cmd = (f"vtysh -c 'configure terminal' "
+                        f"-c 'ipv6 route {collector_dst_ip}/128 blackhole'")  # noqa: E128
+        remove_blackhole_cmd = (f"vtysh -c 'configure terminal' "
+                               f"-c 'no ipv6 route {collector_dst_ip}/128 blackhole'")  # noqa: E128
+    return blackhole_cmd, remove_blackhole_cmd
 
 
 @pytest.fixture(scope="module", params=["ipv4", "ipv6"], ids=["IPv4_collector", "IPv6_collector",])
@@ -272,13 +296,8 @@ def tam_mod_config(ip_family_param, flow_aware_param, duthosts, rand_one_dut_hos
     yield duthost, ingress_port, collector_ports, collector_config, ip_family, flow_aware
 
     # Remove blackhole route if it was added during test
-    # Get collector config to determine the destination IP
-    if ip_family == "ipv4":
-        collector_dst_ip = TAM_COLLECTOR_IPV4["dst_ip"]
-        remove_blackhole_cmd = f"vtysh -c 'configure terminal' -c 'no ip route {collector_dst_ip}/32 blackhole'"
-    else:  # ipv6
-        collector_dst_ip = TAM_COLLECTOR_IPV6["dst_ip"]
-        remove_blackhole_cmd = f"vtysh -c 'configure terminal' -c 'no ipv6 route {collector_dst_ip}/128 blackhole'"
+    collector_dst_ip = collector_config["dst_ip"]
+    _, remove_blackhole_cmd = _get_blackhole_commands(ip_family, collector_dst_ip)
 
     logger.info(f"Removing any blackhole routes for {ip_family.upper()} collector IP: {collector_dst_ip}")
     duthost.shell(remove_blackhole_cmd, module_ignore_errors=True)
@@ -388,7 +407,7 @@ def _get_collector_egress_ports(duthost, collector_ip, available_ports, ip_famil
             logger.warning(f"No route found for {collector_ip}, using all available ports")
             return _flatten_port_indices(available_ports)
 
-        logger.info(f"Route output for {collector_ip}:\n{chr(10).join(route_lines)}")
+        logger.info(f"Route output for {collector_ip}:\n{chr(10).join(route_lines)}")  # noqa: E231
 
         # Parse the output to extract interfaces
         # Example output:
@@ -843,6 +862,135 @@ def _get_tam_config(ip_family, ports, flow_aware):
     return tam_config
 
 
+def _select_ingress_port(ingress_port, log_context="packet injection"):
+    """
+    Select ingress port and PTF port index from ingress_port tuple.
+
+    Args:
+        ingress_port: Tuple of (port_name, port_value) where port_value can be
+                     a single PTF index or a list of PTF indices (for LAG)
+        log_context: Context string for logging (e.g., "packet injection", "MMU drop injection")
+
+    Returns:
+        tuple: (ingress_port_name, ptf_ingress_port) where ptf_ingress_port is a single PTF index
+    """
+    ingress_port_name = ingress_port[0]
+    port_value = ingress_port[1]
+
+    # If it's a LAG (list of indices), pick the first member port
+    if isinstance(port_value, list):
+        ptf_ingress_port = port_value[0]
+        logger.info(
+            f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for {log_context}")
+    else:
+        ptf_ingress_port = port_value
+        logger.info(f"Using ingress port {ingress_port_name}/PTF{ptf_ingress_port} for {log_context}")
+
+    return ingress_port_name, ptf_ingress_port
+
+
+def _prefix_to_ip(prefix, is_ipv4):
+    """
+    Convert IP prefix to IP address by appending '100' to the prefix.
+
+    Args:
+        prefix: IP prefix string (e.g., "10.1.1.0/24" or "2000:10:1:1::0/120")
+        is_ipv4: Boolean indicating if this is IPv4
+
+    Returns:
+        str: IP address (e.g., "10.1.1.100" or "2000:10:1:1::100")
+    """
+    index = prefix.rfind(".") + 1 if is_ipv4 else prefix.rfind(":") + 1
+    return prefix[:index] + "100"
+
+
+def _prepare_flows(ip_family, flow_aware):
+    """
+    Prepare matched and unmatched flows for testing.
+
+    Args:
+        ip_family: "ipv4" or "ipv6"
+        flow_aware: Boolean indicating if flow-aware mode is enabled
+
+    Returns:
+        tuple: (matched_flows, unmatched_flows, flows_to_collect) where each is a list of
+               (src_ip, dst_ip, ip_protocol, l4_src_port, l4_dst_port) tuples
+    """
+    is_ipv4 = ip_family == "ipv4"
+    matched_flows_prefixes = MATCHED_FLOWS if is_ipv4 else MATCHED_FLOWS_IPV6
+    matched_flows = [
+        (_prefix_to_ip(src_prefix, is_ipv4), _prefix_to_ip(dst_prefix, is_ipv4), proto, src_port, dst_port)
+        for src_prefix, dst_prefix, proto, src_port, dst_port in matched_flows_prefixes
+    ]
+
+    if flow_aware:
+        unmatched_flows_prefixes = UNMATCHED_FLOWS if is_ipv4 else UNMATCHED_FLOWS_IPV6
+        unmatched_flows = [
+            (_prefix_to_ip(src_prefix, is_ipv4), _prefix_to_ip(dst_prefix, is_ipv4), proto, src_port, dst_port)
+            for src_prefix, dst_prefix, proto, src_port, dst_port in unmatched_flows_prefixes
+        ]
+    else:
+        unmatched_flows = []
+
+    flows_to_collect = matched_flows + unmatched_flows
+    return matched_flows, unmatched_flows, flows_to_collect
+
+
+def _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect):
+    """
+    Set up IPFIX collector with logging.
+
+    Args:
+        ptfadapter: PTF adapter object
+        collector_ports: List of PTF port indices where collector is reachable
+        collector_config: Collector configuration dictionary
+        flows_to_collect: List of flows to collect
+
+    Returns:
+        IPFIXCollector: Configured collector instance
+    """
+    logger.info(f"Collector ports (from routing): {collector_ports}")
+    logger.info(f"Collector config: {collector_config}")
+    return IPFIXCollector(ptfadapter, collector_ports, collector_config, flows_to_collect)
+
+
+def _test_with_blackhole_route(duthost, ip_family, collector_config, packet_test):
+    """
+    Test TAM MoD behavior with blackhole route (should disable reporting).
+
+    This function:
+    1. Adds a blackhole route for the collector IP
+    2. Waits for TAM ASIC DB to be cleared
+    3. Verifies no reports are sent
+    4. Removes the blackhole route
+    5. Waits for TAM ASIC DB to be restored
+    6. Verifies reports are sent again
+
+    Args:
+        duthost: DUT host object
+        ip_family: "ipv4" or "ipv6"
+        collector_config: Collector configuration dictionary
+        packet_test: PacketTest instance to run tests with
+    """
+    blackhole_cmd, remove_blackhole_cmd = _get_blackhole_commands(ip_family, collector_config['dst_ip'])
+
+    # Add blackhole route and verify ASIC DB is cleared
+    logger.info(f"Adding blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
+    duthost.shell(blackhole_cmd, module_ignore_errors=True)
+    wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, False))
+
+    # Verify that now no drop reports are sent
+    packet_test.run_packet_test(expect_reports=False)
+
+    # Remove blackhole route and verify TAM configuration is recreated
+    logger.info(f"Removing blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
+    duthost.shell(remove_blackhole_cmd, module_ignore_errors=True)
+    wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, True))
+
+    # Verify that now reports are generated on drops again
+    packet_test.run_packet_test(expect_reports=True)
+
+
 @pytest.mark.disable_loganalyzer
 def test_mod_ingress_drops(tam_mod_config, ptfadapter, tbinfo):
     """
@@ -870,81 +1018,24 @@ def test_mod_ingress_drops(tam_mod_config, ptfadapter, tbinfo):
     # Get router MAC
     router_mac = _get_router_mac(duthost)
 
-    # Select one ingress port for packet injection
-    ingress_port_name = ingress_port[0]
-    port_value = ingress_port[1]
+    # Select ingress port for packet injection
+    ingress_port_name, ptf_ingress_port = _select_ingress_port(ingress_port, "packet injection")
 
-    # If it's a LAG (list of indices), pick the first member port
-    if isinstance(port_value, list):
-        ptf_ingress_port = port_value[0]
-        logger.info(
-            f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for packet injection")
-    else:
-        ptf_ingress_port = port_value
-        logger.info(f"Using ingress port {ingress_port_name}/PTF{ptf_ingress_port} for packet injection")
+    # Prepare flows for testing
+    matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(ip_family, flow_aware)
 
-    logger.info(f"Possible collector ports (based on routing): {collector_ports}")
-    logger.info(f"Collector config: {collector_config}")
+    # Set up IPFIX collector
+    collector = _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect)
 
-    # Convert IP prefixes to IP addresses by appending '100' to the prefix
-    def _prefix_to_ip(prefix, is_ipv4):
-        index = prefix.rfind(".") + 1 if is_ipv4 else prefix.rfind(":") + 1
-        return prefix[:index] + "100"
-
-    is_ipv4 = ip_family == "ipv4"
-    matched_flows_prefixes = MATCHED_FLOWS if is_ipv4 else MATCHED_FLOWS_IPV6
-    matched_flows = [
-        (_prefix_to_ip(src_prefix, is_ipv4), _prefix_to_ip(dst_prefix, is_ipv4), proto, src_port, dst_port)
-        for src_prefix, dst_prefix, proto, src_port, dst_port in matched_flows_prefixes
-    ]
-
-    if flow_aware:
-        unmatched_flows_prefixes = UNMATCHED_FLOWS if is_ipv4 else UNMATCHED_FLOWS_IPV6
-        unmatched_flows = [
-            (_prefix_to_ip(src_prefix, is_ipv4), _prefix_to_ip(dst_prefix, is_ipv4), proto, src_port, dst_port)
-            for src_prefix, dst_prefix, proto, src_port, dst_port in unmatched_flows_prefixes
-        ]
-    else:
-        unmatched_flows = []
-
-    flows_to_collect = matched_flows + unmatched_flows
-
-    # Set up single IPFIX collector for all possible collector ports
-    # Reports will be sent to only ONE of these ports, but we collect on all
-    collector = IPFIXCollector(ptfadapter, collector_ports, collector_config, flows_to_collect)
-
+    # Create packet test instance
     packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, flow_aware=flow_aware,
                              expected_flows=matched_flows, unexpected_flows=unmatched_flows)
 
-    # Run packet test
+    # Run initial packet test
     packet_test.run_packet_test(expect_reports=True)
 
-    # Blackhole collector IP and verify that all ASIC DB configuration is removed
-    # Use appropriate command based on IP family
-    if ip_family == "ipv4":
-        blackhole_cmd = "vtysh -c 'configure terminal'" +\
-                        f" -c 'ip route {collector_config['dst_ip']}/32 blackhole'"
-        remove_blackhole_cmd = "vtysh -c 'configure terminal'" +\
-                               f" -c 'no ip route {collector_config['dst_ip']}/32 blackhole'"
-    else:  # ipv6
-        blackhole_cmd = f"vtysh -c 'configure terminal' -c 'ipv6 route {collector_config['dst_ip']}/128 blackhole'"
-        remove_blackhole_cmd = "vtysh -c 'configure terminal'" +\
-                               f" -c 'no ipv6 route {collector_config['dst_ip']}/128 blackhole'"
-
-    logger.info(f"Adding blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
-    duthost.shell(blackhole_cmd, module_ignore_errors=True)
-    wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, False))
-
-    # Verify that now no drop reports are sent
-    packet_test.run_packet_test(expect_reports=False)
-
-    # Now, remove the blackhole, the TAM configuration should be recreated
-    logger.info(f"Removing blackhole route for {ip_family.upper()} collector IP: {collector_config['dst_ip']}")
-    duthost.shell(remove_blackhole_cmd, module_ignore_errors=True)
-    wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0, lambda: tam_asicdb_state(duthost, True))
-
-    # Verify that now reports are generated on drops again
-    packet_test.run_packet_test(expect_reports=True)
+    # Test with blackhole route (should disable reporting, then re-enable)
+    _test_with_blackhole_route(duthost, ip_family, collector_config, packet_test)
 
 
 @pytest.mark.disable_loganalyzer
@@ -966,19 +1057,11 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
 
     logger.info(f"Running MMU drop MoD test with {ip_family.upper()} collector configuration")
 
-    # Router MAC and collector config
+    # Get router MAC
     router_mac = _get_router_mac(duthost)
-    # Select ingress port and its PTF index
-    ingress_port_name = ingress_ports[0]
-    port_value = ingress_ports[1]
-    if isinstance(port_value, list):
-        ptf_ingress_port = port_value[0]
-        logger.info(
-            f"Using ingress LAG {ingress_port_name} with member PTF port {ptf_ingress_port} for MMU drop injection"
-        )
-    else:
-        ptf_ingress_port = port_value
-        logger.info(f"Using ingress port {ingress_port_name}/PTF{ptf_ingress_port} for MMU drop injection")
+
+    # Select ingress port for MMU drop injection
+    ingress_port_name, ptf_ingress_port = _select_ingress_port(ingress_ports, "MMU drop injection")
 
     # Use the same interface as egress for congestion (simple but effective)
     egress_interface = ingress_port_name
@@ -987,7 +1070,7 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
     port_qos_map = dut_qos_maps_module["port_qos_map"]
     pytest_assert(
         ingress_port_name in port_qos_map,
-        f"Ingress port {ingress_port_name} not present in port_qos_map",
+        f"Ingress port {ingress_port_name} not present in port_qos_map"  # noqa
     )
 
     dscp_to_tc_map_name = port_qos_map[ingress_port_name]["dscp_to_tc_map"].split("|")[-1].strip("]")
@@ -1022,13 +1105,12 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
         currCount = get_queue_trim_counters_json(duthost, egress_interface)
         return currCount['UC1']['droppacket'] > prevCount
 
+    # Prepare expected flows for MMU drop test
     expected_flows = [("10.1.1.100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")] if ip_family == "ipv4" \
         else [("2000:10:1:1::100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")]
 
-    # Set up IPFIX collector on all possible collector ports
-    logger.info(f"Collector ports (from routing): {collector_ports}")
-    logger.info(f"Collector config: {collector_config}")
-    collector = IPFIXCollector(ptfadapter, collector_ports, collector_config, expected_flows)
+    # Set up IPFIX collector
+    collector = _setup_collector(ptfadapter, collector_ports, collector_config, expected_flows)
 
     # Block only the selected queue on the chosen egress interface
     with ConfigTrimming(duthost, egress_interface, block_queue):
@@ -1039,4 +1121,4 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
         # Verify that indeed packets were dropped
         pytest_assert(wait_until(30, 5, 0, lambda: _wait_for_drop_count(queue_counters_before['UC1']['droppacket'])),
                       "PacketTest is buggy, it had passed, but the dropcounter has not incremented. "
-                      f"droppacket:{queue_counters_before['UC1']['droppacket']}")
+                      f"droppacket:{queue_counters_before['UC1']['droppacket']}")  # noqa: E231
