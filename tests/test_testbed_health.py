@@ -1,4 +1,5 @@
 import ipaddress
+import json
 import logging
 import pytest
 import concurrent.futures
@@ -84,6 +85,7 @@ def collect_vmhost_facts(request, nbrhosts):
             )
         else:
             vmhosts[name]["ip_ifs"] = v["host"].show_ip_interface()["ansible_facts"]["ip_interfaces"]
+    logger.debug(f"raw vmhost facts:\n{json.dumps(vmhosts, indent=4, default=str)}")
     return vmhosts
 
 
@@ -93,8 +95,6 @@ def check_peers_expected_interfaces(tbinfo, vmhosts):
         for intf, intf_val in val["interfaces"].items():
             if intf_val.get("ipv4") is None and intf_val.get("ipv6") is None:
                 continue
-            # Config uses Port-Channel1, whereas SONiC uses PortChannel1
-            intf = intf.replace("-", "")
             if not vmhosts[peer]["ip_ifs"].get(intf):
                 pytest.fail("PEER {}({}) does not have required interface {}".format(
                     vmhosts[peer]["vmname"], peer, intf))
