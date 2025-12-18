@@ -3765,7 +3765,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPgMinThreshold[:
     reason: "Unsupported topology."
     conditions_logical_operator: or
     conditions:
-      - "topo_name in (constants['QOS_SAI_TOPO'] + ['t0-16'])"
+      - "topo_name in (['t0-16'])"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgSharedWatermark[None-wm_pg_shared_lossy]:
   xfail:
