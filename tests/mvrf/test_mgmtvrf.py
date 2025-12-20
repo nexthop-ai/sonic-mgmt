@@ -175,6 +175,30 @@ def check_ntp_status(host, ntp_daemon_in_use):  # noqa: F811
     return res['rc'] == 0
 
 
+def check_ntp_reachability(duthost, ntp_daemon_in_use):  # noqa: F811
+    if ntp_daemon_in_use == NtpDaemon.CHRONY:
+        sources = execute_dut_command(duthost, "chronyc sources -v", mvrf=True, ignore_errors=True)
+        if sources["rc"] == 0:
+            for line in sources["stdout"].split('\n'):
+                if line.startswith('^') and 'Reach' not in line:
+                    parts = line.split()
+                    if len(parts) >= 5 and parts[4] != '0':
+                        logger.info(f"Found reachable NTP server: {line.strip()}")
+                        return True
+    else:
+        peers = execute_dut_command(duthost, "ntpq -p", mvrf=True, ignore_errors=True)
+        if peers["rc"] == 0:
+            for line in peers["stdout"].split('\n'):
+                if line.startswith('*') or line.startswith('+') or line.startswith('-'):
+                    parts = line.split()
+                    if len(parts) >= 7:
+                        reach = parts[6]
+                        if reach != '0':
+                            logger.info(f"Found reachable NTP peer: {line.strip()}")
+                            return True
+    return False
+
+
 def verify_show_command(duthost, mvrf=True):
     show_mgmt_vrf = duthost.shell("show mgmt-vrf")["stdout"]
     mvrf_interfaces = {}
@@ -254,12 +278,16 @@ class TestMvrfOutbound():
 
 class TestServices():
     @pytest.mark.usefixtures("ntp_teardown")
+    @pytest.mark.parametrize("vrf", ["default", "mgmt"])
     def test_ntp(self, duthosts, rand_one_dut_hostname, ptfhost, check_ntp_sync,
-                 ntp_servers, ntp_daemon_in_use):  # noqa: F811
+                 ntp_servers, ntp_daemon_in_use, vrf):  # noqa: F811
         duthost = duthosts[rand_one_dut_hostname]
+        ntp_vrf_config_update(duthost, vrf=vrf)
         # Check if ntp was not in sync with ntp server before enabling mvrf, if yes then setup ntp server on ptf
         if check_ntp_sync:
             with setup_ntp_context(ptfhost, duthost, False):
+                pytest_assert(wait_until(120, 10, 0, check_ntp_reachability, duthost, ntp_daemon_in_use),
+                              f"NTP servers should be reachable in {vrf} VRF")
                 pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
         else:
             pytest_assert(wait_until(400, 10, 0, check_ntp_status, duthost, ntp_daemon_in_use), "Ntp not started")
