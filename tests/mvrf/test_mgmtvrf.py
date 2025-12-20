@@ -176,24 +176,42 @@ def check_ntp_status(host, ntp_daemon_in_use):  # noqa: F811
 
 
 def check_ntp_reachability(duthost, ntp_daemon_in_use):  # noqa: F811
+    """
+    Check if at least one NTP server is reachable.
+
+    For Chrony, parses output of 'chronyc sources -v':
+        Example line: ^* ntp1.example.com    2   6   377    64   +123us[ +140us] +/-   10ms
+        The reach column (index 4) is in octal: 377 = all 8 polls successful, 0 = none
+
+    For NTP/NTPSEC, parses output of 'ntpq -p':
+        Example line: *ntp1.example.com .GPS.  1 u  64  64  377  1.234  0.123  0.045
+        The reach column (index 7) is in octal: 377 = all 8 polls successful, 0 = none
+    """
     if ntp_daemon_in_use == NtpDaemon.CHRONY:
         sources = execute_dut_command(duthost, "chronyc sources -v", mvrf=True, ignore_errors=True)
         if sources["rc"] == 0:
             for line in sources["stdout"].split('\n'):
+                # Lines starting with ^ are server entries (^*, ^+, ^-, etc.)
+                # Skip the header line which contains "Reach"
                 if line.startswith('^') and 'Reach' not in line:
                     parts = line.split()
-                    if len(parts) >= 5 and parts[4] != '0':
-                        logger.info(f"Found reachable NTP server: {line.strip()}")
-                        return True
+                    CHRONY_REACH_INDEX = 4
+                    if len(parts) >= CHRONY_REACH_INDEX + 1:
+                        reach_value = parts[CHRONY_REACH_INDEX]
+                        if reach_value != '0':
+                            logger.info(f"Found reachable NTP server: {line.strip()}")
+                            return True
     else:
         peers = execute_dut_command(duthost, "ntpq -p", mvrf=True, ignore_errors=True)
         if peers["rc"] == 0:
             for line in peers["stdout"].split('\n'):
+                # Lines starting with *, +, or - are active peer entries
                 if line.startswith('*') or line.startswith('+') or line.startswith('-'):
                     parts = line.split()
-                    if len(parts) >= 7:
-                        reach = parts[6]
-                        if reach != '0':
+                    NTPQ_REACH_INDEX = 6
+                    if len(parts) >= NTPQ_REACH_INDEX + 1:
+                        reach_value = parts[NTPQ_REACH_INDEX]
+                        if reach_value != '0':
                             logger.info(f"Found reachable NTP peer: {line.strip()}")
                             return True
     return False
@@ -317,7 +335,10 @@ class TestServices():
 
 
 class TestReboot():
-    def basic_check_after_reboot(self, duthost, localhost, ptfhost, creds):
+    def basic_check_after_reboot(self, duthost, localhost, ptfhost, creds, ntp_daemon_in_use):  # noqa: F811
+        """
+        Perform basic checks after reboot to verify mgmt VRF functionality.
+        """
         verify_show_command(duthost)
         inbound_test = TestMvrfInbound()
         outbound_test = TestMvrfOutbound()
@@ -325,9 +346,19 @@ class TestReboot():
         inbound_test.test_ping(duthost=duthost)
         inbound_test.test_snmp_fact(localhost=localhost, duthost=duthost, creds=creds)
 
+        # Verify NTP is reachable after reboot when configured in mgmt VRF
+        pytest_assert(
+            wait_until(120, 10, 0, check_ntp_reachability, duthost, ntp_daemon_in_use),
+            "NTP servers should be reachable after reboot when NTP is configured in mgmt VRF. "
+        )
+
     @pytest.mark.disable_loganalyzer
-    def test_warmboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds, change_critical_services):
+    def test_warmboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds,
+                      change_critical_services, ntp_daemon_in_use):  # noqa: F811
         duthost = duthosts[rand_one_dut_hostname]
+
+        ntp_vrf_config_update(duthost, vrf="mgmt")
+
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost, reboot_type="warm")
         pytest_assert(wait_until(120, 20, 0, duthost.critical_services_fully_started),
@@ -349,22 +380,30 @@ class TestReboot():
 
         pytest_assert(wait_until(180, 20, 0, duthost.critical_services_fully_started),
                       "Not all services which start with bootOn timer are fully started")
-        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds)
+        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)
 
     @pytest.mark.disable_loganalyzer
-    def test_reboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds):
+    def test_reboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds,
+                    ntp_daemon_in_use):  # noqa: F811
         duthost = duthosts[rand_one_dut_hostname]
+
+        ntp_vrf_config_update(duthost, vrf="mgmt")
+
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost)
         pytest_assert(wait_until(300, 20, 0, duthost.critical_services_fully_started),
                       "Not all critical services are fully started")
-        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds)
+        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)
 
     @pytest.mark.disable_loganalyzer
-    def test_fastboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds):
+    def test_fastboot(self, duthosts, rand_one_dut_hostname, localhost, ptfhost, creds,
+                      ntp_daemon_in_use):  # noqa: F811
         duthost = duthosts[rand_one_dut_hostname]
+
+        ntp_vrf_config_update(duthost, vrf="mgmt")
+
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost, reboot_type="fast")
         pytest_assert(wait_until(300, 20, 0, duthost.critical_services_fully_started),
                       "Not all critical services are fully started")
-        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds)
+        self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)
