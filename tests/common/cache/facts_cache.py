@@ -205,9 +205,9 @@ def _get_default_zone(function, func_args, func_kargs):
     unicode_type = str if sys.version_info.major >= 3 else unicode      # noqa: F821
     if func_args:
         hostname = getattr(func_args[0], "hostname", None)
-    if not hostname or type(hostname) not in [str, unicode_type]:
-        raise ValueError("Failed to get attribute 'hostname' of type string from instance of type %s."
-                         % type(func_args[0]))
+    if not hostname or not isinstance(hostname, (str, unicode_type)):
+        raise ValueError("Failed to get attribute 'hostname' of type string from instance of type %s. "
+                         "Got type %s." % (type(func_args[0]), type(hostname)))
     zone = hostname
     signature = inspect.signature(function)
     arg_names = list(signature.parameters.keys())
