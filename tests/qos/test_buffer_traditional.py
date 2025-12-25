@@ -322,7 +322,9 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
         if is_port_up:
             # Always check buffer configuration for admin-up ports
             should_check_buffer = True
-            admin_up_ports.add(port)
+            # Filter out special ports (recirculation, inband, backplane) that don't have buffer profiles
+            if "Ethernet-Rec" not in port and "Ethernet-IB" not in port and "Ethernet-BP" not in port:
+                admin_up_ports.add(port)
             if port not in cable_length_map:
                 logging.info(f"Port {port} not found in cable_length_map, skipping buffer check")
                 should_check_buffer = False
@@ -411,6 +413,7 @@ def test_buffer_pg(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
             logging.info("Checking admin-down port buffer information: {}".format(port))
             _, _ = _check_port_buffer_info_and_get_profile_oid(dut_asic, port, None)
 
+    pytest_assert(admin_up_ports, "No admin-up ports available for shutdown test")
     port_to_shutdown = admin_up_ports.pop()
     expected_profile = dut_asic.run_redis_cmd(
         argv=['redis-cli', '-n', 4, 'hget', 'BUFFER_PG|{}|3-4'.format(port_to_shutdown), 'profile'])[0]
