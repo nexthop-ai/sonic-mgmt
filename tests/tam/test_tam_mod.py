@@ -9,9 +9,9 @@ import re
 import copy
 
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.utilities import wait_until
+from tests.common.utilities import wait_until, get_dscp_to_queue_value
+from tests.common import config_reload
 from ipfix_common import IPFIXHeader, PsampModHeader
-from tests.common.utilities import get_dscp_to_queue_value
 from tests.packet_trimming.packet_trimming_helper import (
     create_blocking_scheduler,
     ConfigTrimming,
@@ -247,6 +247,7 @@ def tam_mod_config(ip_family_param, flow_aware_param, duthosts, rand_one_dut_hos
             - ip_family: str, either "ipv4" or "ipv6"
     """
     duthost = duthosts[rand_one_dut_hostname]
+
     ip_family = ip_family_param
     flow_aware = flow_aware_param
 
@@ -311,6 +312,13 @@ def tam_mod_config(ip_family_param, flow_aware_param, duthosts, rand_one_dut_hos
     # Wait for ASIC_DB to be cleaned up
     cleanup_result = wait_until(TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL, 0,
                                 lambda: tam_asicdb_state(duthost, False))
+
+    # TODO - There is a known bug where, after TAM config is added and deleted 8 times,
+    # the config fails on the 9th time.  Since we are doing multiple tests here, doing
+    # a config_reload before starting the new test so that we don't run into that known
+    # issue.
+    config_reload(duthost, safe_reload=True, check_intf_up_ports=True, wait_for_bgp=True)
+
     if cleanup_result:
         logger.info(f"TAM cleanup completed {ip_family.upper()}")
     else:
@@ -992,7 +1000,7 @@ def _test_with_blackhole_route(duthost, ip_family, collector_config, packet_test
 
 
 @pytest.mark.disable_loganalyzer
-def test_mod_ingress_drops(tam_mod_config, ptfadapter, tbinfo):
+def test_mod_ingress_drops(tam_mod_config, ptfadapter):
     """
     Test basic TAM Mirror on Drop(stateless, flow aware) functionality with TTL expiry drops.
 
@@ -1122,3 +1130,101 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
         pytest_assert(wait_until(30, 5, 0, lambda: _wait_for_drop_count(queue_counters_before['UC1']['droppacket'])),
                       "PacketTest is buggy, it had passed, but the dropcounter has not incremented. "
                       f"droppacket:{queue_counters_before['UC1']['droppacket']}")  # noqa: E231
+
+
+# Running this test only for flow-unaware since the collector config change
+# does not really matter whether it is flow aware or not
+@pytest.mark.parametrize("flow_aware_param", [False], ids=["flow_unaware"], indirect=True)
+@pytest.mark.disable_loganalyzer
+def test_mod_collector_config_change(tam_mod_config, ptfadapter, tbinfo):
+    """
+    Test TAM Mirror on Drop collector configuration change functionality.
+
+    This test verifies that changing the collector configuration (src_ip, dst_ip, dst_port)
+    dynamically updates the TAM behavior without requiring a full reconfiguration.
+
+    1. Configure TAM MoD with dynamically selected ports and IP family
+    2. Send packets with TTL=1 that will expire and be dropped on ingress ports
+    3. Verify IPFIX reports are sent to the collector on the designated egress port
+    4. Change the collector config and verify that the drops still happen and use newer
+       collector configuration
+
+    Note: This test only runs with flow_aware=False since collector config change
+    is agnostic to flow awareness.
+    """
+    duthost, ingress_port, collector_ports, collector_config, ip_family, flow_aware = tam_mod_config
+
+    logger.info(f"Running test with {ip_family.upper()} collector configuration")
+
+    # Get router MAC
+    router_mac = _get_router_mac(duthost)
+
+    # Select ingress port for packet injection
+    ingress_port_name, ptf_ingress_port = _select_ingress_port(ingress_port, "packet injection")
+
+    # Prepare flows for testing
+    matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(ip_family, flow_aware)
+
+    # Modified collector configurations for testing collector config updates
+    # Note: dst_port must be int for comparison in IPFIXCollector._is_ipfix_report()
+    TAM_COLLECTOR_IPV4_MODIFIED = {
+        "src_ip": "11.22.33.55",
+        "dst_ip": "10.20.30.50",
+        "dst_port": 20000,
+    }
+
+    TAM_COLLECTOR_IPV6_MODIFIED = {
+        "src_ip": "2001:db8:1::55",
+        "dst_ip": "2001:db8:2::50",
+        "dst_port": 20000,
+    }
+
+    # Get modified collector config from dictionaries
+    if ip_family == "ipv4":
+        modified_collector_config = TAM_COLLECTOR_IPV4_MODIFIED
+    else:
+        modified_collector_config = TAM_COLLECTOR_IPV6_MODIFIED
+
+    # Test with both original and modified collector configurations
+    collector_configs = [
+        ("modified", modified_collector_config),
+        ("original", collector_config)
+    ]
+
+    available_ports = _get_available_ports(duthost, tbinfo)
+
+    for config_name, test_collector_config in collector_configs:
+        logger.info(f"Testing with {config_name} collector configuration: {test_collector_config}")
+
+        # Get collector egress ports based on dst_ip routing
+        test_collector_ports = _get_collector_egress_ports(duthost, test_collector_config["dst_ip"],
+                                                           available_ports, ip_family)
+
+        # Build full collector config with all required fields
+        full_collector_config = collector_config.copy()
+        full_collector_config.update(test_collector_config)
+
+        # Update CONFIG_DB with collector configuration
+        duthost.shell(f'sonic-db-cli CONFIG_DB HSET "TAM_COLLECTOR|COLLECTOR1" "src_ip" '
+                      f'"{full_collector_config["src_ip"]}"')
+        duthost.shell(f'sonic-db-cli CONFIG_DB HSET "TAM_COLLECTOR|COLLECTOR1" "dst_ip" '
+                      f'"{full_collector_config["dst_ip"]}"')
+        duthost.shell(f'sonic-db-cli CONFIG_DB HSET "TAM_COLLECTOR|COLLECTOR1" "dst_port" '
+                      f'"{full_collector_config["dst_port"]}"')
+
+        # Wait for TAM ASIC DB to reflect the configuration
+        pytest_assert(
+            wait_for_tam_asicdb_applied(duthost, TAM_ASICDB_TIMEOUT, TAM_ASICDB_INTERVAL),
+            f"ASIC_DB missing TAM keys after applying {config_name} collector config"
+        )
+
+        # Set up IPFIX collector
+        collector = _setup_collector(ptfadapter, test_collector_ports, full_collector_config, flows_to_collect)
+
+        # Create packet test instance
+        packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family,
+                                 flow_aware=flow_aware, expected_flows=matched_flows,
+                                 unexpected_flows=unmatched_flows)
+
+        # Run packet test
+        packet_test.run_packet_test(expect_reports=True)
