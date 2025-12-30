@@ -30,7 +30,6 @@ Testing cert rotation by telemetry
 """
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_not_exit(duthosts, enum_rand_one_per_hwsku_hostname, setup_streaming_telemetry, localhost):
     """ Test that telemetry server will not exit when certs are missing. We will shutdown telemetry,
     remove certs and verify that telemetry is up and running.
@@ -62,7 +61,6 @@ def test_telemetry_not_exit(duthosts, enum_rand_one_per_hwsku_hostname, setup_st
     wait_tcp_connection(localhost, dut_ip, env.gnmi_port, timeout_s=60)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_post_cert_del(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path, localhost,
                                  setup_streaming_telemetry):
     """ Test that telemetry server with certificates will accept requests.
@@ -94,7 +92,6 @@ def test_telemetry_post_cert_del(duthosts, enum_rand_one_per_hwsku_hostname, ptf
     wait_tcp_connection(localhost, dut_ip, env.gnmi_port, timeout_s=60)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_post_cert_add(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path, localhost,
                                  setup_streaming_telemetry):
     """ Test that telemetry server with no certificates will reject requests.
@@ -126,7 +123,6 @@ def test_telemetry_post_cert_add(duthosts, enum_rand_one_per_hwsku_hostname, ptf
                   "Telemetry server request should complete with certs")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_cert_rotate(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path, localhost,
                                setup_streaming_telemetry):
     """ Test that telemetry server with certs will serve requests.

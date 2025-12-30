@@ -18,7 +18,6 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 SHOW_PATHS_FILE = os.path.join(BASE_DIR, "cli_paths.json")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_show_non_get(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                 setup_streaming_telemetry, gnxi_path,
                                 request, skip_non_container_test):
@@ -33,7 +32,6 @@ def test_telemetry_show_non_get(duthosts, enum_rand_one_per_hwsku_hostname, ptfh
     pytest_assert(ptf_result['rc'] != 0, "SHOW command {} for non GET operation should fail".format(cmd))
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_show_get(duthosts, localhost, enum_rand_one_per_hwsku_hostname, ptfhost,
                             setup_streaming_telemetry, gnxi_path, request,
                             skip_non_container_test):

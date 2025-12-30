@@ -26,9 +26,12 @@ def skip_non_container_test(request):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_user_auth(duthosts, enum_rand_one_per_hwsku_hostname):
+def setup_user_auth(duthosts, enum_rand_one_per_hwsku_hostname, setup_streaming_telemetry):
     """
-    Setup user authentication for telemetry tests
+    Setup user authentication for telemetry tests.
+
+    This fixture depends on setup_streaming_telemetry to ensure the telemetry
+    container is set up before configuring user authentication.
     """
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     env = GNMIEnvironment(duthost, GNMIEnvironment.TELEMETRY_MODE)
@@ -43,7 +46,11 @@ def setup_user_auth(duthosts, enum_rand_one_per_hwsku_hostname):
 
 @pytest.fixture(scope="module", autouse=True)
 def verify_telemetry_dockerimage(duthosts, enum_rand_one_per_hwsku_hostname):
-    """If telemetry docker is available in image then return true
+    """
+    Verify telemetry docker image is available.
+
+    This fixture runs first to check if the docker image exists before
+    attempting to set up the telemetry container.
     """
     docker_out_list = []
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
@@ -54,12 +61,38 @@ def verify_telemetry_dockerimage(duthosts, enum_rand_one_per_hwsku_hostname):
         pytest.skip("docker-sonic-gnmi and docker-sonic-telemetry are not part of the image")
 
 
-@pytest.fixture(scope="module")
-def setup_streaming_telemetry(request, duthosts, enum_rand_one_per_hwsku_hostname, localhost, ptfhost, gnxi_path):
-    is_ipv6 = request.param
-    with setup_streaming_telemetry_context(is_ipv6, duthosts[enum_rand_one_per_hwsku_hostname],
-                                           localhost, ptfhost, gnxi_path) as result:
-        yield result
+@pytest.fixture(scope="module", autouse=True)
+def setup_streaming_telemetry(duthosts, enum_rand_one_per_hwsku_hostname, localhost, ptfhost, gnxi_path,
+                              verify_telemetry_dockerimage):
+    """
+    Setup streaming telemetry for all tests in this module.
+
+    This fixture automatically sets up streaming telemetry with IPv4 (is_ipv6=False)
+    for all tests in the telemetry directory.
+
+    Depends on verify_telemetry_dockerimage to ensure the docker image exists
+    before attempting setup.
+    """
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    was_running = duthost.is_service_fully_started("telemetry")
+    if was_running:
+        logger.info("telemetry container running at start of test, will not tear down " +
+                    "at the end of the test")
+
+    try:
+        with setup_streaming_telemetry_context(False, duthost, localhost, ptfhost, gnxi_path) as result:
+            yield result
+    finally:
+        if not was_running:
+            try:
+                duthost.service(name="telemetry", state="stopped")
+                logger.info("telemetry container stopped")
+
+                duthost.shell("docker rm telemetry", module_ignore_errors=True)
+                logger.info("telemetry container removed successfully")
+            except Exception as e:
+                logger.error("Failed to stop/remove telemetry container: %s", str(e))
+                # Don't raise - we want cleanup to continue even if stop/remove fails
 
 
 def do_init(duthost):

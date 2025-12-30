@@ -38,7 +38,6 @@ def modify_fake_appdb_table(duthost, add=True, entries=1):
         pytest_assert(duthost.shell(command)['rc'] == 0, "Unable to modify FAKE_APPL_DB_TABLE{}".format(entry))
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_no_table_or_key(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                    setup_streaming_telemetry, gnxi_path):
     """
@@ -60,7 +59,6 @@ def test_poll_mode_no_table_or_key(duthosts, enum_rand_one_per_hwsku_hostname, p
     pytest_assert(len(sync_responses_match) == 5, "Missing sync responses")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_present_table_delayed_key(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                              setup_streaming_telemetry, gnxi_path):
     """
@@ -105,7 +103,6 @@ def test_poll_mode_present_table_delayed_key(duthosts, enum_rand_one_per_hwsku_h
     modify_fake_appdb_table(duthost, False, 2)  # Remove all added tables
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_delete(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                           setup_streaming_telemetry, gnxi_path):
     """
@@ -148,7 +145,6 @@ def test_poll_mode_delete(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
     client_thread.join(30)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                  setup_streaming_telemetry, gnxi_path):
     """
@@ -209,7 +205,6 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
     modify_fake_appdb_table(duthost, False, 1)  # Remove all added tables
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_default_route_supervisor(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                             setup_streaming_telemetry, gnxi_path):
     """
