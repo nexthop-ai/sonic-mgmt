@@ -89,12 +89,15 @@ def collect_vmhost_facts(request, nbrhosts):
     return vmhosts
 
 
-def check_peers_expected_interfaces(tbinfo, vmhosts):
+def check_peers_expected_interfaces(request, tbinfo, vmhosts):
     for peer, val in tbinfo["topo"]["properties"]["configuration"].items():
         # Validate interfaces
         for intf, intf_val in val["interfaces"].items():
             if intf_val.get("ipv4") is None and intf_val.get("ipv6") is None:
                 continue
+            if request.config.getoption("neighbor_type") == "sonic":
+                # Config uses Port-Channel1, whereas SONiC uses PortChannel1
+                intf = intf.replace("-", "")
             if not vmhosts[peer]["ip_ifs"].get(intf):
                 pytest.fail("PEER {}({}) does not have required interface {}".format(
                     vmhosts[peer]["vmname"], peer, intf))
@@ -251,7 +254,7 @@ def test_testbed_health(duthosts, fanouthosts, request, tbinfo, nbrhosts):
 
     # Cycle through TestBed info and make sure each expected peer interface exists
     logging.info("Check PEERs all have expected interfaces")
-    check_peers_expected_interfaces(tbinfo, vmhosts)
+    check_peers_expected_interfaces(request, tbinfo, vmhosts)
 
     logging.info("Check PEERs are properly configured for BGP")
     check_peers_expected_bgp(request, tbinfo, vmhosts)

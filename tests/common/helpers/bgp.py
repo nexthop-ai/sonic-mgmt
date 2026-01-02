@@ -104,6 +104,26 @@ def get_bgp_neighbors_from_config_facts(duthost, config_facts, vrf_name="default
     return bgp_neighbors
 
 
+def get_bgp_peer_addr(mg_facts, ipv6=False):
+    """
+    Get a BGP peer address for the specified address family.
+
+    Args:
+        mg_facts: Minigraph facts dictionary containing 'minigraph_bgp'
+        ipv6: If True, return IPv6 peer address; otherwise IPv4
+
+    Returns:
+        str: BGP peer IP address or None if not found
+    """
+    for bgp_peer in mg_facts.get('minigraph_bgp', []):
+        addr = bgp_peer.get('addr', '')
+        if ipv6 and ':' in addr:
+            return addr
+        elif not ipv6 and '.' in addr:
+            return addr
+    return None
+
+
 class BGPNeighbor(object):
 
     def __init__(self, duthost, ptfhost, name,

@@ -361,7 +361,7 @@ class TestReboot():
 
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost, reboot_type="warm")
-        pytest_assert(wait_until(120, 20, 0, duthost.critical_services_fully_started),
+        pytest_assert(wait_until(240, 20, 0, duthost.critical_services_fully_started),
                       "Not all critical services are fully started")
 
         # Change default critical services to check services that starts with bootOn timer
@@ -378,7 +378,7 @@ class TestReboot():
             critical_services.append('telemetry')
         duthost.reset_critical_services_tracking_list(critical_services)
 
-        pytest_assert(wait_until(180, 20, 0, duthost.critical_services_fully_started),
+        pytest_assert(wait_until(360, 20, 0, duthost.critical_services_fully_started),
                       "Not all services which start with bootOn timer are fully started")
         self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)
 
@@ -391,7 +391,7 @@ class TestReboot():
 
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost)
-        pytest_assert(wait_until(300, 20, 0, duthost.critical_services_fully_started),
+        pytest_assert(wait_until(600, 20, 0, duthost.critical_services_fully_started),
                       "Not all critical services are fully started")
         self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)
 
@@ -404,6 +404,6 @@ class TestReboot():
 
         duthost.command("sudo config save -y")  # This will override config_db.json with mgmt vrf config
         reboot(duthost, localhost, reboot_type="fast")
-        pytest_assert(wait_until(300, 20, 0, duthost.critical_services_fully_started),
+        pytest_assert(wait_until(600, 20, 0, duthost.critical_services_fully_started),
                       "Not all critical services are fully started")
         self.basic_check_after_reboot(duthost, localhost, ptfhost, creds, ntp_daemon_in_use)

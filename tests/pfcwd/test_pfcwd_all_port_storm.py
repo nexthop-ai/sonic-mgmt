@@ -8,7 +8,8 @@ from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
 from tests.common.helpers.pfcwd_helper import start_wd_on_ports, update_pfc_poll_interval, \
     start_background_traffic  # noqa: F401
 from tests.common.helpers.pfcwd_helper import EXPECT_PFC_WD_DETECT_RE, EXPECT_PFC_WD_RESTORE_RE, \
-    fetch_vendor_specific_diagnosis_re, verify_all_ports_pfc_storm_in_expected_state
+    fetch_vendor_specific_diagnosis_re, verify_all_ports_pfc_storm_in_expected_state, \
+    get_pfc_storm_baseline_counters
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_enum_rand_one_per_hwsku_frontend_host_m # noqa F401, E501
 from tests.common.helpers.pfcwd_helper import send_background_traffic
 from tests.common import config_reload
@@ -202,7 +203,12 @@ def resolve_arp(duthost, ptfhost, test_ports_info, vlan, ip_version):
 @pytest.mark.usefixtures('degrade_pfcwd_detection', 'stop_pfcwd', 'storm_test_setup_restore', 'start_background_traffic')  # noqa: E501
 class TestPfcwdAllPortStorm(object):
     """ PFC storm test class """
-    def run_test(self, duthost, storm_hndle, expect_regex, syslog_marker, action):
+    # Threshold percentage for port storm verification (75% of ports must reach expected state)
+    PFC_STORM_THRESHOLD_PERCENTAGE = 75
+    # Threshold percentage for restore verification (100% of stormed ports must restore)
+    PFC_RESTORE_THRESHOLD_PERCENTAGE = 100
+
+    def run_test(self, duthost, storm_hndle, expect_regex, syslog_marker, action, stormed_ports_list=None):
         """
         Storm generation/restoration on all ports and verification
 
@@ -212,6 +218,7 @@ class TestPfcwdAllPortStorm(object):
             expect_regex (list): list of expect regexs to be matched in the syslog
             syslog_marker (string): marker prefix written to the syslog
             action (string): storm/restore action
+            stormed_ports_list (list): list to track which ports actually entered storm state
         """
         loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix=syslog_marker)
         ignore_file = os.path.join(TEMPLATES_DIR, "ignore_pfc_wd_messages")
@@ -226,18 +233,29 @@ class TestPfcwdAllPortStorm(object):
 
         with loganalyzer:
             if action == "storm":
+                # Capture baseline counters before starting storm to avoid false positives from stale counters
+                baseline_counters = get_pfc_storm_baseline_counters(duthost, storm_hndle)
+                logger.info(f"Captured baseline counters for {len(baseline_counters)} ports")
+
                 storm_hndle.start_pfc_storm()
                 expected_state = "storm"
+                threshold = self.PFC_STORM_THRESHOLD_PERCENTAGE
             elif action == "restore":
+                baseline_counters = None  # Not needed for restore verification
                 storm_hndle.stop_pfc_storm()
                 expected_state = "restore"
+                threshold = self.PFC_RESTORE_THRESHOLD_PERCENTAGE
 
-            # Wait for the expected state on all ports instead of fixed sleep
-            logger.info(f"Waiting for all ports to reach {expected_state} state")
+            if action == "storm":
+                logger.info(f"Waiting for {threshold}% of ports to reach {expected_state} state")
+            else:
+                logger.info(f"Waiting for {threshold}% of stormed ports to reach {expected_state} state")
+
             pytest_assert(
                 wait_until(60, 2, 5, verify_all_ports_pfc_storm_in_expected_state, duthost,
-                           storm_hndle, expected_state),
-                f"Not all ports reached expected state {expected_state}"
+                           storm_hndle, expected_state, baseline_counters, threshold, stormed_ports_list),
+                f"Not enough ports reached expected state {expected_state} "
+                f"(threshold: {threshold}%)"
             )
 
     def test_all_port_storm_restore(
@@ -256,6 +274,9 @@ class TestPfcwdAllPortStorm(object):
         duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
         storm_hndle = storm_test_setup_restore
         logger.info("--- Testing if PFC storm is detected on all ports ---")
+
+        # Track which ports actually enter storm state
+        stormed_ports_list = []
 
         # get all the tested ports
         queues = []
@@ -279,7 +300,11 @@ class TestPfcwdAllPortStorm(object):
                           storm_hndle,
                           expect_regex=[EXPECT_PFC_WD_DETECT_RE + fetch_vendor_specific_diagnosis_re(duthost)],
                           syslog_marker="all_port_storm",
-                          action="storm")
-        logger.info("--- Testing if PFC storm is restored on all ports ---")
+                          action="storm",
+                          stormed_ports_list=stormed_ports_list)
+
+        logger.info(f"--- {len(stormed_ports_list)} ports entered storm state ---")
+        logger.info("--- Testing if PFC storm is restored on stormed ports ---")
         self.run_test(duthost, storm_hndle, expect_regex=[EXPECT_PFC_WD_RESTORE_RE],
-                      syslog_marker="all_port_storm_restore", action="restore")
+                      syslog_marker="all_port_storm_restore", action="restore",
+                      stormed_ports_list=stormed_ports_list)

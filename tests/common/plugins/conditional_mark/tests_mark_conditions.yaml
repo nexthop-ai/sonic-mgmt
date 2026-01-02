@@ -392,7 +392,6 @@ bgp/test_bgp_port_disable.py:
   skip:
     reason: "Not supported on public branches."
     conditions:
-      - "release in ['master', 'main', '202505']"
       - "'internal' not in branch"
 
 bgp/test_bgp_queue.py:
@@ -3600,7 +3599,7 @@ mvrf/test_mgmtvrf.py:
     reason: "mvrf is not supported in x86_64-nokia_ixr7250e_36x400g-r0 platform, M* topo, kvm testbed, mellanox, nvidia and broadcom asic from 202411 and later"
     conditions_logical_operator: or
     conditions:
-      - "asic_type in ['vs', 'mellanox', 'nvidia', 'broadcom']"
+      - "asic_type in ['vs', 'mellanox', 'nvidia']"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "platform in ['x86_64-nokia_ixr7250e_36x400g-r0']"
 

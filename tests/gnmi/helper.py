@@ -333,7 +333,8 @@ def gnmi_get(duthost, ptfhost, path_list, ip=None):
     cmd += '--xpath '
     for path in path_list:
         path = path.replace('sonic-db:', '')
-        cmd += " " + path
+        # Quote the path to handle special characters like brackets and pipes
+        cmd += ' "' + path + '"'
     output = ptfhost.shell(cmd, module_ignore_errors=True)
     msg = output['stdout'].replace('\\', '')
     error = "GRPC error\n"

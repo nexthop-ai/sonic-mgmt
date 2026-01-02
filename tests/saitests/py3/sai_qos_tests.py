@@ -1151,10 +1151,10 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
 
                 recv_pkt = scapy.Ether(result.packet)
                 cnt += 1
-                dscp_received = (recv_pkt.payload.tos) >> 2
 
                 # Verify dscp flag
                 try:
+                    dscp_received = (recv_pkt.payload.tos) >> 2
                     if (dscp_received == dscp and
                             recv_pkt.payload.src == src_port_ip and
                             recv_pkt.payload.dst == dst_port_ip and
@@ -1606,9 +1606,9 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
                     total_recv_cnt += 1
 
                     # verify dscp flag
-                    dscp_expected  = dscps[dscp_recv_cnt]
-                    dscp_received = recv_pkt.payload.tos >> 2
+                    dscp_expected = dscps[dscp_recv_cnt]
                     try:
+                        dscp_received = recv_pkt.payload.tos >> 2
                         if (dscp_received == dscp_expected) and (recv_pkt.payload.src == src_port_ip) and \
                             (recv_pkt.payload.dst == dst_port_ip) and \
                            (recv_pkt.payload.ttl == exp_ttl) and (recv_pkt.payload.id == exp_ip_id):

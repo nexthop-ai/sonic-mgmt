@@ -389,6 +389,9 @@ r, ".* ERR syncd#syncd: .* SAI_API_SWITCH:sai_query_stats_capability:\d+ stats c
 # Ignore all audisp-tacplus Accounting logs
 r, ".* INFO audisp-tacplus: Audisp-tacplus: Accounting: user: .*, tty: .*, host: .*, command: .*, type: \d+, task ID: \d+"
 
+# Ignore link training failure errors - these are hardware/transceiver related and don't affect buffer tests
+r, ".* ERR swss#orchagent: :- getPortLinkTrainingFailure: Failed to get LT failure status for Ethernet.*"
+
 # Ignore lldp error log, don't have real impact
 r, ".* ERR container: docker cmd: stop for lldp failed with 500 Server Error.*"
 
