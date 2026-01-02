@@ -518,23 +518,11 @@ class StrictPriorityRateLimitingDriver:
         logger.info("Reloading configuration to restore original state...")
 
         try:
-            # For Q3D ASIC, run full config reload to restore state
-            asic_name = self.duthost.get_asic_name().lower()
-            if "q3d" in asic_name:
-                logger.info("Running config reload for Q3D ASIC...")
-                config_reload(self.duthost, config_source='config_db', safe_reload=True)
-                logger.info("✓ Configuration reloaded successfully")
-                logger.info("All configuration restored to original state")
-            else:
-                cmd = "config qos reload"
-                result = self.duthost.shell(cmd, module_ignore_errors=True)
-
-                if result['rc'] == 0:
-                    logger.info("✓ QoS configuration reloaded successfully")
-                    logger.info("All QoS tables restored to original state")
-                else:
-                    logger.warning(f"QoS reload had issues: {result.get('stderr', 'Unknown error')}")
-                    logger.info(f"QoS reload output: {result.get('stdout', 'No output')}")
+            # Run full config reload to restore state
+            logger.info("Running config reload...")
+            config_reload(self.duthost, config_source='config_db', safe_reload=True)
+            logger.info("✓ Configuration reloaded successfully")
+            logger.info("All configuration restored to original state")
 
         except Exception as e:
             logger.error(f"Error during configuration reload: {e}")
