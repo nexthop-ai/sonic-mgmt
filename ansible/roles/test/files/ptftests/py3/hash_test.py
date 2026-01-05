@@ -25,7 +25,6 @@ from ptf.testutils import simple_tcpv6_packet
 from ptf.testutils import send_packet
 from ptf.testutils import verify_packet_any_port
 from ptf.testutils import simple_ipv4ip_packet
-from ptf.testutils import simple_ipv6ip_packet
 from ptf.testutils import simple_vxlan_packet
 from ptf.testutils import simple_vxlanv6_packet
 from ptf.testutils import simple_nvgre_packet
