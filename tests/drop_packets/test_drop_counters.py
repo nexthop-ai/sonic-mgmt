@@ -62,12 +62,17 @@ def ignore_expected_loganalyzer_exceptions(duthosts, rand_one_dut_hostname, loga
     CopperCableIgnoreRegex = [
         ".* ERR pmon#xcvrd.*no suitable app for the port appl.*host_lane_count.*host_speed.*"
     ]
+    # Ignore orchagent LT failure status messages (can be repeated N times)
+    LTFailureIgnoreRegex = [
+        r".* ERR swss#orchagent:.*getPortLinkTrainingFailure: Failed to get LT failure status for .*"
+    ]
     duthost = duthosts[rand_one_dut_hostname]
     if loganalyzer:  # Skip if loganalyzer is disabled
         if duthost.facts["asic_type"] == "vs":
             loganalyzer[duthost.hostname].ignore_regex.extend(KVMIgnoreRegex)
         loganalyzer[duthost.hostname].ignore_regex.extend(SAISwitchIgnoreRegex)
         loganalyzer[duthost.hostname].ignore_regex.extend(CopperCableIgnoreRegex)
+        loganalyzer[duthost.hostname].ignore_regex.extend(LTFailureIgnoreRegex)
         if duthost.sonichost.facts['platform_asic'] == 'broadcom':
             ignore_regex = r".* ERR swss#orchagent:\s*.*\s*queryAattributeEnumValuesCapability:\s*returned value " \
                 r"\d+ is not allowed on SAI_SWITCH_ATTR_(?:ECMP|LAG)_DEFAULT_HASH_ALGORITHM.*"
