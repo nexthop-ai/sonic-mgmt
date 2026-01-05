@@ -25,6 +25,7 @@ from ptf.testutils import simple_tcpv6_packet
 from ptf.testutils import send_packet
 from ptf.testutils import verify_packet_any_port
 from ptf.testutils import simple_ipv4ip_packet
+from ptf.testutils import simple_ipv6ip_packet
 from ptf.testutils import simple_vxlan_packet
 from ptf.testutils import simple_vxlanv6_packet
 from ptf.testutils import simple_nvgre_packet
@@ -712,7 +713,6 @@ class IPinIPHashTest(HashTest):
                                           tcp_sport=sport,
                                           tcp_dport=dport,
                                           ip_ttl=64)
-            func = simple_ipv4ip_packet
         else:
             inner_pkt = simple_tcpv6_packet(pktlen=inner_pkt_len if vlan_id == 0 else inner_pkt_len + 4,
                                             dl_vlan_enable=False if vlan_id == 0 else True,
@@ -723,15 +723,24 @@ class IPinIPHashTest(HashTest):
                                             tcp_sport=sport,
                                             tcp_dport=dport,
                                             ipv6_hlim=64)
-            func = simple_ipv4ip_packet
-        ipinip_pkt = func(
-            eth_dst=router_mac,
-            eth_src=src_mac,
-            ip_src=outer_src_ip,
-            ip_dst=outer_dst_ip,
-            inner_frame=inner_pkt[version])
-        exp_pkt = ipinip_pkt.copy()
-        exp_pkt['IP'].ttl -= 1
+        if self.is_v6_topo:
+            ipinip_pkt = simple_ipv6ip_packet(
+                eth_dst=router_mac,
+                eth_src=src_mac,
+                ipv6_src=outer_src_ipv6,
+                ipv6_dst=outer_dst_ipv6,
+                inner_frame=inner_pkt['IPv6'])
+            exp_pkt = ipinip_pkt.copy()
+            exp_pkt['IPV6'].hlim -= 1
+        else:
+            ipinip_pkt = simple_ipv4ip_packet(
+                eth_dst=router_mac,
+                eth_src=src_mac,
+                ip_src=outer_src_ip,
+                ip_dst=outer_dst_ip,
+                inner_frame=inner_pkt[version])
+            exp_pkt = ipinip_pkt.copy()
+            exp_pkt['IP'].ttl -= 1
         return ipinip_pkt, exp_pkt, inner_pkt
 
     def apply_mask_to_exp_pkt(self, masked_exp_pkt, version='IP'):
