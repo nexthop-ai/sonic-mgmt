@@ -250,17 +250,8 @@ def test_bgp_peer_shutdown(
                 ):
                     pytest.fail("Could not tear down bgp session")
 
-<<<<<<< HEAD
-            local_pcap_filename = fetch_and_delete_pcap_file(
-                bgp_pcap, constants.log_dir, duthost, request)
-            bpg_notifications = bgp_notification_packets(local_pcap_filename)
-||||||| 4b13e369b
-            local_pcap_filename = fetch_and_delete_pcap_file(bgp_pcap, constants.log_dir, duthost, request)
-            bpg_notifications = bgp_notification_packets(local_pcap_filename)
-=======
             local_pcap_filename = fetch_and_delete_pcap_file(bgp_pcap, constants.log_dir, duthost, request)
             bpg_notifications = bgp_notification_packets(local_pcap_filename, is_v6_topo)
->>>>>>> upstream/master
             for bgp_packet in bpg_notifications:
                 logging.debug(
                     "bgp notification packet, capture time %s, packet details:\n%s",
@@ -268,22 +259,10 @@ def test_bgp_peer_shutdown(
                     bgp_packet.show(dump=True),
                 )
 
-<<<<<<< HEAD
-                bgp_session_down_time = get_bgp_down_timestamp(
-                    duthost, n0.namespace, n0.ip, timestamp_before_teardown)
-                if not match_bgp_notification(bgp_packet, n0.ip, n0.peer_ip, "cease", bgp_session_down_time):
-                    pytest.fail(
-                        "BGP notification packet does not match expected values")
-||||||| 4b13e369b
-                bgp_session_down_time = get_bgp_down_timestamp(duthost, n0.namespace, n0.ip, timestamp_before_teardown)
-                if not match_bgp_notification(bgp_packet, n0.ip, n0.peer_ip, "cease", bgp_session_down_time):
-                    pytest.fail("BGP notification packet does not match expected values")
-=======
                 bgp_session_down_time = get_bgp_down_timestamp(duthost, n0.namespace, n0.ip, timestamp_before_teardown)
                 if not match_bgp_notification(bgp_packet, n0.ip, n0.peer_ip, "cease", bgp_session_down_time,
                                               is_v6_topo):
                     pytest.fail("BGP notification packet does not match expected values")
->>>>>>> upstream/master
 
             announced_route_on_dut_after_shutdown = duthost.get_route(
                 announced_route["prefix"], n0.namespace)
