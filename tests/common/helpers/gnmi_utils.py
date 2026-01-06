@@ -297,17 +297,9 @@ def create_server_csr(localhost):
                             -out gnmiserver.csr"
     localhost.shell(local_command)
 
-<<<<<<< HEAD
-    # Sign server certificate
-    create_ext_conf(dut_ip or duthost.mgmt_ip, "extfile.cnf")
-||||||| 4b13e369b
-    # Sign server certificate
-    create_ext_conf(duthost.mgmt_ip, "extfile.cnf")
-=======
 
 def sign_server_certificate(duthost, localhost, days):
     create_ext_conf(duthost.mgmt_ip, "extfile.cnf")
->>>>>>> upstream/master
     local_command = "openssl x509 \
                             -req \
                             -in gnmiserver.csr \
