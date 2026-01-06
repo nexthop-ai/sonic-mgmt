@@ -23,8 +23,17 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install pre-commit
-        run: pip install pre-commit
+      - name: Setup Environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip setuptools
+          pip install pylint
+          pip install pre-commit
+          pip install pyenchant
+          pip install -r tests/common2/requirements.txt
 
       - name: Run pre-commit hooks
-        run: pre-commit run --from-ref HEAD~1 --to-ref HEAD
+        run: |
+          source venv/bin/activate
+          pre-commit run --from-ref HEAD~1 --to-ref HEAD

@@ -45,6 +45,10 @@ parameters:
   type: object
   default: {}
 
+- name: PTF_MODIFIED
+  type: string
+  default: "False"
+
 
 jobs:
   - job: get_impacted_area
@@ -53,6 +57,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/get-impacted-area.yml
         parameters:
           BUILD_BRANCH: $(BUILD_BRANCH)
@@ -69,6 +77,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t0
@@ -89,6 +101,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_t0_2vlans_elastictest
     displayName: "impacted-area-kvmtest-t0-2vlans by Elastictest"
@@ -101,6 +114,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t0-2vlans
@@ -122,6 +139,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_t1_lag_elastictest
     displayName: "impacted-area-kvmtest-t1-lag by Elastictest"
@@ -134,6 +152,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t1
@@ -154,6 +176,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_dualtor_elastictest
     displayName: "impacted-area-kvmtest-dualtor by Elastictest"
@@ -166,6 +189,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: dualtor
@@ -186,6 +213,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_multi_asic_elastictest
     displayName: "impacted-area-kvmtest-multi-asic-t1 by Elastictest"
@@ -231,6 +259,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t0-sonic
@@ -256,6 +288,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_dpu_elastictest
     displayName: "impacted-area-kvmtest-dpu by Elastictest"
@@ -268,6 +301,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: dpu
@@ -291,6 +328,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   # This PR checker aims to run all t1 test scripts on multi-asic topology.
   - job: impacted_area_multi_asic_t1_elastictest
@@ -304,6 +342,10 @@ jobs:
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t1
@@ -325,6 +367,7 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}
 
   - job: impacted_area_t2_elastictest
     displayName: "impacted-area-kvmtest-t2 by Elastictest"
@@ -332,11 +375,15 @@ jobs:
     - get_impacted_area
     condition: contains(dependencies.get_impacted_area.outputs['GetImpactArea.PR_CHECKERS'], 't2_checker')
     variables:
-      TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['GetImpactArea.TEST_SCRIPTS'] ]
-    timeoutInMinutes: 240
+      TEST_SCRIPTS: $[ dependencies.get_impacted_area.outputs['SetVariableTask.TEST_SCRIPTS'] ]
+    timeoutInMinutes: ${{ parameters.TIMEOUT_IN_MINUTES_PR_TEST }}
     continueOnError: false
     pool: sonic-ubuntu-1c
     steps:
+      - ${{ if eq(parameters.CHECKOUT_SONIC_MGMT, true) }}:
+        - checkout: ${{ parameters.SONIC_MGMT_NAME }}
+          displayName: "Checkout sonic-mgmt repository"
+
       - template: impacted_area_testing/calculate-instance-numbers.yml
         parameters:
           TOPOLOGY: t2
@@ -358,3 +405,4 @@ jobs:
           TEST_PLAN_NUM: ${{ parameters.TEST_PLAN_NUM }}
           MAX_RUN_TEST_MINUTES: ${{ parameters.MAX_RUN_TEST_MINUTES }}
           MGMT_COMMIT_HASH: ${{ parameters.MGMT_COMMIT_HASH }}
+          PTF_MODIFIED: ${{ parameters.PTF_MODIFIED }}

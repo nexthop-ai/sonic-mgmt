@@ -47,6 +47,14 @@ def setup_telemetry_forpyclient(duthost):
     """ Set client_auth=false. This is needed for pyclient to successfully set up channel with gnmi server.
         Restart telemetry process
     """
+    if not duthost.is_service_fully_started("telemetry"):
+        logger.info("Telemetry container is not running in setup_telemetry_forpyclient, starting it")
+
+        duthost.service(name="telemetry", state="started")
+        py_assert(wait_until(100, 10, 0, duthost.is_service_fully_started, "telemetry"),
+                  "telemetry not started.")
+        logger.info("Telemetry container started successfully")
+
     env = GNMIEnvironment(duthost, GNMIEnvironment.TELEMETRY_MODE)
     client_auth_out = duthost.shell('sonic-db-cli CONFIG_DB HGET "%s|gnmi" "client_auth"' % (env.gnmi_config_table),
                                     module_ignore_errors=False)['stdout_lines']
@@ -84,11 +92,23 @@ def restore_telemetry_forpyclient(duthost, default_client_auth):
 def setup_streaming_telemetry_context(is_ipv6, duthost, localhost, ptfhost, gnxi_path):
     """
     @summary: Post setting up the streaming telemetry before running the test.
+
+    This function ensures the telemetry container is started if it's not already running,
+    configures it for testing, and waits for it to be ready.
     """
     try:
         has_gnmi_config = check_gnmi_config(duthost)
         if not has_gnmi_config:
             create_gnmi_config(duthost)
+
+        if not duthost.is_service_fully_started("telemetry"):
+            logger.info("Telemetry container is not running, starting it now")
+
+            duthost.service(name="telemetry", state="started")
+            py_assert(wait_until(100, 10, 0, duthost.is_service_fully_started, "telemetry"),
+                      "telemetry not started.")
+            logger.info("Telemetry container started successfully")
+
         env = GNMIEnvironment(duthost, GNMIEnvironment.TELEMETRY_MODE)
         default_client_auth = setup_telemetry_forpyclient(duthost)
 

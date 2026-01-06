@@ -34,7 +34,6 @@ def validate_yang(duthost, op_file="", yang_file=""):
     assert ret["rc"] == 0, "Yang validation failed for {}".format(yang_file)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 @pytest.mark.disable_loganalyzer
 def test_events(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, ptfadapter, setup_streaming_telemetry, gnxi_path,
                 test_eventd_healthy, toggle_all_simulator_ports_to_enum_rand_one_per_hwsku_host_m,  # noqa: F811
@@ -58,7 +57,6 @@ def test_events(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, ptfadapter,
             logger.info("Completed test file: {}".format(os.path.join(EVENTS_TESTS_PATH, file)))
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 @pytest.mark.disable_loganalyzer
 def test_events_cache_overflow(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, setup_streaming_telemetry,
                                gnxi_path):

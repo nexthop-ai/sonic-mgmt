@@ -115,7 +115,6 @@ def test_telemetry_enabledbydefault(duthosts, enum_rand_one_per_hwsku_hostname):
                           "Telemetry feature is not enabled")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_telemetry_ouput(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                          setup_streaming_telemetry, gnxi_path):
     """Run pyclient from ptfdocker and show gnmi server outputself.
@@ -135,7 +134,6 @@ def test_telemetry_ouput(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                   "SAI_PORT_STAT_IF_IN_ERRORS not found in gnmi_output")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 @pytest.mark.disable_loganalyzer
 def test_telemetry_queue_buffer_cnt(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                     setup_streaming_telemetry, gnxi_path):
@@ -235,7 +233,6 @@ def test_telemetry_queue_buffer_cnt(duthosts, enum_rand_one_per_hwsku_hostname, 
         load_new_cfg(duthost, data)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_osbuild_version(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                          setup_streaming_telemetry, gnxi_path):
     """ Test osbuild/version query.
@@ -253,7 +250,6 @@ def test_osbuild_version(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                  0, "invalid build_version value at {0}".format(result))
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_sysuptime(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path, setup_streaming_telemetry):
     """
     @summary: Run pyclient from ptfdocker and test the dataset 'system uptime' to check
@@ -300,7 +296,6 @@ def test_sysuptime(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_pat
         pytest.fail("The value of system uptime was not updated correctly.")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_virtualdb_table_streaming(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path,
                                    setup_streaming_telemetry):
     """Run pyclient from ptfdocker to stream a virtual-db query multiple times.
@@ -332,7 +327,6 @@ def invoke_py_cli_from_ptf(ptfhost, cmd, callback):
         callback(ret["stdout"])
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_on_change_updates(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path,
                            setup_streaming_telemetry):
     logger.info("Testing on change update notifications")
@@ -385,7 +379,6 @@ def test_on_change_updates(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, 
     client_thread.join(60)  # max timeout of 60s, expect update to come in <=30s
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 @pytest.mark.disable_loganalyzer
 def test_mem_spike(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, gnxi_path, setup_streaming_telemetry):
     """Test whether memory usage of telemetry container will exceed threshold

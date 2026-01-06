@@ -3,7 +3,7 @@ import pytest
 import re
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
-from telemetry_utils import generate_client_cli, check_gnmi_cli_running
+from telemetry_utils import generate_client_cli, check_gnmi_cli_running, invoke_py_cli_from_ptf
 from tests.common.utilities import InterruptableThread
 
 pytestmark = [
@@ -25,12 +25,6 @@ def verify_route_table_status(duthost, namespace, expected_status="1"):  # statu
     return status == expected_status
 
 
-def invoke_py_cli_from_ptf(ptfhost, cmd, callback):
-    ret = ptfhost.shell(cmd)
-    assert ret["rc"] == 0, "PTF docker did not get a response"
-    callback(ret["stdout"])
-
-
 def modify_fake_appdb_table(duthost, add=True, entries=1):
     cmd_prefix = "sonic-db-cli"
     if duthost.is_multi_asic:
@@ -44,7 +38,6 @@ def modify_fake_appdb_table(duthost, add=True, entries=1):
         pytest_assert(duthost.shell(command)['rc'] == 0, "Unable to modify FAKE_APPL_DB_TABLE{}".format(entry))
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_no_table_or_key(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                    setup_streaming_telemetry, gnxi_path):
     """
@@ -66,7 +59,6 @@ def test_poll_mode_no_table_or_key(duthosts, enum_rand_one_per_hwsku_hostname, p
     pytest_assert(len(sync_responses_match) == 5, "Missing sync responses")
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_present_table_delayed_key(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                              setup_streaming_telemetry, gnxi_path):
     """
@@ -111,7 +103,6 @@ def test_poll_mode_present_table_delayed_key(duthosts, enum_rand_one_per_hwsku_h
     modify_fake_appdb_table(duthost, False, 2)  # Remove all added tables
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_delete(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                           setup_streaming_telemetry, gnxi_path):
     """
@@ -154,7 +145,6 @@ def test_poll_mode_delete(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
     client_thread.join(30)
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                  setup_streaming_telemetry, gnxi_path):
     """
@@ -215,7 +205,6 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
     modify_fake_appdb_table(duthost, False, 1)  # Remove all added tables
 
 
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_default_route_supervisor(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
                                             setup_streaming_telemetry, gnxi_path):
     """
