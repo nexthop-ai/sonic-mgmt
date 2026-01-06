@@ -165,11 +165,6 @@ class QosBase:
 
         # Skip log_file (and thus pcap generation) if skip_pcap is True
         log_file = None if skip_pcap else "/tmp/{0}{1}.log".format(testCase, logfile_suffix)
-<<<<<<< HEAD
-
-||||||| 4b13e369b
-=======
->>>>>>> upstream/master
         ptf_runner(
             ptfhost,
             "saitests",
