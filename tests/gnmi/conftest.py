@@ -3,12 +3,8 @@ import logging
 import os
 import glob
 import grpc
-<<<<<<< HEAD
-import shutil
-||||||| 4b13e369b
-=======
 import ipaddress
->>>>>>> upstream/master
+import shutil
 
 from grpc_tools import protoc
 
