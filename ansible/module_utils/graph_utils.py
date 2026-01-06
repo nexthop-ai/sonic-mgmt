@@ -22,6 +22,7 @@ class LabGraph(object):
         "console_links": "sonic_{}_console_links.csv",
         "bmc_links": "sonic_{}_bmc_links.csv",
         "l1_links": "sonic_{}_l1_links.csv",
+        "serial_links": "sonic_{}_serial_links.csv",
     }
 
     def __init__(self, path, group):
@@ -362,6 +363,7 @@ class LabGraph(object):
         self.graph_facts["from_l1_links"] = from_l1_links
         self.graph_facts["to_l1_links"] = to_l1_links
 
+<<<<<<< HEAD
         # Create L1 cross connects
         # If the start and end port of a link are both connected to the same L1 switches,
         # we consider it as a cross connect link.
@@ -404,6 +406,37 @@ class LabGraph(object):
                 l1_port_pair = sorted([l1_start_port, l1_end_port])
                 l1_cross_connects[l1_start_device][l1_port_pair[0]] = l1_port_pair[1]
         self.graph_facts["l1_cross_connects"] = l1_cross_connects
+||||||| 4b13e369b
+=======
+        # Process serial links
+        serial_links = {}
+        for entry in self.csv_facts["serial_links"]:
+            start_device = entry["StartDevice"]
+            start_port = entry["StartPort"]
+            end_device = entry["EndDevice"]
+            end_port = entry["EndPort"]
+
+            if start_device not in serial_links:
+                serial_links[start_device] = {}
+            if end_device not in serial_links:
+                serial_links[end_device] = {}
+
+            serial_links[start_device][start_port] = {
+                "peerdevice": end_device,
+                "peerport": end_port,
+                "baud_rate": entry.get("BaudRate", "9600"),
+                "flow_control": entry.get("FlowControl", "0"),
+            }
+            serial_links[end_device][end_port] = {
+                "peerdevice": start_device,
+                "peerport": start_port,
+                "baud_rate": entry.get("BaudRate", "9600"),
+                "flow_control": entry.get("FlowControl", "0"),
+            }
+
+        logging.debug("Found serial links: {}".format(serial_links))
+        self.graph_facts["serial_links"] = serial_links
+>>>>>>> upstream/master
 
     def build_results(self, hostnames, ignore_error=False):
         device_info = {}
@@ -424,6 +457,7 @@ class LabGraph(object):
         device_from_l1_links = {}
         device_to_l1_links = {}
         device_l1_cross_connects = {}
+        device_serial_link = {}
         msg = ""
 
         logging.debug("Building results for hostnames: {}".format(hostnames))
@@ -533,6 +567,8 @@ class LabGraph(object):
 
             device_from_l1_links[hostname] = self.graph_facts["from_l1_links"].get(hostname, {})
             device_to_l1_links[hostname] = self.graph_facts["to_l1_links"].get(hostname, {})
+
+            device_serial_link[hostname] = self.graph_facts["serial_links"].get(hostname, {})
 
         filtered_linked_ports = self._filter_linked_ports(hostnames)
         l1_cross_connects = self._create_l1_cross_connects(filtered_linked_ports)

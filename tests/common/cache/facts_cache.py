@@ -206,8 +206,17 @@ def _get_default_zone(function, func_args, func_kargs):
     if func_args:
         hostname = getattr(func_args[0], "hostname", None)
     if not hostname or not isinstance(hostname, (str, unicode_type)):
+<<<<<<< HEAD
         raise ValueError("Failed to get attribute 'hostname' of type string from instance of type %s. "
                          "Got type %s." % (type(func_args[0]), type(hostname)))
+||||||| 4b13e369b
+    if not hostname or type(hostname) not in [str, unicode_type]:
+        raise ValueError("Failed to get attribute 'hostname' of type string from instance of type %s."
+                         % type(func_args[0]))
+=======
+        raise ValueError("Failed to get attribute 'hostname' of type string from instance of type %s."
+                         % type(func_args[0]))
+>>>>>>> upstream/master
     zone = hostname
     signature = inspect.signature(function)
     arg_names = list(signature.parameters.keys())
