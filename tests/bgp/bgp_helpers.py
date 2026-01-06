@@ -404,16 +404,10 @@ def check_routes_on_from_neighbor(setup_info, nbrhosts):
     Verify if there are routes on neighbor who announce them.
     """
     downstream = setup_info['downstream']
-<<<<<<< HEAD
     host = nbrhosts[downstream]['host']
-    for prefixes in list(PREFIX_LISTS.values()):
-||||||| 4b13e369b
-    for prefixes in list(PREFIX_LISTS.values()):
-=======
     for list_name, prefixes in list(PREFIX_LISTS.items()):
         if setup_info['is_v6_topo'] and "v6" not in list_name.lower():
             continue
->>>>>>> upstream/master
         for prefix in prefixes:
             downstream_route = host.get_route(prefix)
             logging.info('downstream_route: {}'.format(downstream_route))
