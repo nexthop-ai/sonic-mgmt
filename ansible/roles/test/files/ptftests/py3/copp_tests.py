@@ -552,13 +552,7 @@ class BGPTest(PolicyTest):
         self.packet_size = int(test_params.get('packet_size', 100))
 
     def runTest(self):
-<<<<<<< HEAD
-        self.log("BGPTEst with packet size: {}".format(self.packet_size))
-||||||| 4b13e369b
-        self.log("BGPTest")
-=======
         self.log("BGPTest with packet size: {}".format(self.packet_size))
->>>>>>> upstream/master
         self.run_suite()
 
     def construct_packet(self, port_number):
