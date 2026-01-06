@@ -308,20 +308,12 @@ bgp/test_bgp_allow_list.py:
     conditions:
       - "'t1' not in topo_type"
       - "platform in ['x86_64-8111_32eh_o-r0', 'x86_64-8122_64eh_o-r0', 'x86_64-8122_64ehf_o-r0']"
-<<<<<<< HEAD
       - "frr_mgmt_config == 'true'"
   xfail:
     reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20217 and '-v6-' in topo_name"
-||||||| 4b13e369b
-  xfail:
-    reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style"
-    conditions:
-      - "https://github.com/sonic-net/sonic-mgmt/issues/20217 and '-v6-' in topo_name"
-=======
       - "'isolated' in topo_name"
->>>>>>> upstream/master
 
 bgp/test_bgp_bbr.py:
   skip:
@@ -410,7 +402,6 @@ bgp/test_bgp_operation_in_ro.py:
     conditions:
       - "https://github.com/sonic-net/sonic-buildimage/issues/23462"
 
-<<<<<<< HEAD
 bgp/test_bgp_operation_in_ro.py::test_bgp_operations_in_ro:
   skip:
     reason: "Not supported before release 202503."
@@ -423,15 +414,6 @@ bgp/test_bgp_peer_shutdown.py::test_bgp_peer_shutdown:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/19907 and '-v6-' in topo_name"
 
-||||||| 4b13e369b
-bgp/test_bgp_peer_shutdown.py::test_bgp_peer_shutdown:
-  xfail:
-    reason: "xfail for IPv6-only topologies, is with it parse everthing as IPv4"
-    conditions:
-      - "https://github.com/sonic-net/sonic-mgmt/issues/19907 and '-v6-' in topo_name"
-
-=======
->>>>>>> upstream/master
 bgp/test_bgp_port_disable.py:
   skip:
     reason: "Not supported on public branches."
@@ -541,15 +523,11 @@ bgp/test_bgp_speaker.py:
     conditions_logical_operator: or
     conditions:
       - "'backend' in topo_name"
-<<<<<<< HEAD
       - "frr_mgmt_config == 'true'"
-||||||| 4b13e369b
-=======
   xfail:
     reason: "xfail for scale topology, issue https://github.com/sonic-net/sonic-buildimage/issues/24537"
     conditions:
       - "https://github.com/sonic-net/sonic-buildimage/issues/24537 and 't0-isolated-d256u256s2' in topo_name"
->>>>>>> upstream/master
 
 bgp/test_bgp_speaker.py::test_bgp_speaker_announce_routes[:
   skip:
@@ -597,19 +575,12 @@ bgp/test_bgp_vnet.py:
 
 bgp/test_bgpmon.py:
   skip:
-<<<<<<< HEAD
     reason: "Not supported on T2 topology or topology backend
              or Skip for IPv6-only topologies, since there are v6 verison of the test
              or BGP_MONITORS is not supported in unified management framework."
     conditions_logical_operator: or
-||||||| 4b13e369b
-    reason: "Not supported on T2 topology or topology backend
-             or Skip for IPv6-only topologies, since there are v6 verison of the test"
-=======
     reason: "Not supported on T2 topology or topology backend"
->>>>>>> upstream/master
     conditions:
-<<<<<<< HEAD
       - "'backend' in topo_name or 't2' in topo_name"
       - "'-v6-' in topo_name"
       - "frr_mgmt_config == 'true'"
@@ -619,12 +590,8 @@ bgp/test_bgpmon_v6.py:
     reason: "BGP_MONITORS is not supported in unified management framework"
     conditions:
       - "frr_mgmt_config == 'true'"
-||||||| 4b13e369b
       - "'backend' in topo_name or topo_type in ['t2']"
       - "'-v6-' in topo_name"
-=======
-      - "'backend' in topo_name or topo_type in ['t2']"
->>>>>>> upstream/master
 
 bgp/test_bgpmon_v6.py::test_bgpmon_no_ipv6_resolve_via_default:
   skip:
@@ -660,7 +627,6 @@ bgp/test_startup_tsa_tsb_service.py::test_user_init_tsb_on_sup_while_service_run
     conditions:
       - "'t2_single_node' in topo_name"
 
-<<<<<<< HEAD
 bgp/test_traffic_shift.py:
   skip:
     reason: "TSA/TSB/TSC is not supported in unified management framework"
@@ -671,15 +637,6 @@ bgp/test_traffic_shift.py:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20194 and '-v6-' in topo_name"
 
-||||||| 4b13e369b
-bgp/test_traffic_shift.py:
-  xfail:
-    reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style"
-    conditions:
-      - "https://github.com/sonic-net/sonic-mgmt/issues/20194 and '-v6-' in topo_name"
-
-=======
->>>>>>> upstream/master
 bgp/test_traffic_shift.py::test_load_minigraph_with_traffic_shift_away:
   skip:
     reason: "Test is flaky and causing PR test to fail unnecessarily"
@@ -4290,21 +4247,11 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPgHeadroomWatermark:
       - "topo_type in ['m0', 'mx', 'm1']"
       - "topo_name not in (constants['QOS_SAI_TOPO'] + ['t2_single_node_max', 't2_single_node_min']) and asic_type not in ['mellanox']"
 
-<<<<<<< HEAD
-qos/test_qos_sai.py::TestQosSai::testQosSaiPgMinThreshold[:
-  skip:
-    reason: "Unsupported topology."
-    conditions_logical_operator: or
-    conditions:
-      - "topo_name in (['t0-16'])"
-||||||| 4b13e369b
-=======
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgMinThreshold:
   skip:
     reason: "testQosSaiPgMinThreshold is only supported on x86_64-nexthop_4010* platforms."
     conditions:
       - "not platform.startswith('x86_64-nexthop_4010')"
->>>>>>> upstream/master
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgSharedWatermark[None-wm_pg_shared_lossy]:
   xfail:
