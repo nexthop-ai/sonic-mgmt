@@ -60,15 +60,6 @@ def is_backend_topology(duthosts, enum_rand_one_per_hwsku_frontend_hostname, tbi
     return is_backend_topology
 
 
-<<<<<<< HEAD
-@pytest.fixture(params=[64, 1518, 4096])
-def packet_size(request):
-    """
-    Parameterized fixture for packet sizes.
-    4096 is the biggest frame size currently because of an issue with
-    ptf_nn_agent, which truncates jumbo packets to 4096 bytes.
-||||||| 4b13e369b
-=======
 @pytest.fixture(params=[64, 1514, 4096])
 def packet_size(request):
     """
@@ -76,6 +67,5 @@ def packet_size(request):
     4096 is the biggest frame size currently because of an issue with
     ptf_nn_agent, which truncates jumbo packets to 4096 bytes.
     Refer: https://github.com/p4lang/ptf/issues/226
->>>>>>> upstream/master
     """
     yield request.param
