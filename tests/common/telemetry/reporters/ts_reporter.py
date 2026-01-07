@@ -4,6 +4,7 @@ TimeSeries (TS) Reporter for real-time monitoring via OTLP.
 This reporter sends metrics directly to OpenTelemetry collectors using
 the OTLP protocol for real-time monitoring, dashboards, and alerting.
 """
+from __future__ import annotations
 
 import logging
 import os
