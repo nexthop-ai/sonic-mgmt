@@ -3155,6 +3155,73 @@ def run_logrotate(duthost, stop_event):
 
 
 @pytest.fixture(scope="function")
+def disable_swss_rsyslog_rate_limit(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
+    """Disable rsyslog rate-limiting for swss only for tests that request it.
+
+    Implementation: edit /etc/rsyslog.conf inside swss container(s) and restart rsyslogd.
+    Uses $SystemLogRateLimitInterval and $SystemLogRateLimitBurst.
+    """
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
+
+    # Determine swss container names (single- or multi-asic)
+    try:
+        if getattr(duthost, 'is_multi_asic', False):
+            asic_ids = duthost.get_asic_ids()
+            containers = [f'swss{aid}' for aid in asic_ids]
+        else:
+            containers = ['swss']
+    except Exception:
+        containers = ['swss']
+
+    edited_containers = []
+    for c in containers:
+        try:
+            # Backup original config once
+            backup_cmd = (
+                f"docker exec -i {c} bash -lc "
+                "'if [ ! -f /etc/rsyslog.conf.orig.bak ]; then "
+                "cp -f /etc/rsyslog.conf /etc/rsyslog.conf.orig.bak; fi'"
+            )
+            duthost.shell(backup_cmd, module_ignore_errors=True)
+            # Append directives to disable system log rate-limiting using printf (robust across shells)
+            cmd_body = (
+                'printf "\\n%s\\n" '
+                '"\\$SystemLogRateLimitInterval 0" '
+                '"\\$SystemLogRateLimitBurst 0" '
+                '>> /etc/rsyslog.conf'
+            )
+            append_cmd = f"docker exec -i {c} bash -lc '{cmd_body}'"
+            duthost.shell(append_cmd)
+            # Restart rsyslogd to apply
+            duthost.shell(
+                f"docker exec -i {c} bash -lc 'supervisorctl restart rsyslogd'",
+                module_ignore_errors=True
+            )
+            edited_containers.append(c)
+        except Exception as e:
+            logger.warning('Failed to disable rsyslog rate limit in container %s: %s', c, repr(e))
+            continue
+
+    # Run the test
+    yield
+
+    # Restore original config for any containers we modified
+    for c in edited_containers:
+        try:
+            restore_body = (
+                "if [ -f /etc/rsyslog.conf.orig.bak ]; then "
+                "cp -f /etc/rsyslog.conf.orig.bak /etc/rsyslog.conf; "
+                "supervisorctl restart rsyslogd; "
+                "rm -f /etc/rsyslog.conf.orig.bak; "
+                "fi"
+            )
+            restore_cmd = f"docker exec -i {c} bash -lc '{restore_body}'"
+            duthost.shell(restore_cmd, module_ignore_errors=True)
+        except Exception as e:
+            logger.warning('Failed to restore rsyslog.conf in container %s: %s', c, repr(e))
+
+
+@pytest.fixture(scope="function")
 def rotate_syslog(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
 

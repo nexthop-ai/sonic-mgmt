@@ -776,8 +776,9 @@ def test_crm_nexthop(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
 
 @pytest.mark.parametrize("ip_ver,neighbor,host", [("4", "2.2.2.2", "2.2.2.1/8"), ("6", "2001::1", "2001::2/64")])
 def test_crm_neighbor(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
-                      enum_frontend_asic_index,  crm_interface, ip_ver, neighbor, host, tbinfo):
-
+                      enum_frontend_asic_index,  crm_interface, ip_ver, neighbor, host, tbinfo,
+                      disable_swss_rsyslog_rate_limit):
+  
     if ip_ver == "4" and is_ipv6_only_topology(tbinfo):
         pytest.skip("Skipping IPv4 test on IPv6-only topology")
 
