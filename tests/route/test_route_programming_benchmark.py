@@ -299,9 +299,9 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
             r"SAI_OBJECT_TYPE_ROUTE_ENTRY:.*already exists",
             r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:_brcm_sai_l3_route_config:\d+ L3 route add failed with error "
             r"Entry exists.*",
-            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:brcm_sai_xgs_route_create:\d+ L3 route add failed with error -6\.",
-            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:brcm_sai_create_route_entry:\d+ pd route create failed "
-            r"failed with error -6\.",
+            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:brcm_sai_xgs_route_create:\d+ L3 route add failed with error -6\.?",
+            r".* ERR syncd\d*#syncd:.*SAI_API_ROUTE:_?brcm_sai_create_route_entry:\d+ pd route create failed "
+            r"failed with error -6\.?",
             r".* ERR syncd\d*#syncd: :- sendApiResponse: api SAI_COMMON_API_BULK_CREATE failed in syncd mode: "
             r"SAI_STATUS_FAILURE",
             r".* ERR swss\d*#orchagent: :- flush_creating_entries: EntityBulker.flush create entries failed, "
