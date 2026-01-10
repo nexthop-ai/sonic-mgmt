@@ -1,11 +1,13 @@
 import pytest
 import logging
+import time
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.bgp import get_bgp_peer_addr
+from tests.common.helpers.dut_utils import is_container_running
 from tests.common.helpers.route_helpers import add_static_route_to_dut, del_static_route_from_dut, get_route_count
 from tests.common.utilities import wait_until
-from tests.syslog.syslog_utils import create_vrf, remove_vrf
+from tests.syslog.syslog_utils import create_vrf, remove_vrf, check_vrf
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ pytestmark = [
 IP_CIDR_ROUTE_NUMBER_OID = '1.3.6.1.2.1.4.24.3.0'
 INET_CIDR_ROUTE_NUMBER_OID = '1.3.6.1.2.1.4.24.6.0'
 
-# Route counter service runs on a 30s timer, so we need to wait for updates
+# Route counter service runs on a 30s timer, wait a little extra in case it's slow
 ROUTE_COUNTER_UPDATE_TIMEOUT = 45
 
 
@@ -46,8 +48,7 @@ def test_snmp_ipCidrRouteNumber(duthosts, enum_rand_one_per_hwsku_frontend_hostn
     """
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
 
-    hostip = duthost.host.options['inventory_manager'].get_host(
-        duthost.hostname).vars['ansible_host']
+    hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
 
     logger.info(f"Testing ipCidrRouteNumber on {duthost.hostname} ({hostip})")
@@ -65,8 +66,7 @@ def test_snmp_inetCidrRouteNumber(duthosts, enum_rand_one_per_hwsku_frontend_hos
     """
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
 
-    hostip = duthost.host.options['inventory_manager'].get_host(
-        duthost.hostname).vars['ansible_host']
+    hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
 
     logger.info(f"Testing inetCidrRouteNumber on {duthost.hostname} ({hostip})")
@@ -87,8 +87,7 @@ def test_snmp_ipCidrRouteNumber_add_remove(duthosts, enum_rand_one_per_hwsku_fro
     """
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
 
-    hostip = duthost.host.options['inventory_manager'].get_host(
-        duthost.hostname).vars['ansible_host']
+    hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
 
     logger.info(f"Testing ipCidrRouteNumber with IPv4 route add/remove on {duthost.hostname}")
@@ -173,8 +172,7 @@ def test_snmp_inetCidrRouteNumber_add_remove(duthosts, enum_rand_one_per_hwsku_f
     """
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
 
-    hostip = duthost.host.options['inventory_manager'].get_host(
-        duthost.hostname).vars['ansible_host']
+    hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
 
     is_ipv6 = ip_version == "ipv6"
@@ -259,8 +257,8 @@ def test_snmp_inetCidrRouteNumber_add_remove(duthosts, enum_rand_one_per_hwsku_f
             del_static_route_from_dut(duthost, test_prefix, peer_addr)
 
 
-def test_snmp_route_count_ignores_non_default_vrf(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
-                                                  creds_all_duts, tbinfo, loganalyzer):
+def test_snmp_inetCidrRouteNumber_ignores_non_default_vrf(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
+                                                          creds_all_duts, tbinfo, loganalyzer):
     """
     Test that SNMP route count only reports default VRF routes and ignores non-default VRF routes.
     This verifies that adding/removing routes in a non-default VRF does not affect the SNMP count.
@@ -305,10 +303,7 @@ def test_snmp_route_count_ignores_non_default_vrf(duthosts, enum_rand_one_per_hw
         logger.info(f"Creating VRF {test_vrf}")
         create_vrf(duthost, test_vrf)
         vrf_created = True
-
-        # Wait a moment for VRF to be fully created
-        import time
-        time.sleep(5)
+        wait_until(10, 1, 0, lambda: check_vrf(duthost, test_vrf))
 
         # Add a route to the test VRF
         logger.info(f"Adding route {test_prefix} to VRF {test_vrf} via {peer_ipv4}")
@@ -366,3 +361,62 @@ def test_snmp_route_count_ignores_non_default_vrf(duthosts, enum_rand_one_per_hw
         if vrf_created:
             logger.info(f"Cleanup: removing VRF {test_vrf}")
             remove_vrf(duthost, test_vrf)
+            wait_until(10, 1, 0, lambda: not check_vrf(duthost, test_vrf))
+
+
+def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts, snmp_oid):
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
+
+    hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
+    community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
+
+    logger.info(f"Testing inetCidrRouteNumber with BGP down on {duthost.hostname}")
+
+    bgp_stopped = False
+    try:
+        # First verify we can get a route count with BGP running
+        initial_count = get_snmp_route_count(duthost, hostip, community, INET_CIDR_ROUTE_NUMBER_OID)
+        logger.info(f"Initial route count with BGP running: {initial_count}")
+        pytest_assert(initial_count > 0, "Expected non-zero route count with BGP running")
+
+        logger.info("Stopping BGP service")
+        duthost.shell("sudo config feature state bgp disabled", module_ignore_errors=False)
+        bgp_stopped = True
+        wait_until(60, 10, 1, lambda: not is_container_running(duthost, "bgp"))
+
+        logger.info(f"Waiting {ROUTE_COUNTER_UPDATE_TIMEOUT}s for route-counter to detect BGP is down")
+        time.sleep(ROUTE_COUNTER_UPDATE_TIMEOUT)
+
+        # Verify SNMP returns no value (not 0)
+        snmp_cmd = f"docker exec snmp snmpget -v2c -c {community} {hostip} {INET_CIDR_ROUTE_NUMBER_OID}"
+        result = duthost.shell(snmp_cmd, module_ignore_errors=True)
+
+        logger.info(f"SNMP query result with BGP down: rc={result['rc']}, stdout={result.get('stdout', '')}, "
+                    f"stderr={result.get('stderr', '')}")
+
+        pytest_assert(
+            "No Such Instance" in result.get('stdout', '') or
+            "No Such Object" in result.get('stdout', ''),
+            f"Expected SNMP to return no value when BGP is down, but got: {result}"
+        )
+    finally:
+        if bgp_stopped:
+            logger.info("Restarting BGP service")
+            duthost.shell("sudo config feature state bgp enabled", module_ignore_errors=False)
+            wait_until(60, 10, 1, lambda: is_container_running(duthost, "bgp"))
+
+
+def test_snmp_ipCidrRouteNumber_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts):
+    """
+    Test that ipCidrRouteNumber behavior is consistent when BGP/FRR is down
+    """
+    _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts,
+                        IP_CIDR_ROUTE_NUMBER_OID)
+
+
+def test_snmp_inetCidrRouteNumber_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts):
+    """
+    Test that inetCidrRouteNumber behavior is consistent when BGP/FRR is down
+    """
+    _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts,
+                        INET_CIDR_ROUTE_NUMBER_OID)

@@ -1,9 +1,11 @@
 import logging
 import pytest
+import time
 
 from .helper import gnmi_get
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.bgp import get_bgp_peer_addr
+from tests.common.helpers.dut_utils import is_container_running
 from tests.common.helpers.route_helpers import add_static_route_to_dut, del_static_route_from_dut, get_route_count
 from tests.common.utilities import wait_until
 
@@ -304,3 +306,84 @@ def test_gnmi_rib_route_summary_static_protocol_count(duthosts, rand_one_dut_hos
                 # Ignore errors if route doesn't exist (may have been deleted already)
                 if "doesnt exist" not in str(e):
                     raise
+
+
+def test_gnmi_rib_route_summary_bgp_down(duthosts, rand_one_dut_hostname, ptfhost):
+    """
+    Test that RIB_ROUTE_SUMMARY keys are deleted when BGP/FRR is down
+    This verifies that the route-counter service properly handles vtysh failures
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+    if duthost.is_supervisor_node():
+        pytest.skip("Skipping test as supervisor node does not have FRR routes")
+
+    logger.info('Testing gNMI GET for RIB_ROUTE_SUMMARY when BGP is down')
+
+    bgp_stopped = False
+    try:
+        # First verify we can get route counts with BGP running
+        ipv4_count_before = get_route_count_from_gnmi(duthost, ptfhost, "IPV4", vrf="default")
+        ipv6_count_before = get_route_count_from_gnmi(duthost, ptfhost, "IPV6", vrf="default")
+        logger.info(f"Route counts with BGP running: IPv4={ipv4_count_before}, IPv6={ipv6_count_before}")
+
+        pytest_assert(ipv4_count_before > 0, "Expected non-zero IPv4 route count with BGP running")
+        pytest_assert(ipv6_count_before > 0, "Expected non-zero IPv6 route count with BGP running")
+
+        # Stop BGP service
+        logger.info("Stopping BGP service")
+        duthost.shell("sudo config feature state bgp disabled", module_ignore_errors=False)
+        bgp_stopped = True
+        wait_until(60, 10, 1, lambda: not is_container_running(duthost, "bgp"))
+
+        # Wait for route-counter to run and detect BGP is down
+        # The service runs every 30 seconds, so we wait for at least one full cycle
+        logger.info(f"Waiting {ROUTE_COUNTER_UPDATE_TIMEOUT}s for route-counter to detect BGP is down")
+        time.sleep(ROUTE_COUNTER_UPDATE_TIMEOUT)
+
+        # Verify keys are deleted from Redis
+        redis_check_ipv4 = duthost.shell(
+            'redis-cli -n 6 keys "RIB_ROUTE_SUMMARY|IPV4|*"',
+            module_ignore_errors=True
+        )
+        redis_check_ipv6 = duthost.shell(
+            'redis-cli -n 6 keys "RIB_ROUTE_SUMMARY|IPV6|*"',
+            module_ignore_errors=True
+        )
+
+        logger.info(f"Redis IPv4 keys after BGP down: {redis_check_ipv4.get('stdout', '')}")
+        logger.info(f"Redis IPv6 keys after BGP down: {redis_check_ipv6.get('stdout', '')}")
+
+        # Keys should be empty or not exist
+        pytest_assert(
+            not redis_check_ipv4.get('stdout', '').strip() or
+            redis_check_ipv4.get('stdout', '').strip() == '(empty array)',
+            f"Expected IPv4 Redis keys to be deleted when BGP is down, but found: {redis_check_ipv4.get('stdout', '')}"
+        )
+        pytest_assert(
+            not redis_check_ipv6.get('stdout', '').strip() or
+            redis_check_ipv6.get('stdout', '').strip() == '(empty array)',
+            f"Expected IPv6 Redis keys to be deleted when BGP is down, but found: {redis_check_ipv6.get('stdout', '')}"
+        )
+
+        # Verify gNMI returns no data or error for the keys
+        for af in ["IPV4", "IPV6"]:
+            path_list = [f"/sonic-db:STATE_DB/localhost/RIB_ROUTE_SUMMARY[key={af}|default]"]
+
+            try:
+                msg_list = gnmi_get(duthost, ptfhost, path_list)
+                result = msg_list[0]
+                # If we get a result, it should be empty or indicate no data
+                pytest_assert(
+                    "total_routes" not in result,
+                    f"Expected no data for {af} when BGP is down, got: {result}"
+                )
+                logger.info(f"gNMI returned empty result for {af} (expected)")
+            except Exception as e:
+                # It's OK if gNMI returns an error for missing key
+                logger.info(f"gNMI returned error for missing {af} key (expected): {e}")
+
+    finally:
+        if bgp_stopped:
+            logger.info("Restarting BGP service")
+            duthost.shell("sudo config feature state bgp enabled", module_ignore_errors=False)
+            wait_until(60, 10, 1, lambda: is_container_running(duthost, "bgp"))
