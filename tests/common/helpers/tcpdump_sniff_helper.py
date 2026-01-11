@@ -62,6 +62,12 @@ class TcpdumpSniffHelper(object):
         Start tcpdump on specific interface and save data to pcap file
         """
         iface_pcap_path = '{}_{}'.format(self.pcap_path, iface)
+        # Clean up any existing pcap file from previous runs to avoid permission issues
+        rm_cmd = "rm -f {}".format(iface_pcap_path)
+        if host is self.duthost:
+            rm_cmd = "sudo " + rm_cmd
+        host.shell(rm_cmd, module_ignore_errors=True)
+
         if host is self.ptfhost:
             iface = 'eth' + str(iface)
         cmd = "tcpdump -i {} '{}' -w {} --immediate-mode --direction {} -U".format(iface, self._tcpdump_filter,
