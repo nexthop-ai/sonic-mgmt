@@ -11,6 +11,7 @@ Tests for the `show platform ...` commands in SONiC
 
 import json
 import logging
+import os
 import re
 import pytest
 import six
@@ -22,6 +23,7 @@ from tests.common.platform.device_utils import get_dut_psu_line_pattern
 from tests.common.utilities import get_inventory_files, get_host_visible_vars
 from tests.common.utilities import skip_release_for_platform
 from tests.common.utilities import wait_until
+from tests.platform_tests.utils import get_config_from_yaml
 
 
 pytestmark = [
@@ -38,6 +40,9 @@ THERMAL_CONTROL_TEST_CHECK_INTERVAL = 5
 VPD_DATA_FILE = "/var/run/hw-management/eeprom/vpd_data"
 
 BF_3_PLATFORM = 'arm64-nvda_bf-bf3comdpu'
+FIRMWARE_STATUS_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "show_platform_firmware_status.yml")
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope='module')
@@ -593,10 +598,11 @@ def test_show_platform_ssdhealth(duthosts, enum_supervisor_dut_hostname):
                           "SSD temperature '{}' is too high, expected less than 100.0 C".format(line_data))
 
 
-def verify_show_platform_firmware_status_output(raw_output_lines, hostname):
+def verify_show_platform_firmware_status_output(raw_output_lines, hostname, platform):
     """
     @summary: Verify output of `show platform firmware status`. Expected output is
-              a table of firmware data conaining 5 columns.
+              a table of firmware data containing 5 columns. Opt into platform-specific checks
+              of expected values by updating `show_platform_firmware_status.yml`.
     """
     num_expected_clos = 5
     # Skip if command not implemented for platform
@@ -607,6 +613,36 @@ def verify_show_platform_firmware_status_output(raw_output_lines, hostname):
     field_ranges = util.get_field_range(second_line)
     pytest_assert(len(field_ranges) == num_expected_clos, "Output should consist of {} columns on '{}'".
                   format(num_expected_clos, hostname))
+
+    # Verify platform-specific expected values, if config provided.
+    test_config = get_config_from_yaml(FIRMWARE_STATUS_CONFIG_FILE)
+    config = None
+    for platform_regexp in test_config:
+        if re.match(platform_regexp, platform):
+            config = test_config[platform_regexp]
+            break
+    if config is None:
+        logger.info(f'No firmware status config found for platform: {platform}. Skipping platform-specific checks.')
+    else:
+        logger.info(f'Firmware status configuration for platform: {platform}: {config}')
+
+        # Verify expected components are included in output
+        found_components = set()
+        # Verify fields match expected pattern for each component
+        field_ranges = util.get_field_range(raw_output_lines[1])
+        field_names = util.get_fields(raw_output_lines[0], field_ranges)
+        for line in raw_output_lines[2:]:
+            field_values = util.get_fields(line, field_ranges)
+            row = {name: value for name, value in zip(field_names, field_values)}
+            if row["Component"] in config:
+                found_components.add(row["Component"])
+                for field_name, regex_pattern in config[row["Component"]].items():
+                    pytest_assert(
+                        re.search(regex_pattern, row[field_name]),
+                        f"Component \'{row['Component']}\' field '{field_name}' value '{row[field_name]}' does "
+                        f"not match expected pattern '{regex_pattern}'")
+        pytest_assert(found_components == set(config.keys()),
+                      f"Missing expected component in firmware status output: {set(config.keys()) - found_components}")
 
 
 def test_show_platform_firmware_status(duthosts, enum_rand_one_per_hwsku_hostname):
@@ -623,9 +659,7 @@ def test_show_platform_firmware_status(duthosts, enum_rand_one_per_hwsku_hostnam
 
     logging.info("Verifying output of '{}' on '{}' ...".format(cmd, duthost.hostname))
     firmware_output_lines = firmware_output["stdout_lines"]
-    verify_show_platform_firmware_status_output(firmware_output_lines, duthost.hostname)
-
-    # TODO: Test values against platform-specific expected data
+    verify_show_platform_firmware_status_output(firmware_output_lines, duthost.hostname, duthost.facts['platform'])
 
 
 def test_show_platform_pcieinfo(duthosts, enum_rand_one_per_hwsku_hostname):

@@ -1,0 +1,42 @@
+---
+# firmware status configuration per platform
+# [ONIE platform]:
+#   [COMPONENT]:
+#     [PARAMETER]: [VALUE]
+#
+# This configuration file supports matching a platform string using regular expressions.
+# NOTE: more specific regular expression must be defined after less specific.
+#
+# If a platform is not configured, no platform-specific checks are run.
+
+# Nexthop platforms
+# FPGA ver[4] == 0xf indicates test image
+x86_64-nexthop_4010.*:
+  SWITCHCARD_FPGA:
+    Version: e802[a-e0-9][a-f0-9]{3}
+  CPUCARD_FPGA:
+    Version: e801[a-e0-9][a-f0-9]{3}
+  BIOS: {}
+  ONIE: {}
+  TPM: {}
+  NVMe: {}
+x86_64-nexthop_5010.*:
+  SWITCHCARD_FPGA:
+    Version: e803[a-e0-9][a-f0-9]{3}
+  MEZZCARD_FPGA:
+    Version: e804[a-e0-9][a-f0-9]{3}
+  CPUCARD_FPGA:
+    Version: e801[a-e0-9][a-f0-9]{3}
+  BIOS: {}
+  ONIE: {}
+  TPM: {}
+  NVMe: {}
+x86_64-nexthop_4220.*:
+  SWITCHCARD_FPGA:
+    Version: e805[a-e0-9][a-f0-9]{3}
+  CPUCARD_FPGA:
+    Version: e801[a-e0-9][a-f0-9]{3}
+  BIOS: {}
+  ONIE: {}
+  TPM: {}
+  NVMe: {}
