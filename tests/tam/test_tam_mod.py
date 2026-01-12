@@ -611,7 +611,7 @@ class IPFIXCollector:
     IPFIX collector that captures and validates IPFIX reports.
     Collects packets from all specified ports and tracks which port each packet arrived on.
     """
-    def __init__(self, ptfadapter, collector_ports, collector_config, flows_to_collect):
+    def __init__(self, ptfadapter, collector_ports, collector_config, flows_to_collect, device_id=None):
         self.ptfadapter = ptfadapter
         self.collector_ports = collector_ports  # List of ports to collect from
         self.collector_config = collector_config
@@ -619,6 +619,7 @@ class IPFIXCollector:
         self.collecting = False
         self.collection_thread = None
         self.flows_to_collect = flows_to_collect
+        self.device_id = int(device_id) if device_id is not None else None
 
         # Initialize dictionaries for each port
         for port in collector_ports:
@@ -733,6 +734,10 @@ class IPFIXCollector:
         elif drop_stage == "mmu" and psamp_header.drop_reason_ep_or_mmu == 0:
             return (False, "Invalid MMU drop-reason-code")
 
+        # Verify that the switch_id matches the configured device-id
+        if self.device_id is not None and psamp_header.switch_id != self.device_id:
+            return (False, f"switch_id mismatch: expected {self.device_id}, got {psamp_header.switch_id}")
+
         return (True, "Valid")
 
     def _parse_packet(self, packet):
@@ -767,6 +772,7 @@ class IPFIXCollector:
             return {}
 
         return {
+            "switch_id": psamp_header.switch_id,
             "drop_reason_ip": psamp_header.drop_reason_ip,
             "drop_reason_ep_or_mmu": psamp_header.drop_reason_ep_or_mmu,
             "is_ipv4": has_inner_ip,
@@ -944,7 +950,7 @@ def _prepare_flows(ip_family, flow_aware):
     return matched_flows, unmatched_flows, flows_to_collect
 
 
-def _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect):
+def _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect, device_id=None):
     """
     Set up IPFIX collector with logging.
 
@@ -953,13 +959,14 @@ def _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_col
         collector_ports: List of PTF port indices where collector is reachable
         collector_config: Collector configuration dictionary
         flows_to_collect: List of flows to collect
+        device_id: Expected device-id value for switch_id verification
 
     Returns:
         IPFIXCollector: Configured collector instance
     """
     logger.info(f"Collector ports (from routing): {collector_ports}")
     logger.info(f"Collector config: {collector_config}")
-    return IPFIXCollector(ptfadapter, collector_ports, collector_config, flows_to_collect)
+    return IPFIXCollector(ptfadapter, collector_ports, collector_config, flows_to_collect, device_id)
 
 
 def _test_with_blackhole_route(duthost, ip_family, collector_config, packet_test):
@@ -1033,7 +1040,8 @@ def test_mod_ingress_drops(tam_mod_config, ptfadapter):
     matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(ip_family, flow_aware)
 
     # Set up IPFIX collector
-    collector = _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect)
+    device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+    collector = _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect, device_id)
 
     # Create packet test instance
     packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, flow_aware=flow_aware,
@@ -1107,7 +1115,7 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
     logger.info(f"Using destination {dst_ip} on interface {egress_interface} for MMU drop traffic")
 
     # Ensure blocking scheduler exists
-    create_blocking_scheduler(duthost)
+    create_blocking_scheduler(duthost, pir=1000)
 
     def _wait_for_drop_count(prevCount):
         currCount = get_queue_trim_counters_json(duthost, egress_interface)
@@ -1118,10 +1126,11 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
         else [("2000:10:1:1::100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")]
 
     # Set up IPFIX collector
-    collector = _setup_collector(ptfadapter, collector_ports, collector_config, expected_flows)
+    device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+    collector = _setup_collector(ptfadapter, collector_ports, collector_config, expected_flows, device_id)
 
     # Block only the selected queue on the chosen egress interface
-    with ConfigTrimming(duthost, egress_interface, block_queue):
+    with ConfigTrimming(duthost, egress_interface, block_queue, pir=1000):
         packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, drop_stage="mmu",
                                  flow_aware=flow_aware, expected_flows=expected_flows)
         queue_counters_before = get_queue_trim_counters_json(duthost, egress_interface)
@@ -1219,7 +1228,9 @@ def test_mod_collector_config_change(tam_mod_config, ptfadapter, tbinfo):
         )
 
         # Set up IPFIX collector
-        collector = _setup_collector(ptfadapter, test_collector_ports, full_collector_config, flows_to_collect)
+        device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+        collector = _setup_collector(ptfadapter, test_collector_ports, full_collector_config, flows_to_collect,
+                                     device_id)
 
         # Create packet test instance
         packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family,

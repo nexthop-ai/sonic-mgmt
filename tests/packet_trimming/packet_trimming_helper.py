@@ -378,7 +378,7 @@ def get_scheduler_oid_by_attributes(duthost, **kwargs):
     return None
 
 
-def create_blocking_scheduler(duthost):
+def create_blocking_scheduler(duthost, pir=SCHEDULER_PIR):
     """
     Create a blocking scheduler for limiting egress traffic
 
@@ -397,7 +397,7 @@ def create_blocking_scheduler(duthost):
         # Create blocking scheduler
         cmd_create = (
             f'sonic-db-cli CONFIG_DB hset "SCHEDULER|{BLOCK_DATA_PLANE_SCHEDULER_NAME}" '
-            f'"type" {SCHEDULER_TYPE} "weight" {SCHEDULER_WEIGHT} "pir" {SCHEDULER_PIR} "cir" {SCHEDULER_CIR}'
+            f'"type" {SCHEDULER_TYPE} "weight" {SCHEDULER_WEIGHT} "pir" {pir} "cir" {SCHEDULER_CIR}'
         )
         duthost.shell(cmd_create)
         logger.info(f"Successfully created blocking scheduler: {BLOCK_DATA_PLANE_SCHEDULER_NAME}")
@@ -509,7 +509,7 @@ def validate_scheduler_apply_to_queue_in_asic_db(duthost, scheduler_oid, expecte
         return False
 
 
-def disable_egress_data_plane(duthost, dut_port, queue):
+def disable_egress_data_plane(duthost, dut_port, queue, pir):
     """
     Disable egress data plane for a specific queue on a specific port.
 
@@ -549,6 +549,11 @@ def disable_egress_data_plane(duthost, dut_port, queue):
     pytest_assert(wait_until(60, 5, 0, validate_scheduler_configuration,
                              duthost, dut_port, queue, BLOCK_DATA_PLANE_SCHEDULER_NAME),
                   f"Blocking scheduler configuration failed for port {dut_port} queue {queue}")
+
+    # Get the blocking scheduler OID from ASIC_DB
+    scheduler_oid = get_scheduler_oid_by_attributes(duthost, type=SCHEDULER_TYPE,
+                                                    weight=SCHEDULER_WEIGHT, pir=pir)
+    pytest_assert(scheduler_oid, "Failed to find blocking scheduler OID in ASIC_DB")
 
     # Wait for the blocking scheduler configuration to take effect in ASIC_DB
     # Expected count should increase by 1 after applying scheduler to specific queue
@@ -1291,7 +1296,7 @@ class ConfigTrimming:
     This is used to trigger packet trimming by blocking the egress queues.
     """
 
-    def __init__(self, duthost, ports, queue):
+    def __init__(self, duthost, ports, queue, pir=SCHEDULER_PIR):
         """
         Initialize the context manager.
 
@@ -1306,6 +1311,7 @@ class ConfigTrimming:
         self.queue = queue
         # Store the original scheduler configuration for each port
         self.original_schedulers = {}
+        self.pir = pir
 
     def __enter__(self):
         """
@@ -1314,7 +1320,7 @@ class ConfigTrimming:
         try:
             for port in self.ports:
                 logger.info(f"Blocking egress port {port} queue {self.queue}")
-                original_scheduler = disable_egress_data_plane(self.duthost, port, self.queue)
+                original_scheduler = disable_egress_data_plane(self.duthost, port, self.queue, self.pir)
 
                 if not original_scheduler:
                     raise Exception(f"Failed to block egress port {port} queue {self.queue}")
