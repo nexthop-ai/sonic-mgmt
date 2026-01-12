@@ -1,0 +1,26 @@
+---
+# Management MAC address offset configuration per platform
+# [ONIE platform]:
+#   default:
+#     offset_from_base_mac: [INTEGER_OFFSET]
+#   hwsku:
+#     [HWSKU]:
+#       offset_from_base_mac: [INTEGER_OFFSET]
+#
+# This configuration file supports matching a platform string and HWSKU string using regular expressions.
+# NOTE: more specific regular expression must be defined after less specific.
+#
+# The offset_from_base_mac parameter specifies the integer offset to add to the EEPROM base MAC address
+# to calculate the expected management interface (eth0) MAC address.
+#
+# Examples:
+#   - offset_from_base_mac: 0  -> eth0 MAC should equal base MAC (exact match)
+#   - offset_from_base_mac: 1  -> eth0 MAC should equal base MAC + 1
+#   - offset_from_base_mac: 2  -> eth0 MAC should equal base MAC + 2
+#
+# The test also performs secondary validation if the ONIE "MAC Addresses" TLV field (0x2A) exists:
+#   - Verifies that eth0 MAC falls within the range [base_mac, base_mac + num_addresses - 1]
+#   - This ensures the MAC is within the allocated pool even if using an offset
+
+default:
+  offset_from_base_mac: 0
