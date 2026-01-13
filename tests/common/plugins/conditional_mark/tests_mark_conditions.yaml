@@ -578,8 +578,6 @@ bgp/test_bgpmon.py:
     reason: "Not supported on T2 topology or topology backend
              or Skip for IPv6-only topologies, since there are v6 verison of the test
              or BGP_MONITORS is not supported in unified management framework."
-    conditions_logical_operator: or
-    reason: "Not supported on T2 topology or topology backend"
     conditions:
       - "'backend' in topo_name or 't2' in topo_name"
       - "'-v6-' in topo_name"
