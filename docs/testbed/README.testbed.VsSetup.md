@@ -74,11 +74,11 @@ mkdir -p ~/veos-vm/images
    #### Option 2.1: Manually download cEOS image
 
    1. Obtain the cEOS image from [Arista's software download page](https://www.arista.com/en/support/software-download). You can choose later cEOS versions, they do not guarantee to work (the latest 4.35.0F do not).
-      
+
       **Note:** You may need to register an Arista guest account to access the download resources.
 
       Ensure that the cEOS version you download matches the version specified in `ansible/group_vars/vm_host/ceos.yml`. For example, the following steps use `cEOS64-lab-4.29.3M` as a reference.
- 
+
    2. Unxz it with `unxz cEOS64-lab-4.29.3M.tar.xz`.
    3. Place the image file in the `images` subfolder located within the directory specified by the `root_path` variable in the `ansible/group_vars/vm_host/main.yml` file.
 
@@ -287,7 +287,7 @@ foo ALL=(ALL) NOPASSWD:ALL
    ```
    sudo chmod 755 /home/<username>
    ```
-   Also verify that images files and the folder containing them also have the correct permissions. 
+   Also verify that images files and the folder containing them also have the correct permissions.
 
 ## Setup VMs on the server
 **(Skip this step if you are using cEOS - the containers will be automatically setup in a later step.)**

@@ -14,12 +14,12 @@
 | 2025-07-09 | Huang Xin | Initial draft |
 
 ## Objective
-This document defines the topology of the Optical Circuit Switch (OCS) to verify the basic functionality of the OCS device. 
+This document defines the topology of the Optical Circuit Switch (OCS) to verify the basic functionality of the OCS device.
 
 ## Physical Topology
 ![OCS Topology](./img/testbed-ocs_topology.png)
 
-Key components in the physical connection: 
+Key components in the physical connection:
 * Test servers
 * Fanout switches
   *     Root fanout switch (optional)
@@ -30,7 +30,7 @@ Key aspects of the physical connection:
 1. Each OCS port operates exclusively as either a Rx (receive) or a Tx (transmit) port. A Tx port and its corresponding Rx port form a pair to establish an exclusive, transparent tunnel for data transmission—a fundamental contrast to the operation of a traditional Ethernet switch.
 2. The leaf fanout switch has unique VLAN tag for each pair of OCS ports
 3. Root fanout switch connects leaf fanout switch and test servers using 802.1Q trunks
-4. The test server can SSH to OCS device and configure the OCS device 
+4. The test server can SSH to OCS device and configure the OCS device
 
 With this design, all OCS  port pairs can be exposed in test server. In test servers, a PTF container can be deployed to inject and capture packets. The PTF container, the VLAN interfaces in test server can be interconnected by open vSwitch bridges. Through the VLAN Trunk of the fanout switches, the PTF container can communicate with the OCS device.
 
