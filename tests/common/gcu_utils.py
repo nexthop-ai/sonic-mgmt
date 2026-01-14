@@ -21,7 +21,9 @@ def apply_patch(duthost, json_data, dest_file):
 
     Args:
         duthost: Device Under Test (DUT)
-        json_data: Source json patch to apply
+        json_data: JSON patch as a Python object (list of dicts), NOT a JSON string.
+                   This will be serialized to JSON internally via json.dumps().
+                   Example: [{"op": "add", "path": "/TABLE/key", "value": {...}}]
         dest_file: Destination file on duthost
     """
     duthost.copy(content=json.dumps(json_data, indent=4), dest=dest_file)
