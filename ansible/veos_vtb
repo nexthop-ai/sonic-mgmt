@@ -45,8 +45,10 @@ all:
           - dualtor-56
           - dualtor-120
           - t2
+          - t2vch
           - t2_2lc_min_ports-masic
           - t2_2lc_min_ports
+          - t2_single_node_min
           - m1-48
           - m1-44
           - m1-108
