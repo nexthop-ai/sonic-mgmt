@@ -136,6 +136,23 @@
   auto_recover: 'False'
   comment: Tests multi-asic virtual switch vm
 
+- conf-name: vms-kvm-t2vch
+  group-name: vms6-4-m
+  topo: t2vch
+  ptf_image_name: docker-ptf
+  ptf: ptf-04
+  ptf_ip: 10.250.0.109/24
+  ptf_ipv6: fec0::ffff:afa:9/64
+  server: server_1
+  vm_base: VM0100
+  dut:
+    - vlab-t2-1-1
+    - vlab-t2-1-2
+    - vlab-t2-1-sup
+  inv_name: veos_vtb
+  auto_recover: 'False'
+  comment: T2 Virtual chassis with Multi-ASIC LCs
+
 - conf-name: vms-kvm-t2
   group-name: vms6-4-m
   topo: t2_2lc_min_ports-masic
@@ -503,6 +520,21 @@
   inv_name: veos_vtb
   auto_recover: 'False'
   comment: Small t1 topology with 2 VMs
+
+- conf-name: vms-kvm-t2-small
+  group-name: vms6-1
+  topo: t2_single_node_min
+  ptf_image_name: docker-ptf
+  ptf: ptf-01
+  ptf_ip: 10.250.0.102/24
+  ptf_ipv6: fec0::ffff:afa:2/64
+  server: server_1
+  vm_base: VM0100
+  dut:
+    - vlab-01
+  inv_name: veos_vtb
+  auto_recover: 'False'
+  comment: Small t2 single asic topology with 5 peers
 
 - conf-name: vms-kvm-t0-small-v6
   group-name: vms6-1
