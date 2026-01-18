@@ -17,7 +17,7 @@ pytestmark = [
 
 def ptf_telemetry_get(duthost, ptfhost):
     output = ptfhost.shell("whoami", module_ignore_errors=True)
-    logger.error("whoami: {}".format(output))
+    logger.debug("whoami: {}".format(output))
 
     env = GNMIEnvironment(duthost, GNMIEnvironment.TELEMETRY_MODE)
     ip = duthost.mgmt_ip
