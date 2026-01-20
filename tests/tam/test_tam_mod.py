@@ -178,7 +178,8 @@ def verify_tam_mod_config_applied(duthost, ip_family, flow_aware):
         show = duthost.shell('sonic-db-cli CONFIG_DB HGETALL "TAM_FLOW_GROUP|FG1"', module_ignore_errors=False)
         lines = show.get("stdout_lines", []) or []
         pytest_assert(lines, "CONFIG_DB: TAM_FLOW_GROUP|FG1 not found or empty")
-        num_flow_rules = len(MATCHED_FLOWS) if ip_family == "ipv4" else len(MATCHED_FLOWS_IPV6)
+        # Only IPv4 is supported for flow aware at this moment
+        num_flow_rules = len(MATCHED_FLOWS)
         for idx in range(1, num_flow_rules + 1):
             rule_key = f"FG1|RULE{idx}"
             show = duthost.shell(f'sonic-db-cli CONFIG_DB HGETALL "TAM_FLOW_GROUP|{rule_key}"',
@@ -838,15 +839,12 @@ class IPFIXCollector:
 def _get_tam_config(ip_family, ports, flow_aware):
     # Build tam_config with IP addresses based on IP family (same pattern as fixture)
     tam_config = copy.deepcopy(TAM_MOD_CONFIG_TEMPLATE)  # Deep copy
-    flow_rules = None
     if ip_family == "ipv4":
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV4["src_ip"]
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV4["dst_ip"]
-        flow_rules = MATCHED_FLOWS
     else:  # ipv6
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["src_ip"] = TAM_COLLECTOR_IPV6["src_ip"]
         tam_config["TAM_COLLECTOR"]["COLLECTOR1"]["dst_ip"] = TAM_COLLECTOR_IPV6["dst_ip"]
-        flow_rules = MATCHED_FLOWS_IPV6
 
     if not flow_aware:
         return tam_config
@@ -862,6 +860,9 @@ def _get_tam_config(ip_family, ports, flow_aware):
     }
 
     tam_config["TAM_SESSION"]["DROPMONITOR"]["flow_group"] = ["FG1"]
+
+    # Only IPv4 is supported for flow aware at this moment
+    flow_rules = MATCHED_FLOWS
 
     for idx, (src_ip_prefix, dst_ip_prefix, ip_protocol, l4_src_port, l4_dst_port) in enumerate(flow_rules, start=1):
         rule_key = f"FG1|RULE{idx}"
@@ -1023,11 +1024,6 @@ def test_mod_ingress_drops(tam_mod_config, ptfadapter):
     """
     duthost, ingress_port, collector_ports, collector_config, ip_family, flow_aware = tam_mod_config
 
-    # For now IPv6 is not supported with IPv6. Skip it.
-    # TODO: Revisit this when flow aware is fixed for IPv6
-    if flow_aware and ip_family == "ipv6":
-        pytest.skip("Skipping unsupported test variant")
-
     logger.info(f"Running test with {ip_family.upper()} collector configuration")
 
     # Get router MAC
@@ -1036,19 +1032,23 @@ def test_mod_ingress_drops(tam_mod_config, ptfadapter):
     # Select ingress port for packet injection
     ingress_port_name, ptf_ingress_port = _select_ingress_port(ingress_port, "packet injection")
 
-    # Prepare flows for testing
-    matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(ip_family, flow_aware)
+    traffic_ip_families = ['ipv4'] if flow_aware else ['ipv4', 'ipv6']
 
-    # Set up IPFIX collector
-    device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
-    collector = _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect, device_id)
+    for traffic_ip_family in traffic_ip_families:
+        # Prepare flows for testing
+        matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(traffic_ip_family, flow_aware)
 
-    # Create packet test instance
-    packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, flow_aware=flow_aware,
-                             expected_flows=matched_flows, unexpected_flows=unmatched_flows)
+        # Set up IPFIX collector
+        device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+        collector = _setup_collector(ptfadapter, collector_ports, collector_config, flows_to_collect, device_id)
 
-    # Run initial packet test
-    packet_test.run_packet_test(expect_reports=True)
+        # Create packet test instance
+        packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, traffic_ip_family,
+                                 flow_aware=flow_aware, expected_flows=matched_flows,
+                                 unexpected_flows=unmatched_flows)
+
+        # Run initial packet test
+        packet_test.run_packet_test(expect_reports=True)
 
     # Test with blackhole route (should disable reporting, then re-enable)
     _test_with_blackhole_route(duthost, ip_family, collector_config, packet_test)
@@ -1105,14 +1105,6 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
 
     # Get peer IPv4/IPv6 address for the egress interface to use as traffic destination
     ipv4_peer, ipv6_peer = get_interface_peer_addresses(mg_facts, egress_interface)
-    if ip_family == "ipv4":
-        pytest_assert(ipv4_peer, f"No IPv4 peer address for interface {egress_interface}")
-        dst_ip = ipv4_peer
-    else:
-        pytest_assert(ipv6_peer, f"No IPv6 peer address for interface {egress_interface}")
-        dst_ip = ipv6_peer
-
-    logger.info(f"Using destination {dst_ip} on interface {egress_interface} for MMU drop traffic")
 
     # Ensure blocking scheduler exists
     create_blocking_scheduler(duthost, pir=1000)
@@ -1121,20 +1113,29 @@ def test_mod_mmu_drops(tam_mod_config, ptfadapter, tbinfo, mg_facts, dut_qos_map
         currCount = get_queue_trim_counters_json(duthost, egress_interface)
         return currCount['UC1']['droppacket'] > prevCount
 
-    # Prepare expected flows for MMU drop test
-    expected_flows = [("10.1.1.100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")] if ip_family == "ipv4" \
-        else [("2000:10:1:1::100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")]
-
-    # Set up IPFIX collector
-    device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
-    collector = _setup_collector(ptfadapter, collector_ports, collector_config, expected_flows, device_id)
-
     # Block only the selected queue on the chosen egress interface
     with ConfigTrimming(duthost, egress_interface, block_queue, pir=1000):
-        packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family, drop_stage="mmu",
-                                 flow_aware=flow_aware, expected_flows=expected_flows)
         queue_counters_before = get_queue_trim_counters_json(duthost, egress_interface)
-        packet_test.run_packet_test(expect_reports=True)
+        for traffic_ip_family in ['ipv4', 'ipv6']:
+            if traffic_ip_family == "ipv4":
+                pytest_assert(ipv4_peer, f"No IPv4 peer address for interface {egress_interface}")
+                dst_ip = ipv4_peer
+            else:
+                pytest_assert(ipv6_peer, f"No IPv6 peer address for interface {egress_interface}")
+                dst_ip = ipv6_peer
+
+            logger.info(f"Using destination {dst_ip} on interface {egress_interface} for MMU drop traffic")
+
+            # Prepare expected flows for MMU drop test
+            expected_flows = [("10.1.1.100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")] if traffic_ip_family == "ipv4" \
+                else [("2000:10:1:1::100", dst_ip, IP_PROTOCOL_TCP, "1000", "80")]
+            # Set up IPFIX collector
+            device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+            collector = _setup_collector(ptfadapter, collector_ports, collector_config, expected_flows, device_id)
+            packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac,
+                                     traffic_ip_family, drop_stage="mmu", flow_aware=flow_aware,
+                                     expected_flows=expected_flows)
+            packet_test.run_packet_test(expect_reports=True)
         # Verify that indeed packets were dropped
         pytest_assert(wait_until(30, 5, 0, lambda: _wait_for_drop_count(queue_counters_before['UC1']['droppacket'])),
                       "PacketTest is buggy, it had passed, but the dropcounter has not incremented. "
@@ -1170,9 +1171,6 @@ def test_mod_collector_config_change(tam_mod_config, ptfadapter, tbinfo):
 
     # Select ingress port for packet injection
     ingress_port_name, ptf_ingress_port = _select_ingress_port(ingress_port, "packet injection")
-
-    # Prepare flows for testing
-    matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(ip_family, flow_aware)
 
     # Modified collector configurations for testing collector config updates
     # Note: dst_port must be int for comparison in IPFIXCollector._is_ipfix_report()
@@ -1227,15 +1225,19 @@ def test_mod_collector_config_change(tam_mod_config, ptfadapter, tbinfo):
             f"ASIC_DB missing TAM keys after applying {config_name} collector config"
         )
 
-        # Set up IPFIX collector
-        device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
-        collector = _setup_collector(ptfadapter, test_collector_ports, full_collector_config, flows_to_collect,
-                                     device_id)
+        for traffic_ip_family in ['ipv4', 'ipv6']:
+            # Prepare flows for testing
+            matched_flows, unmatched_flows, flows_to_collect = _prepare_flows(traffic_ip_family, flow_aware)
 
-        # Create packet test instance
-        packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, ip_family,
-                                 flow_aware=flow_aware, expected_flows=matched_flows,
-                                 unexpected_flows=unmatched_flows)
+            # Set up IPFIX collector
+            device_id = TAM_MOD_CONFIG_TEMPLATE["TAM"]["device"]["device-id"]
+            collector = _setup_collector(ptfadapter, test_collector_ports, full_collector_config, flows_to_collect,
+                                         device_id)
 
-        # Run packet test
-        packet_test.run_packet_test(expect_reports=True)
+            # Create packet test instance
+            packet_test = PacketTest(ptfadapter, ptf_ingress_port, collector, router_mac, traffic_ip_family,
+                                     flow_aware=flow_aware, expected_flows=matched_flows,
+                                     unexpected_flows=unmatched_flows)
+
+            # Run packet test
+            packet_test.run_packet_test(expect_reports=True)
