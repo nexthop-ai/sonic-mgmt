@@ -907,7 +907,7 @@
 
       - name: config telemetry
         become: true
-        shell: sudo config feature state telemetry enabled
+        shell: sudo config feature state telemetry disabled
 
       - name: execute cli "config bgp startup all" to bring up all bgp sessions for test
         become: true
