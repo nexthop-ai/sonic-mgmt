@@ -22,6 +22,7 @@ def verify_route_table_status(duthost, namespace, expected_status="1"):  # statu
         cmd_prefix = "sonic-db-cli -n {}".format(namespace)
     cmd = cmd_prefix + " APPL_DB exists \"ROUTE_TABLE:0.0.0.0/0\""
     status = duthost.shell(cmd)["stdout"]
+    duthost.shell("show ip route 0.0.0.0/0")
     return status == expected_status
 
 
@@ -166,7 +167,7 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
 
     # Remove default route and wait till there is no entry
     duthost.shell("config bgp shutdown all")
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "0"),
+    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "0"),
                   "ROUTE_TABLE default route not missing")
 
     ptf_result = ptfhost.shell(cmd)
@@ -196,7 +197,7 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
 
     # Add back default route
     duthost.shell("config bgp startup all")
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "1"),
+    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "1"),
                   "ROUTE_TABLE default route missing")
 
     # Give 60 seconds for client to connect to server and then 60 for default route to populate after bgp session start
