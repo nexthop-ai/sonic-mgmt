@@ -170,8 +170,9 @@ class DHCPTest(DataplaneBaseTest):
         #  Byte 0: Suboption number, always set to 1
         #  Byte 1: Length of suboption data in bytes
         #  Bytes 2+: Suboption data
-        # Our circuit_id string is of the form "hostname:portname"
-        circuit_id_string = self.hostname + ":" + self.client_iface_alias
+        # SONiC's dhcrelay uses the -a flag to set circuit_id to the IP address of the interface
+        # that received the DHCP request
+        circuit_id_string = self.relay_iface_ip
         self.option82 = struct.pack('BB', 1, len(circuit_id_string))
         self.option82 += circuit_id_string.encode('utf-8')
 

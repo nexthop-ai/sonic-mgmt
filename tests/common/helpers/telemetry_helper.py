@@ -96,6 +96,21 @@ def setup_streaming_telemetry_context(is_ipv6, duthost, localhost, ptfhost, gnxi
     This function ensures the telemetry container is started if it's not already running,
     configures it for testing, and waits for it to be ready.
     """
+    telemetry_was_enabled = False
+    try:
+        features_dict, succeeded = duthost.get_feature_status()
+        if succeeded and 'telemetry' in features_dict:
+            telemetry_was_enabled = (features_dict['telemetry'] == 'enabled')
+            if not telemetry_was_enabled:
+                logger.info("Telemetry feature is disabled, enabling it for the test")
+                duthost.shell("sudo config feature state telemetry enabled", module_ignore_errors=False)
+                logger.info("Telemetry feature enabled successfully")
+        else:
+            logger.warning("Could not determine telemetry feature status")
+    except Exception as e:
+        logger.warning(f"Failed to check/enable telemetry feature: {e}")
+
+    default_client_auth = None
     try:
         has_gnmi_config = check_gnmi_config(duthost)
         if not has_gnmi_config:
@@ -129,9 +144,29 @@ def setup_streaming_telemetry_context(is_ipv6, duthost, localhost, ptfhost, gnxi
     except RunAnsibleModuleFail as e:
         logger.info("Error happens in the setup period of setup_streaming_telemetry, recover the telemetry.")
         restore_telemetry_forpyclient(duthost, default_client_auth)
+        # Restore telemetry feature state if it was disabled before
+        if not telemetry_was_enabled:
+            try:
+                logger.info("Restoring telemetry feature to disabled state")
+                duthost.shell("sudo config feature state telemetry disabled", module_ignore_errors=True)
+            except Exception as ex:
+                logger.warning(f"Failed to restore telemetry feature state: {ex}")
+
         raise e
 
-    yield
-    restore_telemetry_forpyclient(duthost, default_client_auth)
-    if not has_gnmi_config:
-        delete_gnmi_config(duthost)
+    try:
+        yield
+    finally:
+        # Cleanup always runs, even if test fails
+        restore_telemetry_forpyclient(duthost, default_client_auth)
+        if not has_gnmi_config:
+            delete_gnmi_config(duthost)
+
+        # Restore telemetry feature state if it was disabled before the test
+        if not telemetry_was_enabled:
+            try:
+                logger.info("Restoring telemetry feature to disabled state")
+                duthost.shell("sudo config feature state telemetry disabled", module_ignore_errors=True)
+                logger.info("Telemetry feature disabled successfully")
+            except Exception as e:
+                logger.warning(f"Failed to restore telemetry feature state: {e}")
