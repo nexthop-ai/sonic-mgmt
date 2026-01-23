@@ -229,6 +229,8 @@ def match_bgp_update(packet, src_ip, dst_ip, action, route, is_v6_topo):
     ip_ver = IPv6 if is_v6_topo else IP
     if not (packet[ip_ver].src == src_ip and packet[ip_ver].dst == dst_ip):
         return False
+    if not packet.haslayer(bgp.BGPUpdate):
+        return False
     subnet = ipaddress.ip_network(six.u(route["prefix"]))
 
     # New scapy (version 2.4.5) uses a different way to represent and dissect BGP messages. Below logic is to
