@@ -94,8 +94,6 @@ class TestCOPP(object):
     feature_name = "bgp"
 
     @pytest.mark.parametrize("protocol", ["ARP",
-                                          "SNMP",
-                                          "SSH",
                                           "DHCP",
                                           "DHCP6",
                                           "LACP",
@@ -146,6 +144,8 @@ class TestCOPP(object):
                      dut_type)
 
     @pytest.mark.parametrize("protocol", ["IP2ME",
+                                          "SNMP",
+                                          "SSH",
                                           "BGP"])
     def test_policer_mtu(self, protocol, duthosts, enum_rand_one_per_hwsku_frontend_hostname,
                          ptfhost, copp_testbed, dut_type, packet_size):
@@ -153,7 +153,8 @@ class TestCOPP(object):
             Validates that rate-limited COPP groups work as expected.
 
             Checks that the policer enforces the rate limit for protocols
-            that have a set rate limit.
+            that can receive packets with different sizes and have a set rate
+            limit.
         """
         duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
         _copp_runner(duthost,

@@ -239,6 +239,13 @@ def verify_thresholds(duthost, asichost, **kwargs):
     Verifies that WARNING message logged if there are any resources that exceeds a pre-defined threshold value.
     Verifies the following threshold parameters: percentage, actual used, actual free
     """
+    # Skip on virtual testbed (VS/KVM): ASIC/counters DB checks are not applicable
+    if duthost.facts["asic_type"].lower() == "vs":
+        logging.info(
+            "[CRM] Skipping verify_thresholds on VS/KVM (asic_type == 'vs'); "
+            "ASIC/counters DB checks are not applicable in virtual testbeds."
+        )
+        return
     loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix='crm_test')
     for key, value in list(THR_VERIFY_CMDS.items()):
         logger.info("Verifying CRM threshold '{}'".format(key))
@@ -778,7 +785,7 @@ def test_crm_nexthop(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
 def test_crm_neighbor(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
                       enum_frontend_asic_index,  crm_interface, ip_ver, neighbor, host, tbinfo,
                       disable_swss_rsyslog_rate_limit):
-  
+
     if ip_ver == "4" and is_ipv6_only_topology(tbinfo):
         pytest.skip("Skipping IPv4 test on IPv6-only topology")
 

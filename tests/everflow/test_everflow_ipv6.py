@@ -12,6 +12,7 @@ import random
 # Module-level fixtures
 from .everflow_test_utilities import setup_info, skip_ipv6_everflow_tests                                 # noqa: F401
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor    # noqa: F401
+from tests.common.macsec.macsec_helper import MACSEC_INFO
 
 pytestmark = [
     pytest.mark.topology("t0", "t1", "t2", "lt2", "ft2", "m0", "m1")
@@ -158,6 +159,68 @@ class EverflowIPv6Tests(BaseEverflowTest):
             # Wait for the background thread to finish
             background_thread.join()
             background_traffic(run_count=1)
+
+    @pytest.fixture(scope='class',  autouse=True)
+    def setup_acl_table(self, setup_info, setup_mirror_session, config_method, setup_mirror_session_dest_ip_route):         # noqa F811
+
+        # Capability check; skips when unsupported
+        if not setup_info[self.acl_stage()][self.mirror_type()]:
+            pytest.skip("{} ACL w/ {} Mirroring not supported, skipping"
+                        .format(self.acl_stage(), self.mirror_type()))
+        if MACSEC_INFO and self.mirror_type() == "egress":
+            pytest.skip("With MACSEC {} ACL w/ {} Mirroring not supported, skipping"
+                        .format(self.acl_stage(), self.mirror_type()))
+
+        if setup_info['topo'] in ['t0', 'm0_vlan']:
+            everflow_dut = setup_info[UP_STREAM]['everflow_dut']
+            remote_dut = setup_info[UP_STREAM]['remote_dut']
+        else:
+            everflow_dut = setup_info[DOWN_STREAM]['everflow_dut']
+            remote_dut = setup_info[DOWN_STREAM]['remote_dut']
+
+        table_name = self._get_table_name(everflow_dut)
+        temporary_table = False
+
+        duthost_set = set()
+        duthost_set.add(everflow_dut)
+        duthost_set.add(remote_dut)
+
+        if not table_name:
+            table_name = "EVERFLOWV6" if self.acl_stage() == "ingress" else "EVERFLOW_EGRESSV6"
+            temporary_table = True
+
+        for duthost in duthost_set:
+            if temporary_table:
+                self.apply_acl_table_config(duthost, table_name, "MIRRORV6", config_method)
+
+            self.apply_acl_rule_config(duthost, table_name, setup_mirror_session["session_name"],
+                                       config_method, rules=EVERFLOW_V6_RULES)
+            self.apply_ip_type_rule(duthost, 6)
+
+        yield
+
+        for duthost in duthost_set:
+            self.remove_acl_rule_config(duthost, table_name, config_method)
+
+            if temporary_table:
+                self.remove_acl_table_config(duthost, table_name, config_method)
+
+    # TODO: This can probably be refactored into a common utility method later.
+    def _get_table_name(self, duthost):
+        show_output = duthost.command("show acl table")
+
+        table_name = None
+        for line in show_output["stdout_lines"]:
+            if "MIRRORV6" in line:
+                # NOTE: Once we branch out the sonic-mgmt repo we can skip the version check.
+                if "201811" in duthost.os_version or self.acl_stage() in line:
+                    table_name = line.split()[0]
+                    break
+
+        return table_name
+
+    def acl_ip_version(self):
+        return 6
 
     def test_src_ipv6_mirroring(self, setup_info, setup_mirror_session, ptfadapter, everflow_dut,       # noqa F811
                                 setup_standby_ports_on_rand_unselected_tor_unconditionally,             # noqa F811
