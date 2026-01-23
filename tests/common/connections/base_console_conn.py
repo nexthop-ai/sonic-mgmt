@@ -86,8 +86,13 @@ class BaseConsoleConn(CiscoBaseConnection):
         # not supported
         pass
 
+<<<<<<< HEAD
     def find_prompt(self, delay_factor=1, pattern=None):
         return super(BaseConsoleConn, self).find_prompt(delay_factor, pattern)
+=======
+    def find_prompt(self, delay_factor=1, **kwargs):
+        return super(BaseConsoleConn, self).find_prompt(delay_factor, **kwargs)
+>>>>>>> upstream/master
 
     def clear_buffer(self):
         # todo
