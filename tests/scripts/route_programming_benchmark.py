@@ -620,10 +620,14 @@ class RouteProgrammingBenchmark:
             hardware=initial_stats["Hardware"] if self.is_vs else initial_stats["Hardware"] + self.num_routes,
         )
 
+        # Dynamic timeout based on route count: ~1500 routes/sec observed throughput
+        # with 120s minimum for small route counts
+        hw_timeout = max(120, self.num_routes // 1500)
+
         # Wait for routes in Hardware (using bcmcmd)
         # This measures routes actually programmed and available for forwarding
         asic_to_hw_time = self.wait_for_routes_in_stage(
-            "Hardware", self.is_vs, target_stats, initial_stats, timeout=180
+            "Hardware", self.is_vs, target_stats, initial_stats, timeout=hw_timeout
         )
 
         total_time = time.time() - total_start_time
