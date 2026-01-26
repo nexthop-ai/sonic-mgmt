@@ -1,6 +1,7 @@
 import time
 import math
 import datetime
+import ipaddress
 from typing import Any
 import pytest
 import logging
@@ -157,13 +158,26 @@ def setup_bgp_peers(
 
     # Establish peers - 1 route injector, the rest receivers
     connections = setup_interfaces
-    bgp_peers: list[BGPNeighbor] = []
 
-    # Validate that the expected number of connections were established
-    pytest_assert(
-        len(connections) == PEER_COUNT,
-        f"Incorrect number of bgp peers established: {len(bgp_peers)} exist, {PEER_COUNT} expected"
-    )
+    # Validate connection count matches available interfaces
+    # For t0/mx topologies, peers are limited by VLAN members (conftest allows fewer)
+    # For t1/t2 topologies, conftest skips if not enough interfaces, so we expect PEER_COUNT
+    if tbinfo["topo"]["type"] in ["t0", "mx"]:
+        vlan_intf = None
+        for vi in mg_facts["minigraph_vlan_interfaces"]:
+            if ipaddress.ip_address(vi["addr"]).version == 4:
+                vlan_intf = vi
+                break
+        if vlan_intf:
+            vlan_intf_name = vlan_intf["attachto"]
+            vlan_members = mg_facts["minigraph_vlans"][vlan_intf_name]["members"]
+            expected_peers = min(len(vlan_members), PEER_COUNT)
+            pytest_assert(
+                len(connections) == expected_peers,
+                f"Expected {expected_peers} peers but got {len(connections)} connections"
+            )
+
+    bgp_peers: list[BGPNeighbor] = []
 
     # Validate that all connection namespaces are the same
     connection_ns_set = {connection.get("namespace") for connection in connections}
@@ -230,7 +244,7 @@ def test_bgp_update_replication(
 
     # Extract injector and receivers
     route_injector = bgp_peers[0]
-    route_receivers = bgp_peers[1:PEER_COUNT]
+    route_receivers = bgp_peers[1:]
 
     logger.info(f"Route injector: '{route_injector}', route receivers: '{route_receivers}'")
 

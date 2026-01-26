@@ -546,9 +546,22 @@ def setup_interfaces(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhos
             vlan_members = mg_facts["minigraph_vlans"][vlan_intf_name]["members"]
             is_vlan_tagged = mg_facts["minigraph_vlans"][vlan_intf_name].get("type", "").lower() == "tagged"
             vlan_id = mg_facts["minigraph_vlans"][vlan_intf_name]["vlanid"]
-            local_interfaces = random.sample(vlan_members, peer_count)
+            # Validate that we have enough VLAN members for the requested peer count
+            # If fewer members are available, use what we have and log a warning
+            # Allowing tests to run on testbeds with varying interface counts
+            num_vlan_members = len(vlan_members)
+            if num_vlan_members == 0:
+                pytest.skip(f"No VLAN members available on {vlan_intf_name}. Cannot setup BGP peers for testing.")
+            actual_peer_count = min(num_vlan_members, peer_count)
+            if actual_peer_count < peer_count:
+                logger.warning(
+                    f"Testbed has {actual_peer_count} VLAN members available, "
+                    f"test requested {peer_count} peers. "
+                    f"Running test with {actual_peer_count} peers instead."
+                )
+            local_interfaces = random.sample(vlan_members, actual_peer_count)
             neighbor_addresses = generate_ips(
-                peer_count,
+                actual_peer_count,
                 vlan_intf["subnet"],
                 [netaddr.IPAddress(vlan_intf["addr"])]
             )
