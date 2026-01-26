@@ -7,12 +7,9 @@ import json
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 from tests.common.utilities import is_ipv4_address
-<<<<<<< HEAD
 from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
-=======
 from tests.common.utilities import is_ipv6_only_topology
 
->>>>>>> upstream/master
 
 pytestmark = [
     pytest.mark.topology('any'),
