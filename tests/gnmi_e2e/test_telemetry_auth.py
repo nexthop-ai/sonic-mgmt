@@ -2,9 +2,11 @@ import pytest
 import logging
 
 from tests.common.plugins.allure_wrapper import allure_step_wrapper as allure
-from tests.gnmi_e2e.helper import telemetry_enabled
-from tests.gnmi_e2e.helper import setup_invalid_client_cert_cname     # noqa: F401
+from tests.gnmi_e2e.helper import setup_invalid_client_cert_cname, telemetry_enabled     # noqa: F401
 from tests.common.helpers.gnmi_utils import GNMIEnvironment
+from tests.common.helpers.assertions import pytest_assert as py_assert
+from tests.common.utilities import wait_until
+from tests.gnmi_e2e.conftest import setup_service_config
 
 logger = logging.getLogger(__name__)
 allure.logger = logger
@@ -13,6 +15,83 @@ pytestmark = [
     pytest.mark.topology('any'),
     pytest.mark.disable_loganalyzer
 ]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_telemetry_container(duthosts, rand_one_dut_hostname, setup_gnmi_server_e2e):
+    """
+    Ensure telemetry container is started for tests in this file.
+
+    Depends on setup_gnmi_server_e2e to ensure certificates and configuration are set up first.
+
+    This fixture ensures the telemetry container is started at the beginning of tests and
+    stopped at the end (if it wasn't running before the tests).
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+
+    was_running = duthost.is_service_fully_started("telemetry")
+    telemetry_was_enabled = False
+
+    try:
+        # Check if telemetry feature is enabled and enable it if needed
+        features_dict, succeeded = duthost.get_feature_status()
+        if succeeded and 'telemetry' in features_dict:
+            telemetry_was_enabled = (features_dict['telemetry'] == 'enabled')
+            if not telemetry_was_enabled:
+                logger.info("Telemetry feature is disabled, enabling it for the test")
+                duthost.shell("sudo config feature state telemetry enabled", module_ignore_errors=False)
+                logger.info("Telemetry feature enabled successfully")
+        else:
+            logger.warning("Could not determine telemetry feature status")
+    except Exception as e:
+        logger.warning("Failed to check/enable telemetry feature: %s", str(e))
+
+    try:
+        if was_running:
+            logger.info("telemetry container already running at start of test")
+        else:
+            logger.info("telemetry container not running, starting it now")
+            duthost.service(name="telemetry", state="started")
+            py_assert(wait_until(30, 5, 0, duthost.is_service_fully_started, "telemetry"),
+                      "telemetry not started.")
+            logger.info("telemetry container started successfully")
+
+        # Configure the telemetry service with certificates
+        tele_env = GNMIEnvironment(duthost, GNMIEnvironment.TELEMETRY_MODE)
+        setup_service_config(duthost, tele_env.gnmi_config_table, tele_env.gnmi_port)
+
+        # Restart telemetry service to apply the configuration
+        command = "docker exec {} supervisorctl stop {}".format(tele_env.gnmi_container, tele_env.gnmi_program)
+        duthost.shell(command, module_ignore_errors=True)
+
+        command = "docker exec {} supervisorctl start {}".format(tele_env.gnmi_container, tele_env.gnmi_program)
+        duthost.shell(command, module_ignore_errors=True)
+        py_assert(wait_until(30, 5, 0, duthost.is_service_fully_started, "telemetry"),
+                  "telemetry not started.")
+        logger.info("telemetry service configured and restarted")
+
+        yield
+    finally:
+        # Cleanup: stop and remove container if we started it
+        if not was_running:
+            try:
+                duthost.service(name="telemetry", state="stopped")
+                logger.info("telemetry container stopped")
+
+                duthost.shell("docker rm telemetry", module_ignore_errors=True)
+                logger.info("telemetry container removed successfully")
+            except Exception as e:
+                logger.error("Failed to stop/remove telemetry container: %s", str(e))
+                # Don't raise - we want cleanup to continue even if it fails
+
+        # Restore telemetry feature state if it was disabled before the test
+        if not telemetry_was_enabled:
+            try:
+                logger.info("Restoring telemetry feature to disabled state")
+                duthost.shell("sudo config feature state telemetry disabled", module_ignore_errors=True)
+                logger.info("Telemetry feature disabled successfully")
+            except Exception as e:
+                logger.warning("Failed to restore telemetry feature state: %s", str(e))
 
 
 def ptf_telemetry_get(duthost, ptfhost):
@@ -42,8 +121,6 @@ def test_telemetry_authorize_passed_with_valid_cname(duthosts,
     Verify telemetry authorization using a valid certificate to ensure secure access
     '''
     duthost = duthosts[rand_one_dut_hostname]
-    if not telemetry_enabled(duthost):
-        pytest.skip("Skipping because telemetry not enabled")
 
     failed, msg = ptf_telemetry_get(duthost, ptfhost)
     logger.debug("test_telemetry_authorize_passed_with_valid_cname: {}".format(msg))
@@ -64,8 +141,6 @@ def test_telemetry_authorize_failed_with_invalid_cname(duthosts,
     Verify telemetry authorization using an invalid certificate to confirm rejection behavior
     '''
     duthost = duthosts[rand_one_dut_hostname]
-    if not telemetry_enabled(duthost):
-        pytest.skip("Skipping because telemetry not enabled")
 
     failed, msg = ptf_telemetry_get(duthost, ptfhost)
     logger.debug("test_telemetry_authorize_failed_with_invalid_cname: {}".format(msg))
