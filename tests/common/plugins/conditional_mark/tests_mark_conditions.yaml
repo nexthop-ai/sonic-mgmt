@@ -286,7 +286,6 @@ bfd/test_bfd_traffic.py:
 #######################################
 #####            bgp              #####
 #######################################
-<<<<<<< HEAD
 bgp:
   skip:
     reason: "T2 topo tests on non chassis dut is not interested in running unified management yet"
@@ -306,13 +305,12 @@ bgp/reliable_tsa/test_reliable_tsa_stable.py:
     reason: "reliable TSA is not supported on non-chassis"
     conditions:
       - "is_chassis==False"
-=======
+
 bgp/test_bgp_aggregate_address.py:
   skip:
     reason: "Skip for multi-ASIC testbed"
     conditions:
       - "is_multi_asic==True"
->>>>>>> upstream/master
 
 bgp/test_bgp_allow_list.py:
   skip:
@@ -361,7 +359,6 @@ bgp/test_bgp_bbr_default_state.py::test_bbr_disabled_constants_yml_default:
     conditions:
       - "'-v6-' in topo_name"
 
-<<<<<<< HEAD
 bgp/test_bgp_dual_asn.py:
   skip:
     reason: "BGP_PEER_RANGE is not supported in unified management framework"
@@ -371,13 +368,12 @@ bgp/test_bgp_dual_asn.py:
     reason: "xfail for IPv6-only topologies, with issue it try to parse with IPv4 style"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20217 and '-v6-' in topo_name"
-=======
+
 bgp/test_bgp_bounce.py:
   xfail:
     reason: "xfail for IPv6-only topologies, issue https://github.com/sonic-net/sonic-mgmt/issues/20753"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20753 and '-v6-' in topo_name"
->>>>>>> upstream/master
 
 bgp/test_bgp_dual_asn.py::test_bgp_dual_asn_v4:
   skip:
@@ -3922,20 +3918,18 @@ pfcwd/test_pfcwd_all_port_storm.py::TestPfcwdAllPortStorm::test_all_port_storm_r
       - "https://github.com/sonic-net/sonic-mgmt/issues/21067 and 't0-56' in topo_type and asic_type in ['mellanox']"
       - "https://github.com/sonic-net/sonic-mgmt/issues/21082 and topo_name in ['t0-88-o8c80', 't1-48-lag', 't1-lag', 't1-32-lag', 't1-64-lag'] and asic_type in ['mellanox']"
 
-<<<<<<< HEAD
 pfcwd/test_pfcwd_function.py:
    skip:
      reason: "Some of the pfc watchdog tests can not run on older platforms"
      conditions_logical_operator: or
      conditions:
         - "hwsku in ['Accton-AS5835-54X']"
-=======
+
 pfcwd/test_pfcwd_cli.py:
   xfail:
      reason: "Xfail due to https://github.com/sonic-net/sonic-mgmt/issues/21466 on Mellanox platform"
      conditions:
         - "https://github.com/sonic-net/sonic-mgmt/issues/21466 and asic_type in ['mellanox']"
->>>>>>> upstream/master
 
 pfcwd/test_pfcwd_function.py::TestPfcwdFunc::test_pfcwd_actions:
   xfail:
