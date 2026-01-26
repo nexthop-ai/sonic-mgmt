@@ -26,7 +26,7 @@ There are two possible NPU-DPU Traffic forwarding models.
 
 Due to cost constraints, ENI Based Forwarding is the preferred approach.
 The ENI based forwarding model is only supported in the FNIC scenario.
-Feature HLD: https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/eni-based-forwarding.md  
+Feature HLD: https://github.com/sonic-net/SONiC/blob/master/doc/smart-switch/high-availability/eni-based-forwarding.md
 
 
 ### Scope
@@ -58,7 +58,7 @@ Common tests configuration:
 - Apply the config in DASH_ENI_FORWARD_TABLE to the appl_db via swssconfig.
 
 Common tests cleanup:
-- Common config reload to retore the configurations after the the full test completes. 
+- Common config reload to retore the configurations after the the full test completes.
 
 We need apply the config for DEVICE_METADATA, VIP_TABLE, DPU, REMOTE_DPU, VDPU, VXLAN_TUNNEL, VNET, PORTCHANNEL_INTERFACE into NPU config_db.
 CONFIG_DB Example:
@@ -288,7 +288,7 @@ This is to test that when the ENI state changes, the ACL rules are and the redir
 This is to test that when the double encapsulated packet lands on the dut, the tunnel is terminated, and packet is decapsulated and sent to the local DPU.
 Regardless of the ENI is active or standby on the dut, the packet will not be sent out again through the tunnel.
 #### Test steps
-* Randomly generate a valid UDP port as the tunnel VxLAN dst port and configure it into APPL_DB via swssconfig. 
+* Randomly generate a valid UDP port as the tunnel VxLAN dst port and configure it into APPL_DB via swssconfig.
 * Craft a double VxLAN encapsulated packet of the active ENI, the outmost VxLAN UDP dst port is the randome generated one.
 * Send the packet to the dut.
 * Check the packet can be received by the ptf through the mocked local DPU interface, and the outmost VxLAN header is decapsulated.
