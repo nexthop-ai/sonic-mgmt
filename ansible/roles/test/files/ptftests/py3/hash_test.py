@@ -652,19 +652,17 @@ class IPinIPHashTest(HashTest):
     for IPinIP packet.
     '''
 
-<<<<<<< HEAD
     def setUp(self):
         HashTest.setUp(self)
         self.ecmp_inner_header_hash_supported = self.test_params.get(
             'ecmp_inner_header_hash_supported', False)
-=======
+
     def send_and_verify_packets(self, src_port, pkt, masked_exp_pkt, dst_port_lists, is_timeout=False, logs=[]):
         """
         @summary: Send an IPinIP encapsulated packet and verify it is received on expected ports.
         """
         return super().send_and_verify_packets(src_port, pkt, masked_exp_pkt, dst_port_lists, is_timeout=False,
                                                logs=logs)
->>>>>>> upstream/master
 
     def create_packets_logs(
             self, src_port, sport, dport, version='IP', pkt=None, ipinip_pkt=None,
@@ -751,11 +749,7 @@ class IPinIPHashTest(HashTest):
                 inner_frame=inner_pkt[version])
             exp_pkt = ipinip_pkt.copy()
             exp_pkt['IP'].ttl -= 1
-<<<<<<< HEAD
         return ipinip_pkt, exp_pkt, inner_pkt
-=======
-        return ipinip_pkt, exp_pkt, pkt
->>>>>>> upstream/master
 
     def apply_mask_to_exp_pkt(self, masked_exp_pkt, version='IP'):
         masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
