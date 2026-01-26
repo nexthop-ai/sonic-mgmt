@@ -152,15 +152,29 @@ def recover_cert_config(duthost):
     dut_command = "docker exec %s pkill %s" % (env.gnmi_container, env.gnmi_process)
     duthost.shell(dut_command, module_ignore_errors=True)
     wait_until(60, 1, 0, check_gnmi_process, duthost)
+
     # Recover all stopped program
     dut_command = "docker exec %s supervisorctl status" % (env.gnmi_container)
-    output = duthost.shell(dut_command, module_ignore_errors=True)
+    output = None
+
+    def check_supervisorctl_status():
+        nonlocal output
+        output = duthost.shell(dut_command, module_ignore_errors=True)
+        return 'stdout_lines' in output
+
+    if not wait_until(60, 1, 0, check_supervisorctl_status):
+        if not output.get('reachable', True):
+            logger.error("Device is unreachable. Message: %s", output.get('msg', 'Unknown error'))
+        else:
+            logger.error("Unexpected error executing '%s'. Output: %s", dut_command, output)
+        pytest.fail("Failed to recover GNMI client cert configuration: cannot execute supervisorctl status")
+
     for line in output['stdout_lines']:
         res = line.split()
         if len(res) < 3:
             continue
         program = res[0]
-        if program in ["gnmi-native", "telemetry"]:
+        if program == "gnmi-native":
             dut_command = "docker exec %s supervisorctl start %s" % (env.gnmi_container, program)
             duthost.shell(dut_command, module_ignore_errors=True)
 
