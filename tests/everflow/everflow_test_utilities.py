@@ -745,15 +745,6 @@ class BaseEverflowTest(object):
                     command += f" --policer {policer}"
                 commands_list.append(command)
             else:
-<<<<<<< HEAD
-                # Adding IPv6 ERSPAN sessions from the CLI is currently not supported.
-                command = f"sonic-db-cli CONFIG_DB HSET 'MIRROR_SESSION|{session_info['session_name']}' \
-                            'dscp' '{session_info['session_dscp']}' 'dst_ip' '{session_info['session_dst_ipv6']}' \
-                            'gre_type' '{session_info['session_gre']}' 'src_ip' '{session_info['session_src_ipv6']}' \
-                            'ttl' '{session_info['session_ttl']}' 'type' 'ERSPAN'"
-                if policer:
-                    command += f" 'policer' {policer}"
-=======
                 for asic_index in duthost.get_frontend_asic_ids():
                     # Adding IPv6 ERSPAN sessions for each asic, from the CLI is currently not supported.
                     if asic_index is not None:
@@ -774,7 +765,6 @@ class BaseEverflowTest(object):
                     if policer:
                         command += f" 'policer' {policer}"
                     commands_list.append(command)
->>>>>>> upstream/master
 
         elif config_method == CONFIG_MODE_CONFIGLET:
             pass
@@ -984,8 +974,6 @@ class BaseEverflowTest(object):
 
         return new_packet
 
-<<<<<<< HEAD
-=======
     def check_rule_active(self, duthost, table_name):
         """
         Check if Acl rule initialized
@@ -1049,7 +1037,6 @@ class BaseEverflowTest(object):
         }
         self.apply_non_openconfig_acl_rule(duthost, extra_vars, rule_file, table_name)
 
->>>>>>> upstream/master
     def send_and_check_mirror_packets(self,
                                       setup,
                                       mirror_session,
