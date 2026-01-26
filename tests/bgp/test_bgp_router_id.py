@@ -6,13 +6,9 @@ import time
 from tests.common.helpers.assertions import pytest_require, pytest_assert
 from tests.common.helpers.bgp import run_bgp_facts
 from tests.common.utilities import wait_until
-<<<<<<< HEAD
 from tests.bgp.bgp_helpers import get_bgp_neighbors_from_config_facts
-=======
 from tests.common.utilities import is_ipv6_only_topology
 from ipaddress import ip_interface
-
->>>>>>> upstream/master
 
 pytestmark = [
     pytest.mark.topology('any')
@@ -23,7 +19,6 @@ logger = logging.getLogger(__name__)
 CUSTOMIZED_BGP_ROUTER_ID = "8.8.8.8"
 
 
-<<<<<<< HEAD
 def set_router_id_config(duthost, router_id=None):
     if router_id is None:
         raise ValueError("router_id must be provided for configuration")
@@ -51,14 +46,10 @@ def unset_router_id_config(duthost):
         restart_bgp(duthost)
 
 
-def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, nbrhosts):
-    output = duthost.shell("show ip bgp summary", module_ignore_errors=True)["stdout"]
-=======
 def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, nbrhosts, tbinfo):
     is_v6_topo = is_ipv6_only_topology(tbinfo)
     cmd = "show ipv6 bgp summary" if is_v6_topo else "show ip bgp summary"
     output = duthost.shell(cmd, module_ignore_errors=True)["stdout"]
->>>>>>> upstream/master
 
     # Verify router id from DUT itself
     pattern = r"BGP router identifier (\d+\.\d+\.\d+\.\d+)"
@@ -79,15 +70,9 @@ def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, 
         logger.warning("Unsupport neighbor type for neighbor bgp check: {}".format(neighbor_type))
     local_ip_map = {}
     cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-<<<<<<< HEAD
     bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, cfg_facts)
     for _, item in bgp_neighbors.items():
         if "." in item["local_addr"]:
-=======
-    for _, item in cfg_facts.get("BGP_NEIGHBOR", {}).items():
-        addr_char = ":" if is_v6_topo else "."
-        if addr_char in item["local_addr"]:
->>>>>>> upstream/master
             local_ip_map[item["name"]] = item["local_addr"]
 
     for neighbor_name, nbrhost in nbrhosts.items():
@@ -97,14 +82,10 @@ def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, 
         ).format(neighbor_name, local_ip_map))
 
         if neighbor_type == "sonic":
-<<<<<<< HEAD
-            cmd = "show ip bgp neighbors {}".format(local_ip_map[neighbor_name])
-=======
             if is_v6_topo:
                 cmd = "show ipv6 bgp neighbors {}".format(local_ip_map[neighbor_name])
             else:
                 cmd = "show ip bgp neighbors {}".format(local_ip_map[neighbor_name])
->>>>>>> upstream/master
         elif neighbor_type == "eos":
             if is_v6_topo:
                 cmd = "/usr/bin/Cli -c \"show ipv6 bgp peers {}\"".format(local_ip_map[neighbor_name])
@@ -169,22 +150,9 @@ def restart_bgp(duthost, tbinfo):
 @pytest.fixture()
 def router_id_setup_and_teardown(duthosts, enum_frontend_dut_hostname, tbinfo):
     duthost = duthosts[enum_frontend_dut_hostname]
-<<<<<<< HEAD
     set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID)
     yield
-
     unset_router_id_config(duthost)
-=======
-    duthost.shell("sonic-db-cli CONFIG_DB hset \"DEVICE_METADATA|localhost\" \"bgp_router_id\" \"{}\""
-                  .format(CUSTOMIZED_BGP_ROUTER_ID), module_ignore_errors=True)
-    restart_bgp(duthost, tbinfo)
-
-    yield
-
-    duthost.shell("sonic-db-cli CONFIG_DB hdel \"DEVICE_METADATA|localhost\" \"bgp_router_id\"",
-                  module_ignore_errors=True)
-    restart_bgp(duthost, tbinfo)
->>>>>>> upstream/master
 
 
 @pytest.fixture(scope="function")
@@ -192,20 +160,14 @@ def router_id_loopback_setup_and_teardown(duthosts, enum_frontend_dut_hostname, 
     duthost = duthosts[enum_frontend_dut_hostname]
     set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID)
     duthost.shell("sonic-db-cli CONFIG_DB del \"LOOPBACK_INTERFACE|Loopback0|{}/32\"".format(loopback_ip))
-<<<<<<< HEAD
-=======
     restart_bgp(duthost, tbinfo)
->>>>>>> upstream/master
 
     yield
 
     duthost.shell("sonic-db-cli CONFIG_DB hset \"LOOPBACK_INTERFACE|Loopback0|{}/32\" \"NULL\" \"NULL\""
                   .format(loopback_ip), module_ignore_errors=True)
-<<<<<<< HEAD
     unset_router_id_config(duthost)
-=======
     restart_bgp(duthost, tbinfo)
->>>>>>> upstream/master
 
 
 def test_bgp_router_id_default(duthosts, enum_frontend_dut_hostname, enum_asic_index, nbrhosts, request, loopback_ip,
