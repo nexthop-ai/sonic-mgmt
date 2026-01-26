@@ -67,20 +67,12 @@ class TestWatchdogApi(PlatformApiTestBase):
         and disables it after the test ends'''
 
         duthost = duthosts[enum_rand_one_per_hwsku_hostname]
-<<<<<<< HEAD
-        if (
-            duthost.facts["platform"] == "armhf-nokia_ixs7215_52x-r0"
-            or duthost.facts["platform"] == "arm64-nokia_ixs7215_52xb-r0"
-        ):
-            duthost.shell("watchdogutil disarm")
-        elif duthost.facts["platform"].startswith("x86_64-nexthop_"):
-            duthost.shell("systemctl disable watchdog.timer --now")
-=======
         if duthost.facts['platform'] == 'armhf-nokia_ixs7215_52x-r0' or \
                 duthost.facts['platform'] == 'arm64-nokia_ixs7215_52xb-r0' or \
                 duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts'].get("is_dpu"):
->>>>>>> upstream/master
             duthost.shell("watchdogutil disarm")
+        elif duthost.facts["platform"].startswith("x86_64-nexthop_"):
+            duthost.shell("systemctl disable watchdog.timer --now")
 
         assert not watchdog.is_armed(platform_api_conn)
 
@@ -92,10 +84,9 @@ class TestWatchdogApi(PlatformApiTestBase):
             if duthost.facts['platform'] == 'armhf-nokia_ixs7215_52x-r0' or \
                     duthost.facts['platform'] == 'arm64-nokia_ixs7215_52xb-r0':
                 duthost.shell("systemctl start cpu_wdt.service")
-<<<<<<< HEAD
             elif duthost.facts["platform"].startswith("x86_64-nexthop_"):
                 duthost.shell("systemctl enable watchdog.timer --now")
-=======
+
             if duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts'].get("is_dpu"):
                 duthost.shell("watchdogutil arm")
 
@@ -130,7 +121,6 @@ class TestWatchdogApi(PlatformApiTestBase):
 
         logger.info('Test configuration for platform: {} hwksu: {}: {}'.format(platform, hwsku, config))
         return config
->>>>>>> upstream/master
 
     @pytest.mark.dependency()
     def test_arm_disarm_states(self, duthosts, enum_rand_one_per_hwsku_hostname, localhost,
@@ -319,7 +309,6 @@ class TestWatchdogApi(PlatformApiTestBase):
                 self.test_arm_too_big_timeout.__name__, watchdog_timeout, actual_timeout
             ),
         )
-<<<<<<< HEAD
         self.assert_expectations()
 
 
@@ -344,6 +333,4 @@ class TestWatchdogPunching(PlatformApiTestBase):
             watchdog.is_armed(platform_api_conn) and remaining_time_after > 0,
             "Watchdog should be re-armed by puncher",
         )
-=======
->>>>>>> upstream/master
         self.assert_expectations()
