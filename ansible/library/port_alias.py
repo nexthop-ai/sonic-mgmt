@@ -214,9 +214,9 @@ class SonicPortAliasMap():
                         indexmap[mapping[port_index]] = name
 
         # Special handling for the Cpu port
-        if include_internal and card_type == "linecard":
+        if include_internal and (card_type == "linecard" or card_type == "ut2"):
             aliases.append(("Cpu0/{}".format(asic_id if asic_id is not None else 0), -1))
-        if asic_id is not None and card_type == "linecard":
+        if asic_id is not None and (card_type == "linecard" or card_type == "ut2"):
             asic_if_names["Cpu0/{}".format(asic_id)] = "Cpu0"
             asic_if_ids["Cpu0/{}".format(asic_id)] = "ASIC" + str(asic_id)
         if len(sysports) > 0:
