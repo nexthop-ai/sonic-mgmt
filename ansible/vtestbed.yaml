@@ -521,9 +521,9 @@
   auto_recover: 'False'
   comment: Small t1 topology with 2 VMs
 
-- conf-name: vms-kvm-t2-small
+- conf-name: vms-kvm-t2-single-node-min
   group-name: vms6-1
-  topo: t2_single_node_min
+  topo: t2-single-node-min
   ptf_image_name: docker-ptf
   ptf: ptf-01
   ptf_ip: 10.250.0.102/24
@@ -531,7 +531,7 @@
   server: server_1
   vm_base: VM0100
   dut:
-    - vlab-01
+    - vlab-ut2
   inv_name: veos_vtb
   auto_recover: 'False'
   comment: Small t2 single asic topology with 5 peers
