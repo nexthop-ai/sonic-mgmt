@@ -2,6 +2,7 @@ import os
 import re
 import time
 import logging
+import yaml
 import pytest
 from tests.common.helpers.platform_api import watchdog
 from tests.common.helpers.assertions import pytest_assert
@@ -10,6 +11,8 @@ from tests.common.platform.device_utils import platform_api_conn, start_platform
 from .platform_api_test_base import PlatformApiTestBase
 from tests.common.plugins.ansible_fixtures import ansible_adhoc  # noqa: F401
 from tests.platform_tests.utils import get_config_from_yaml
+
+from collections import OrderedDict
 
 pytestmark = [
     pytest.mark.disable_loganalyzer,  # disable automatic loganalyzer
@@ -55,6 +58,19 @@ def conf(request, duthosts, enum_rand_one_per_hwsku_hostname, add_platform_api_s
 
     logger.info("Test configuration for platform: {} hwksu: {}: {}".format(platform, hwsku, config))
     return config
+
+
+def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+    class OrderedLoader(Loader):
+        pass
+
+    def construct_mapping(loader, node):
+        loader.flatten_mapping(node)
+        return object_pairs_hook(loader.construct_pairs(node))
+    OrderedLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        construct_mapping)
+    return yaml.load(stream, OrderedLoader)
 
 
 class TestWatchdogApi(PlatformApiTestBase):

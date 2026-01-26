@@ -38,10 +38,12 @@ EVERFLOW_RULE_CREATE_TEMPLATE = "acl-erspan.json.j2"
 FILE_DIR = "everflow/files"
 EVERFLOW_V4_RULES = "ipv4_test_rules.yaml"
 EVERFLOW_DSCP_RULES = "dscp_test_rules.yaml"
+IP_TYPE_RULE_V6 = "test_rules_ip_type_v6.json"
 
 DUT_RUN_DIR = "/tmp/everflow"
 EVERFLOW_RULE_CREATE_FILE = "acl-erspan.json"
 EVERFLOW_RULE_DELETE_FILE = "acl-remove.json"
+EVERFLOW_NOT_OPENCONFIG_CREATE_FILE = 'acl_config.json'
 
 STABILITY_BUFFER = 0.05     # 50msec
 
