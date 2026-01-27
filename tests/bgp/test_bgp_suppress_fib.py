@@ -561,7 +561,10 @@ def parse_time_stamp(bgp_packets, ipv4_route_list, ipv6_route_list):
 def compute_middle_average_time(time_stamp_dict):
     time_delta_list = []
     for _, timestamp_list in time_stamp_dict.items():
-        time_delta_list.append(abs(timestamp_list[1] - timestamp_list[0]))
+        if len(timestamp_list) > 1:
+            time_delta_list.append(abs(timestamp_list[1] - timestamp_list[0]))
+        else:
+            continue
     time_delta_list.sort()
 
     mid_delta_time = time_delta_list[(len(time_delta_list) - 1) // 2]
