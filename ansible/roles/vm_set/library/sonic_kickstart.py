@@ -90,6 +90,7 @@ def session(new_params):
     ]
 
     seq.extend([
+        ('ztp disable -y', [r'#']),
         ('pkill dhclient', [r'#']),
         ('hostname %s' % str(new_params['hostname']), [r'#']),
         ('if grep -q "sonic" /etc/hosts; then sed -i s:sonic:%s: /etc/hosts; \
