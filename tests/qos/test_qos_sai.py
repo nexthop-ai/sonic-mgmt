@@ -883,8 +883,7 @@ class TestQosSai(QosSaiBase):
 
         if dutConfig["dutAsic"] == 'th6':
             pytest.skip("Skip this test while buffer tuning is finalized")
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
+
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         qosConfig = dutQosConfig["param"][portSpeedCableLength]
@@ -908,7 +907,7 @@ class TestQosSai(QosSaiBase):
         dst_asic_index = get_src_dst_asic_and_duts['dst_asic_index']
 
         if ('platform_asic' in dutTestParams["basicParams"] and
-                dutTestParams["basicParams"]["platform_asic"] == "broadcom-dnx"):
+                dutTestParams["basicParams"]["platform_asic"] == "broadcom-dnx") and (dutConfig["dutAsic"] != 'q3d'):
             # for 100G port speed the number of ports required to fill headroom is huge,
             # hence skipping the test with speed 100G or cable length of 2k
             if portSpeedCableLength not in ['400000_120000m']:
@@ -934,9 +933,10 @@ class TestQosSai(QosSaiBase):
             else:
                 qosConfig["hdrm_pool_size"]["dst_port_id"] = dutConfig['testPortIds'][dst_dut_index][dst_asic_index][0]
 
-            src_port_vlans = [testPortIps[src_dut_index][src_asic_index][port]['vlan_id']
-                              if 'vlan_id' in testPortIps[src_dut_index][src_asic_index][port]
-                              else None for port in qosConfig["hdrm_pool_size"]["src_port_ids"]]
+        src_port_vlans = [testPortIps[src_dut_index][src_asic_index][port]['vlan_id']
+                          if 'vlan_id' in testPortIps[src_dut_index][src_asic_index][port]
+                          else None for port in qosConfig["hdrm_pool_size"]["src_port_ids"]]
+
         self.updateTestPortIdIp(dutConfig, get_src_dst_asic_and_duts, qosConfig["hdrm_pool_size"])
 
         testParams = dict()

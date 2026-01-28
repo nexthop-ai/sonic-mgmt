@@ -3523,7 +3523,7 @@ class HdrmPoolSizeTest_withDynamicBufferCacl(sai_base_test.ThriftInterfaceDataPl
             pkt_cnt = 1 + 2 * margin
             send_packet(self, self.src_port_ids[sidx_dscp_pg_tuples[i][0]], pkt, pkt_cnt)
             # allow enough time for the dut to sync up the counter values in counters_db
-            time.sleep(1.5)
+            time.sleep(5)
             self.show_port_counter(self.asic_type, recv_counters_bases, xmit_counters_bases,
                                    'To fill last PG and trigger ingress drop, send {} pkt with DSCP {} PG {}'
                                    ' from src_port{} to dst_port'.format(pkt_cnt, sidx_dscp_pg_tuples[i][1],
