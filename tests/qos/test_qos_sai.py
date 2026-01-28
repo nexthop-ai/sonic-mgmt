@@ -419,8 +419,6 @@ class TestQosSai(QosSaiBase):
         normal_profile = ["xoff_1", "xoff_2"]
         if dutConfig["dutAsic"] == 'th6':
             pytest.skip("Skip this test while buffer tuning is finalized")
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
         if not dutConfig["dualTor"] and xoffProfile not in normal_profile:
             pytest.skip(
                 "Additional DSCPs are not supported on non-dual ToR ports")
@@ -438,6 +436,7 @@ class TestQosSai(QosSaiBase):
         testParams.update(dutTestParams["basicParams"])
         testParams.update({"test_port_ids": dutConfig["testPortIds"]})
         testParams.update({
+            "dut_asic": dutConfig["dutAsic"],
             "dscp": qosConfig[xoffProfile]["dscp"],
             "ecn": qosConfig[xoffProfile]["ecn"],
             "pg": qosConfig[xoffProfile]["pg"],

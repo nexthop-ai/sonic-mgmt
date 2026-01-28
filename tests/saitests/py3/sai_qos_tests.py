@@ -2060,6 +2060,7 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
         initialize_diag_counter(self)
 
         # Parse input parameters
+        dut_asic = self.test_params['dut_asic']
         dscp = int(self.test_params['dscp'])
         ecn = int(self.test_params['ecn'])
         router_mac = self.test_params['router_mac']
@@ -2086,6 +2087,12 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
         pkt_dst_mac = router_mac if router_mac != '' else dst_port_mac
         # get counter names to query
         ingress_counters, egress_counters = get_counter_names(sonic_version)
+
+        # For q3d few extra ipv6 NS/RA pkt(6-9) received from VM, adding to counter value
+        # & may give inconsistent test results so changing margin to 10
+        if dut_asic == "q3d":
+            log_message("Overriding COUNTER_MARGIN to 10 for q3d", to_stderr=True)
+            COUNTER_MARGIN = 10
 
         # get a snapshot of PG drop packets counter
         if '201811' not in sonic_version and ('mellanox' in asic_type or 'cisco-8000' in asic_type):
@@ -2177,6 +2184,8 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
                 send_packet(self, src_port_id, pkt, (pkts_num_egr_mem +
                                                      pkts_num_leak_out +
                                                      pkts_num_trig_pfc) // cell_occupancy - 1 - margin)
+                pkt_count = (pkts_num_egr_mem + pkts_num_leak_out +
+                             pkts_num_trig_pfc) // cell_occupancy - 1 - margin
             elif 'cisco-8000' in asic_type:
                 fill_leakout_plus_one(
                     self, src_port_id, dst_port_id,
@@ -2185,10 +2194,16 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
                 # Send 1 less packet due to leakout filling
                 send_packet(self, src_port_id, pkt, (pkts_num_leak_out +
                                                      pkts_num_trig_pfc) // cell_occupancy - 2 - margin)
+                pkt_count = (pkts_num_leak_out +
+                             pkts_num_trig_pfc) // cell_occupancy - 2 - margin
             else:
                 # send packets short of triggering pfc
                 send_packet(self, src_port_id, pkt, (pkts_num_leak_out +
                                                      pkts_num_trig_pfc) // cell_occupancy - 1 - margin)
+                pkt_count = (pkts_num_leak_out +
+                             pkts_num_trig_pfc) // cell_occupancy - 1 - margin
+            log_message("Sending {} packets to port {} short of PFC trigger".format(
+                pkt_count, src_port_id), to_stderr=True)
             capture_diag_counter(self, 'ShortOfPfc')
 
             # allow enough time for the dut to sync up the counter values in counters_db
@@ -2239,6 +2254,9 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
 
             # send 1 packet to trigger pfc
             send_packet(self, src_port_id, pkt, 1 + 2 * margin)
+            log_message("Sending {} packets to port {} to trigger PFC".format(
+                1 + 2 * margin, src_port_id), to_stderr=True)
+
             # allow enough time for the dut to sync up the counter values in counters_db
             time.sleep(8)
             capture_diag_counter(self, 'TrigPfc')
@@ -2282,6 +2300,11 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
             # send packets short of ingress drop
             send_packet(self, src_port_id, pkt, (pkts_num_trig_ingr_drp -
                                                  pkts_num_trig_pfc) // cell_occupancy - 1 - 2 * margin)
+            pkt_count = ((pkts_num_trig_ingr_drp - pkts_num_trig_pfc) //
+                         cell_occupancy - 1 - 2 * margin)
+            log_message("Sending {} packets to port {} short of ingress drop".format(
+                pkt_count, src_port_id), to_stderr=True)
+
             # allow enough time for the dut to sync up the counter values in counters_db
             time.sleep(8)
             capture_diag_counter(self, 'ShortOfIngDrp')
@@ -2324,6 +2347,9 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
 
             # send 1 packet to trigger ingress drop
             send_packet(self, src_port_id, pkt, 1 + 2 * margin)
+            log_message("Sending {} packets to port {} to trigger ingress drop".format(
+                1 + 2 * margin, src_port_id), to_stderr=True)
+
             # allow enough time for the dut to sync up the counter values in counters_db
             time.sleep(8)
             capture_diag_counter(self, 'TrigIngDrp')
@@ -5078,7 +5104,7 @@ class LossyQueueTest(sai_base_test.ThriftInterfaceDataPlane):
             # recv port no ingress drop
             # For some broadcom asics (dnx or th5) few extra ipv6 NS/RA pkt received,
             # adding to counter value & may give inconsistent test results
-            # Adding COUNTER_MARGIN to provide room to 2 pkt incase, extra traffic received
+            # Adding COUNTER_MARGIN to provide room to 10 pkt incase, extra traffic received
             for cntr in ingress_counters:
                 if (platform_asic and
                         platform_asic in ["broadcom", "broadcom-dnx", "marvell-teralynx"]):
