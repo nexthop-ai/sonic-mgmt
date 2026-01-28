@@ -1674,6 +1674,11 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        # Skip test if VLAN is not configured on source port
+        src_port_vlan = dutConfig["testPorts"].get("src_port_vlan")
+        if src_port_vlan is None:
+            pytest.skip("Test requires VLAN configuration on source port, but src_port_vlan is None. Skipping test.")
+
         testParams = dict()
         testParams.update(dutTestParams["basicParams"])
         testParams.update({
@@ -1681,7 +1686,7 @@ class TestQosSai(QosSaiBase):
             "dst_port_ip": dutConfig["testPorts"]["dst_port_ip"],
             "src_port_id": dutConfig["testPorts"]["src_port_id"],
             "src_port_ip": dutConfig["testPorts"]["src_port_ip"],
-            "vlan_id": dutConfig["testPorts"]["src_port_vlan"]
+            "vlan_id": src_port_vlan
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
@@ -1712,6 +1717,10 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        # Skip test if VLAN is not configured on source port
+        src_port_vlan = dutConfig["testPorts"].get("src_port_vlan")
+        if src_port_vlan is None:
+            pytest.skip("Test requires VLAN configuration on source port, but src_port_vlan is None. Skipping test.")
 
         testParams = dict()
         testParams.update(dutTestParams["basicParams"])
@@ -1720,7 +1729,7 @@ class TestQosSai(QosSaiBase):
             "dst_port_ip": dutConfig["testPorts"]["dst_port_ip"],
             "src_port_id": dutConfig["testPorts"]["src_port_id"],
             "src_port_ip": dutConfig["testPorts"]["src_port_ip"],
-            "vlan_id": dutConfig["testPorts"]["src_port_vlan"]
+            "vlan_id": src_port_vlan
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
