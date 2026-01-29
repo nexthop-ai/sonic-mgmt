@@ -148,39 +148,20 @@ def check_gnmi_status(duthost):
 
 def recover_cert_config(duthost):
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
-    # Kill the GNMI process
-    dut_command = "docker exec %s pkill %s" % (env.gnmi_container, env.gnmi_process)
-    duthost.shell(dut_command, module_ignore_errors=True)
-    wait_until(60, 1, 0, check_gnmi_process, duthost)
 
-    # Recover all stopped program
-    dut_command = "docker exec %s supervisorctl status" % (env.gnmi_container)
-    output = None
-
-    def check_supervisorctl_status():
-        nonlocal output
-        output = duthost.shell(dut_command, module_ignore_errors=True)
-        return 'stdout_lines' in output
-
-    if not wait_until(60, 1, 0, check_supervisorctl_status):
-        if not output.get('reachable', True):
-            logger.error("Device is unreachable. Message: %s", output.get('msg', 'Unknown error'))
-        else:
-            logger.error("Unexpected error executing '%s'. Output: %s", dut_command, output)
-        pytest.fail("Failed to recover GNMI client cert configuration: cannot execute supervisorctl status")
-
-    for line in output['stdout_lines']:
-        res = line.split()
-        if len(res) < 3:
-            continue
-        program = res[0]
-        if program == "gnmi-native":
-            dut_command = "docker exec %s supervisorctl start %s" % (env.gnmi_container, program)
-            duthost.shell(dut_command, module_ignore_errors=True)
+    # Restart the container to recover all stopped processes
+    logger.info("Restarting %s container to recover clean state", env.gnmi_container)
+    cmds = [
+        'systemctl reset-failed %s' % (env.gnmi_container),
+        'systemctl restart %s' % (env.gnmi_container)
+    ]
+    duthost.shell_cmds(cmds=cmds)
 
     # Remove gnmi client cert common name
     del_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
     del_gnmi_client_common_name(duthost, "test.client.revoked.gnmi.sonic")
+
+    # Wait for GNMI to be fully operational
     ret = wait_until(300, 3, 0, check_gnmi_status, duthost)
     if not ret:
         dut_command = "tail /var/log/gnmi.log"
