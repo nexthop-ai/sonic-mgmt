@@ -97,7 +97,7 @@ def validate_dhcpmon_counters(dhcp_relay, duthost, expected_uplink_counter,
     """Validate the dhcpmon counters against the expected counters."""
     logger.info("Expected uplink counters: {}, expected downlink counters: {}, error in percentage: {}%".format(
         expected_uplink_counter, expected_downlink_counter, error_in_percentage))
-    downlink_vlan_iface = dhcp_relay['downlink_vlan_iface']['name']
+    downlink_iface = dhcp_relay['downlink_iface']['name']
     # it can be portchannel or interface, it depends on the topology
     uplink_portchannels_or_interfaces = dhcp_relay['uplink_interfaces']
     client_iface = dhcp_relay['client_iface']['name']
@@ -116,10 +116,10 @@ def validate_dhcpmon_counters(dhcp_relay, duthost, expected_uplink_counter,
         if portchannel_name in portchannels.keys():
             uplink_interfaces.extend(portchannels[portchannel_name]['members'])
             portchannel_counters = query_and_sum_dhcpmon_counters(duthost,
-                                                                  downlink_vlan_iface,
+                                                                  downlink_iface,
                                                                   [portchannel_name])
             members_counters = query_and_sum_dhcpmon_counters(duthost,
-                                                              downlink_vlan_iface,
+                                                              downlink_iface,
                                                               portchannels[portchannel_name]['members'])
 
             # If the portchannel counters and its members' counters are not equal, yield a warning message
@@ -131,23 +131,31 @@ def validate_dhcpmon_counters(dhcp_relay, duthost, expected_uplink_counter,
         else:
             uplink_interfaces.append(portchannel_name)
 
-    vlan_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, [])
-    client_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, [client_iface])
+    downlink_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, [])
+    client_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, [client_iface])
     uplink_portchannels_interfaces_counter = query_and_sum_dhcpmon_counters(
-        duthost, downlink_vlan_iface, uplink_portchannels_or_interfaces
+        duthost, downlink_iface, uplink_portchannels_or_interfaces
     )
-    uplink_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, uplink_interfaces)
-    compare_dhcp_counters_with_warning(
-        vlan_interface_counter, client_interface_counter,
-        compare_warning_msg.format(downlink_vlan_iface, client_iface, duthost.hostname),
-        error_in_percentage)
+    uplink_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, uplink_interfaces)
+
+    # For routed interfaces, client_iface and downlink_iface are the same, so skip this comparison
+    if client_iface != downlink_iface:
+        compare_dhcp_counters_with_warning(
+            downlink_interface_counter, client_interface_counter,
+            compare_warning_msg.format(downlink_iface, client_iface, duthost.hostname),
+            error_in_percentage)
     compare_dhcp_counters_with_warning(
         uplink_portchannels_interfaces_counter, uplink_interface_counter,
         compare_warning_msg.format(uplink_portchannels_or_interfaces, uplink_interfaces, duthost.hostname),
         error_in_percentage)
+
+    # For routed interfaces, use downlink_interface_counter (which is the routed interface counter)
+    # For VLANs, use client_interface_counter (which is the physical member interface counter)
+    downlink_counter = downlink_interface_counter if client_iface == downlink_iface else client_interface_counter
     compare_dhcp_counters_with_warning(
-        client_interface_counter, expected_downlink_counter,
-        compare_warning_msg.format(client_iface, "expected_downlink_counter", duthost.hostname),
+        downlink_counter, expected_downlink_counter,
+        compare_warning_msg.format(downlink_iface if client_iface == downlink_iface else client_iface,
+                                   "expected_downlink_counter", duthost.hostname),
         error_in_percentage)
     compare_dhcp_counters_with_warning(
         uplink_interface_counter, expected_uplink_counter,
@@ -199,7 +207,7 @@ def calculate_counters_per_pkts(pkts):
 def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_name_index_mapping,
                                            error_in_percentage=0.0):
     """Validate the dhcpmon counters and packets consistence"""
-    downlink_vlan_iface = dhcp_relay['downlink_vlan_iface']['name']
+    downlink_iface = dhcp_relay['downlink_iface']['name']
     # it can be portchannel or interface, it depends on the topology
     uplink_portchannels_or_interfaces = dhcp_relay['uplink_interfaces']
     portchannels = dhcp_relay['portchannels']
@@ -218,10 +226,10 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
         if portchannel_name in portchannels.keys():
             uplink_interfaces.extend(portchannels[portchannel_name]['members'])
             portchannel_counters = query_and_sum_dhcpmon_counters(duthost,
-                                                                  downlink_vlan_iface,
+                                                                  downlink_iface,
                                                                   [portchannel_name])
             members_counters = query_and_sum_dhcpmon_counters(duthost,
-                                                              downlink_vlan_iface,
+                                                              downlink_iface,
                                                               portchannels[portchannel_name]['members'])
 
             # If the portchannel counters and its members' counters are not equal, yield a warning message
@@ -261,7 +269,7 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
         else:
             uplink_interfaces.append(portchannel_name)
 
-    vlan_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, [])
+    vlan_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, [])
 
     # uplink_portchannels_interfaces means the item can be the portchannel or the interface
     # Example:
@@ -270,7 +278,7 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
     #   If there is no portchannel, the uplink_portchannels_or_interfaces will be
     #   ['Ethernet48', 'Ethernet49', 'Ethernet50', 'Ethernet51']
     uplink_portchannels_interfaces_counter = query_and_sum_dhcpmon_counters(
-        duthost, downlink_vlan_iface, uplink_portchannels_or_interfaces
+        duthost, downlink_iface, uplink_portchannels_or_interfaces
     )
 
     """
@@ -283,9 +291,9 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
     """
     # Query the counters for uplink portchannels interfaces such as:
     # ['Ethernet48', 'Ethernet49', 'Ethernet50', 'Ethernet51']
-    uplink_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, uplink_interfaces)
+    uplink_interface_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, uplink_interfaces)
 
-    vlan_interface_counter_from_pkts = all_pkt_counters.get(interface_name_index_mapping[downlink_vlan_iface],
+    vlan_interface_counter_from_pkts = all_pkt_counters.get(interface_name_index_mapping[downlink_iface],
                                                             {"RX": {}, "TX": {}})
 
     # calculate the sum of uplink portchannels interfaces counters from pkts
@@ -309,7 +317,7 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
     # Compare the vlan interface counters from dhcp relay counter and pkts
     compare_dhcp_counters_with_warning(
         vlan_interface_counter, vlan_interface_counter_from_pkts,
-        compare_warning_msg.format(downlink_vlan_iface, downlink_vlan_iface + " from pkts", duthost.hostname),
+        compare_warning_msg.format(downlink_iface, downlink_iface + " from pkts", duthost.hostname),
         error_in_percentage)
 
     # Compare the sum of uplink portchannels counters from dhcp relay counter and pkts
@@ -333,7 +341,7 @@ def validate_counters_and_pkts_consistency(dhcp_relay, duthost, pkts, interface_
 
     # Compare the vlan interface counters from dhcp relay counter and pkts
     for vlan_member in vlan_members:
-        vlan_member_counter = query_and_sum_dhcpmon_counters(duthost, downlink_vlan_iface, [vlan_member])
+        vlan_member_counter = query_and_sum_dhcpmon_counters(duthost, downlink_iface, [vlan_member])
         vlan_member_counter_from_pkts = all_pkt_counters.get(interface_name_index_mapping[vlan_member],
                                                              {"RX": {}, "TX": {}})
         compare_dhcp_counters_with_warning(

@@ -104,12 +104,12 @@ ptf_runner(ptfhost,
            params={"hostname": duthost.hostname,
                    "client_port_index": dhcp_relay['client_iface']['port_idx'],
                    "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                   "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs']),
-                   "server_ip": str(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
-                   "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                   "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
+                   "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcpv6_server_addrs']),
+                   "server_ip": str(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'][0]),
+                   "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                   "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
                    "relay_link_local": str(dhcp_relay['uplink_interface_link_local']),
-                   "vlan_ip": str(dhcp_relay['downlink_vlan_iface']['addr'])},
+                   "vlan_ip": str(dhcp_relay['downlink_iface']['addr'])},
            log_file="/tmp/dhcpv6_relay_test.DHCPTest.log", is_python3=True)
 ```
 
