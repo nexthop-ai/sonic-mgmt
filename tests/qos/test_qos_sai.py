@@ -694,8 +694,6 @@ class TestQosSai(QosSaiBase):
         """
         if dutConfig["dutAsic"] == 'th6':
             pytest.skip("Skip this test while buffer tuning is finalized")
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
         normal_profile = ["xon_1", "xon_2"]
         if not dutConfig["dualTor"] and xonProfile not in normal_profile:
             pytest.skip(

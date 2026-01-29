@@ -473,6 +473,8 @@ def dynamically_compensate_leakout(
     while leakout_num > 0 and retry < max_retry:
         send_packet(ptf_test, compensate_port, compensate_pkt, leakout_num)
         num += leakout_num
+        # Wait for the packet to be leaked out
+        time.sleep(1)
         prev = curr
         curr, _ = counter_checker(thrift_client, asic_type, check_port)
         leakout_num = curr[check_field] - prev[check_field]
