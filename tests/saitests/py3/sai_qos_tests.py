@@ -139,6 +139,15 @@ SAI_LOG = "/var/log/sai.log"
 SDK_LOG = "/var/log/syslog"
 
 
+def update_COUNTER_MARGIN(dut_asic):
+    global COUNTER_MARGIN
+    # For q3d few extra ipv6 NS/RA pkt(6-9) received from VM, adding to counter value
+    # & may give inconsistent test results so changing margin to 10
+    if dut_asic == "q3d":
+        log_message("Overriding COUNTER_MARGIN to 10 for q3d", to_stderr=True)
+        COUNTER_MARGIN = 10
+
+
 def log_message(message, level='info', to_stderr=False):
     if to_stderr:
         sys.stderr.write(message + "\n")
@@ -2090,11 +2099,7 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
         # get counter names to query
         ingress_counters, egress_counters = get_counter_names(sonic_version)
 
-        # For q3d few extra ipv6 NS/RA pkt(6-9) received from VM, adding to counter value
-        # & may give inconsistent test results so changing margin to 10
-        if dut_asic == "q3d":
-            log_message("Overriding COUNTER_MARGIN to 10 for q3d", to_stderr=True)
-            COUNTER_MARGIN = 10
+        update_COUNTER_MARGIN(dut_asic)
 
         # get a snapshot of PG drop packets counter
         if '201811' not in sonic_version and ('mellanox' in asic_type or 'cisco-8000' in asic_type):
@@ -2808,6 +2813,8 @@ class PFCXonTest(sai_base_test.ThriftInterfaceDataPlane):
         hwsku = self.test_params['hwsku']
         src_dst_asic_diff = self.test_params['src_dst_asic_diff']
         dut_asic = self.test_params['dut_asic']
+
+        update_COUNTER_MARGIN(dut_asic)
 
         self.sai_thrift_port_tx_enable(self.dst_client, asic_type, [dst_port_id, dst_port_2_id, dst_port_3_id])
 
@@ -5106,7 +5113,7 @@ class LossyQueueTest(sai_base_test.ThriftInterfaceDataPlane):
             # recv port no ingress drop
             # For some broadcom asics (dnx or th5) few extra ipv6 NS/RA pkt received,
             # adding to counter value & may give inconsistent test results
-            # Adding COUNTER_MARGIN to provide room to 10 pkt incase, extra traffic received
+            # Adding COUNTER_MARGIN to provide room to 2 pkt incase, extra traffic received
             for cntr in ingress_counters:
                 if (platform_asic and
                         platform_asic in ["broadcom", "broadcom-dnx", "marvell-teralynx"]):
