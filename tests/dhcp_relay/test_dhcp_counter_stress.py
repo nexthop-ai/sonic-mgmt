@@ -42,14 +42,20 @@ def ignore_expected_loganalyzer_exceptions(rand_one_dut_hostname, loganalyzer):
 
 
 @pytest.mark.parametrize('dhcp_type', ['discover', 'offer', 'request', 'ack'])
-def test_dhcpmon_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data, validate_dut_routes_exist,
-                                       testing_config, setup_standby_ports_on_rand_unselected_tor,
+@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
+def test_dhcpcom_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data, interface_type,
+                                       validate_dut_routes_exist, testing_config,
+                                       setup_standby_ports_on_rand_unselected_tor,
                                        toggle_all_simulator_ports_to_rand_selected_tor_m,     # noqa F811
                                        dhcp_type, clean_processes_after_stress_test,
                                        rand_unselected_dut, request):
     '''
     Test DHCP relay counters functionality can handle the maximum load within 0.01% miss.
     '''
+    interfaces_to_test = dut_dhcp_relay_data.get(interface_type, [])
+    if not interfaces_to_test:
+        pytest.skip("No {} dhcp_relay interfaces available for testing".format(interface_type))
+
     testing_mode, duthost = testing_config
     packets_send_duration = 120
     error_margin = 0.01
@@ -58,7 +64,7 @@ def test_dhcpmon_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data,
         if request.config.option.max_packets_per_sec is None else request.config.option.max_packets_per_sec
     logger.info("Testing mode: {}, client packets per second: {}, error margin: {}".format(
         testing_mode, client_packets_per_sec, error_margin))
-    for dhcp_relay in dut_dhcp_relay_data:
+    for dhcp_relay in interfaces_to_test:
         client_port_id = dhcp_relay['client_iface']['port_idx']
 
         init_dhcpmon_counters(duthost)
@@ -72,11 +78,11 @@ def test_dhcpmon_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data,
             "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
             "other_client_ports": repr(dhcp_relay['other_client_ports']),
             "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-            "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-            "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-            "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-            "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-            "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+            "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+            "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+            "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+            "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+            "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
             "dest_mac_address": BROADCAST_MAC,
             "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
             "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -86,7 +92,7 @@ def test_dhcpmon_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data,
             "testing_mode": testing_mode,
             "kvm_support": True
         }
-        count_file = '/tmp/dhcp_stress_test_{}.json'.format(dhcp_type)
+        count_file = '/tmp/dhcp_stress_test_{}'.format(dhcp_type)
 
         def _check_count_file_exists():
             command = 'ls {} > /dev/null 2>&1 && echo exists || echo missing'.format(count_file)

@@ -132,21 +132,21 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, tbinfo):
             continue
 
         # Gather information about the downlink VLAN interface this relay agent is listening on
-        downlink_vlan_iface = {}
-        downlink_vlan_iface['name'] = vlan_iface_name
+        downlink_iface = {}
+        downlink_iface['name'] = vlan_iface_name
 
         for vlan_interface_info_dict in mg_facts['minigraph_vlan_interfaces']:
             if (vlan_interface_info_dict['attachto'] == vlan_iface_name) and \
                (netaddr.IPAddress(str(vlan_interface_info_dict['addr'])).version == 6):
-                downlink_vlan_iface['addr'] = vlan_interface_info_dict['addr']
-                downlink_vlan_iface['mask'] = vlan_interface_info_dict['mask']
+                downlink_iface['addr'] = vlan_interface_info_dict['addr']
+                downlink_iface['mask'] = vlan_interface_info_dict['mask']
                 break
 
         # Obtain MAC address of the VLAN interface
         res = duthost.shell('cat /sys/class/net/{}/address'.format(vlan_iface_name))
-        downlink_vlan_iface['mac'] = res['stdout']
+        downlink_iface['mac'] = res['stdout']
 
-        downlink_vlan_iface['dhcpv6_server_addrs'] = mg_facts['dhcpv6_servers']
+        downlink_iface['dhcpv6_server_addrs'] = mg_facts['dhcpv6_servers']
 
         # We choose the physical interface where our DHCP client resides to be index of first interface in the VLAN
         client_iface = {}
@@ -184,14 +184,14 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, tbinfo):
                     uplink_port_indices.append(mg_facts['minigraph_ptf_indices'][iface_name])
         if down_interface_link_local == "":
             command = "ip addr show {} | grep inet6 | grep 'scope link' | awk '{{print $2}}'"\
-                      .format(downlink_vlan_iface['name'])
+                      .format(downlink_iface['name'])
             res = duthost.shell(command)
             if res['stdout'] != "":
                 down_interface_link_local_with_prefix_len = res['stdout']
                 down_interface_link_local = down_interface_link_local_with_prefix_len.split("/")[0]
 
         dhcp_relay_data = {}
-        dhcp_relay_data['downlink_vlan_iface'] = downlink_vlan_iface
+        dhcp_relay_data['downlink_iface'] = downlink_iface
         dhcp_relay_data['client_iface'] = client_iface
         dhcp_relay_data['uplink_interfaces'] = uplink_interfaces
         dhcp_relay_data['uplink_port_indices'] = uplink_port_indices
@@ -219,7 +219,7 @@ def validate_dut_routes_exist(duthosts, rand_one_dut_hostname, dut_dhcp_relay_da
     duthost = duthosts[rand_one_dut_hostname]
     dhcp_servers = set()
     for dhcp_relay in dut_dhcp_relay_data:
-        dhcp_servers |= set(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'])
+        dhcp_servers |= set(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'])
 
     for dhcp_server in dhcp_servers:
         rtInfo = duthost.get_ip_route_info(ipaddress.ip_address(dhcp_server))
@@ -282,18 +282,18 @@ def test_interface_binding(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data,
     # Cmds to delete LLA for all Vlans
     delete_cmds = ["ip -6 address del {} dev {}"
                    .format(data["down_interface_link_local_with_prefix_len"],
-                           data["downlink_vlan_iface"]["name"]) for data in dut_dhcp_relay_data]
+                           data["downlink_iface"]["name"]) for data in dut_dhcp_relay_data]
 
     # Cmds to add LLA for all Vlans
     add_cmds = ["ip -6 address add {} dev {}"
                 .format(data["down_interface_link_local_with_prefix_len"],
-                        data["downlink_vlan_iface"]["name"]) for data in dut_dhcp_relay_data]
+                        data["downlink_iface"]["name"]) for data in dut_dhcp_relay_data]
 
     def _check_dhcp6relay_lla_socket(expect_exist):
         res = {}
         output = duthost.shell("docker exec -t dhcp_relay ss -nlp | grep dhcp6relay")["stdout"]
         for dhcp_relay in dut_dhcp_relay_data:
-            key = dhcp_relay['downlink_vlan_iface']['name']
+            key = dhcp_relay['downlink_iface']['name']
             res[key] = "{}:547".format(key) in output
 
         logger.info("_check_dhcp6relay_lla_socket res: {}".format(res))
@@ -363,7 +363,7 @@ def test_dhcpv6_relay_counter(ptfhost, duthosts, rand_one_dut_hostname, dut_dhcp
 
     for dhcp_relay in dut_dhcp_relay_data:
         init_counter(duthost, dhcp_relay['client_iface']['name'], message_types)
-        init_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], message_types)
+        init_counter(duthost, dhcp_relay['downlink_iface']['name'], message_types)
         if dhcp_relay['is_dualtor']:
             init_counter(duthost, dhcp_relay['loopback_iface'][0]['name'], message_types)
 
@@ -375,13 +375,13 @@ def test_dhcpv6_relay_counter(ptfhost, duthosts, rand_one_dut_hostname, dut_dhcp
                    params={"hostname": duthost.hostname,
                            "client_port_index": dhcp_relay['client_iface']['port_idx'],
                            "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                           "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs']),
-                           "server_ip": str(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
-                           "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                           "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
+                           "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcpv6_server_addrs']),
+                           "server_ip": str(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'][0]),
+                           "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                           "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
                            "relay_link_local": str(dhcp_relay['down_interface_link_local']),
                            "dut_mac": str(dhcp_relay['uplink_mac']),
-                           "vlan_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
+                           "vlan_ip": str(dhcp_relay['downlink_iface']['addr']),
                            "loopback_ipv6": str(dhcp_relay['loopback_ipv6']),
                            "is_dualtor": str(dhcp_relay['is_dualtor']),
                            "kvm_support": True},
@@ -391,31 +391,31 @@ def test_dhcpv6_relay_counter(ptfhost, duthosts, rand_one_dut_hostname, dut_dhcp
             if type in ["Solicit", "Request", "Confirm", "Renew", "Rebind", "Release", "Decline",
                         "Information-Request"]:
                 check_dhcpv6_relay_counter(duthost, dhcp_relay['client_iface']['name'], type, "RX")
-                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "RX")
+                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "RX")
             if type in ["Malformed"]:
                 # Malformed DHCPv6 Client packet, depend on malformed content. If Type is good but option is malformed
                 # First Type will be increased on downlink Ethernet interface first. Then increase Malformed counter
-                # on downlink_vlan_iface.
-                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "RX")
+                # on downlink_iface.
+                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "RX")
             if type in ["Unknown"]:
                 # From Server Relay-Reply Unknown DHCPv6 type, it's a valid Relay-Reply so Relay-Reply counter
-                # is normal increased. But in relay message type is unknown type so drop on downlink_vlan_iface
+                # is normal increased. But in relay message type is unknown type so drop on downlink_iface
                 # interface
-                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "RX")
+                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "RX")
             if type in ["Advertise", "Reply", "Reconfigure"]:
-                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "TX")
+                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "TX")
                 check_dhcpv6_relay_counter(duthost, dhcp_relay['client_iface']['name'], type, "TX")
             if type in ["Relay-Forward"]:
-                # Relay-Forward, send out from downlink_vlan_iface first, then send out from uplink interfaces
-                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "TX")
+                # Relay-Forward, send out from downlink_iface first, then send out from uplink interfaces
+                check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "TX")
                 # TBD, add uplink interface TX counter check in future
             if type in ["Relay-Reply"]:
                 if dhcp_relay['is_dualtor']:
                     # dual tor, Relay-Reply will be received on loopback interface
                     check_dhcpv6_relay_counter(duthost, dhcp_relay['loopback_iface'][0]['name'], type, "RX")
                 else:
-                    # Single tor, Relay-Reply will be received on downlink_vlan_iface
-                    check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "RX")
+                    # Single tor, Relay-Reply will be received on downlink_iface
+                    check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_iface']['name'], type, "RX")
 
 
 def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_exist, testing_config,
@@ -436,12 +436,12 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
                    params={"hostname": duthost.hostname,
                            "client_port_index": dhcp_relay['client_iface']['port_idx'],
                            "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                           "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs']),
-                           "server_ip": str(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
-                           "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                           "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
+                           "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcpv6_server_addrs']),
+                           "server_ip": str(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'][0]),
+                           "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                           "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
                            "relay_link_local": str(dhcp_relay['down_interface_link_local']),
-                           "vlan_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
+                           "vlan_ip": str(dhcp_relay['downlink_iface']['addr']),
                            "uplink_mac": str(dhcp_relay['uplink_mac']),
                            "loopback_ipv6": str(dhcp_relay['loopback_ipv6']),
                            "is_dualtor": str(dhcp_relay['is_dualtor'])},
@@ -478,12 +478,12 @@ def test_dhcp_relay_after_link_flap(ptfhost, dut_dhcp_relay_data, validate_dut_r
                    params={"hostname": duthost.hostname,
                            "client_port_index": dhcp_relay['client_iface']['port_idx'],
                            "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                           "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs']),
-                           "server_ip": str(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
-                           "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                           "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
+                           "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcpv6_server_addrs']),
+                           "server_ip": str(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'][0]),
+                           "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                           "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
                            "relay_link_local": str(dhcp_relay['down_interface_link_local']),
-                           "vlan_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
+                           "vlan_ip": str(dhcp_relay['downlink_iface']['addr']),
                            "uplink_mac": str(dhcp_relay['uplink_mac']),
                            "loopback_ipv6": str(dhcp_relay['loopback_ipv6']),
                            "is_dualtor": str(dhcp_relay['is_dualtor'])},
@@ -531,12 +531,12 @@ def test_dhcp_relay_start_with_uplinks_down(ptfhost, dut_dhcp_relay_data, valida
                    params={"hostname": duthost.hostname,
                            "client_port_index": dhcp_relay['client_iface']['port_idx'],
                            "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                           "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs']),
-                           "server_ip": str(dhcp_relay['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
-                           "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                           "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
+                           "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcpv6_server_addrs']),
+                           "server_ip": str(dhcp_relay['downlink_iface']['dhcpv6_server_addrs'][0]),
+                           "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                           "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
                            "relay_link_local": str(dhcp_relay['down_interface_link_local']),
-                           "vlan_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
+                           "vlan_ip": str(dhcp_relay['downlink_iface']['addr']),
                            "uplink_mac": str(dhcp_relay['uplink_mac']),
                            "loopback_ipv6": str(dhcp_relay['loopback_ipv6']),
                            "is_dualtor": str(dhcp_relay['is_dualtor'])},
@@ -585,9 +585,9 @@ class TestDhcpv6RelayWithMultipleVlan:
                                "client_port_index": ptf_port_index,
                                "leaf_port_indices": repr(common_dhcp_relay_data['uplink_port_indices']),
                                "num_dhcp_servers":
-                                   len(common_dhcp_relay_data['downlink_vlan_iface']['dhcpv6_server_addrs']),
+                                   len(common_dhcp_relay_data['downlink_iface']['dhcpv6_server_addrs']),
                                "server_ip":
-                                   str(common_dhcp_relay_data['downlink_vlan_iface']['dhcpv6_server_addrs'][0]),
+                                   str(common_dhcp_relay_data['downlink_iface']['dhcpv6_server_addrs'][0]),
                                "relay_iface_ip": str(exp_link_addr),
                                "relay_iface_mac": str(vlan_mac),
                                "relay_link_local": str(down_interface_link_local),

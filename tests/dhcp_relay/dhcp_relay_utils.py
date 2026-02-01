@@ -7,6 +7,38 @@ from tests.common.helpers.assertions import pytest_assert
 logger = logging.getLogger(__name__)
 
 
+def get_dhcrelay_process_cmdline(duthost, interface_name):
+    """Get the dhcrelay process command line for a specific interface.
+
+    Args:
+        duthost: DUT host object
+        interface_name: Name of the interface (e.g., 'Ethernet0' or 'Vlan1000')
+
+    Returns:
+        Command line string of the dhcrelay process, or None if not found
+    """
+    # Get PID of dhcrelay process for this interface
+    cmd = "docker exec dhcp_relay supervisorctl status | grep 'dhcpv4-relay-{}' | awk '{{print $4}}'".format(
+        interface_name)
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] != 0 or not output['stdout'].strip():
+        logger.warning("No dhcrelay process found for interface {}".format(interface_name))
+        return None
+
+    pid = output['stdout'].strip().rstrip(',')
+
+    # Get command line for this PID
+    cmd = 'docker exec dhcp_relay ps -fp {} | sed "1d"'.format(pid)
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] != 0:
+        logger.warning("Failed to get process info for PID {}".format(pid))
+        return None
+
+    return output['stdout'].strip()
+
+
 def check_routes_to_dhcp_server(duthost, dut_dhcp_relay_data):
     """Validate there is route on DUT to each DHCP server
     """
@@ -17,7 +49,7 @@ def check_routes_to_dhcp_server(duthost, dut_dhcp_relay_data):
     default_gw_ip = dut_dhcp_relay_data[0]['default_gw_ip']
     dhcp_servers = set()
     for dhcp_relay in dut_dhcp_relay_data:
-        dhcp_servers |= set(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+        dhcp_servers |= set(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
 
     for dhcp_server in dhcp_servers:
         rtInfo = duthost.get_ip_route_info(ipaddress.ip_address(dhcp_server))
