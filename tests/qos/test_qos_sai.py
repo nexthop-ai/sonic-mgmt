@@ -930,9 +930,11 @@ class TestQosSai(QosSaiBase):
             else:
                 qosConfig["hdrm_pool_size"]["dst_port_id"] = dutConfig['testPortIds'][dst_dut_index][dst_asic_index][0]
 
-        src_port_vlans = [testPortIps[src_dut_index][src_asic_index][port]['vlan_id']
-                          if 'vlan_id' in testPortIps[src_dut_index][src_asic_index][port]
-                          else None for port in qosConfig["hdrm_pool_size"]["src_port_ids"]]
+        src_port_vlans = [
+            testPortIps[src_dut_index][src_asic_index][port]['vlan_id']
+            if port in testPortIps[src_dut_index][src_asic_index] and
+            'vlan_id' in testPortIps[src_dut_index][src_asic_index][port]
+            else None for port in qosConfig["hdrm_pool_size"]["src_port_ids"]]
 
         self.updateTestPortIdIp(dutConfig, get_src_dst_asic_and_duts, qosConfig["hdrm_pool_size"])
 
@@ -1376,8 +1378,6 @@ class TestQosSai(QosSaiBase):
         """
         if dutConfig["dutAsic"] == 'th6':
             pytest.skip("Skip this test while buffer tuning is finalized")
-        if "t2-single-node-min" in dutTestParams['topo']:
-            pytest.skip("Skip this test case on dualtor testbed")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if "lossy_queue_1" in list(dutQosConfig["param"][portSpeedCableLength].keys()):
             qosConfig = dutQosConfig["param"][portSpeedCableLength]
@@ -1406,7 +1406,8 @@ class TestQosSai(QosSaiBase):
             "pkts_num_leak_out": dutQosConfig["param"][portSpeedCableLength]["pkts_num_leak_out"],
             "pkts_num_trig_egr_drp": qosConfig["lossy_queue_1"]["pkts_num_trig_egr_drp"],
             "hwsku": dutTestParams['hwsku'],
-            "ip_type": dutConfig["ip_type"]
+            "ip_type": dutConfig["ip_type"],
+            "dut_asic": dutConfig["dutAsic"],
         })
 
         if "platform_asic" in dutTestParams["basicParams"]:
