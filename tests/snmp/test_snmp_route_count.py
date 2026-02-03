@@ -30,8 +30,15 @@ def get_snmp_route_count(duthost, hostip, community, oid):
     Returns:
         int: Route count from SNMP
     """
+    result = None
     snmp_cmd = f"docker exec snmp snmpget -v2c -c {community} {hostip} {oid}"
-    result = duthost.shell(snmp_cmd, module_ignore_errors=True)
+
+    def fetch_route_count():
+        nonlocal result
+        result = duthost.shell(snmp_cmd, module_ignore_errors=True)
+        return result is not None and "No Such Instance" not in result["stdout"]
+    pytest_assert(wait_until(ROUTE_COUNTER_UPDATE_TIMEOUT, 5, 0, lambda: fetch_route_count()),
+                  f"failed to find OID executing {snmp_cmd}")
 
     pytest_assert(result['rc'] == 0, f"SNMP query failed: {result.get('stderr', 'Unknown error')}")
     pytest_assert(result['stdout'], "SNMP query returned empty result")
@@ -404,6 +411,8 @@ def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, cre
             logger.info("Restarting BGP service")
             duthost.shell("sudo config feature state bgp enabled", module_ignore_errors=False)
             wait_until(60, 10, 1, lambda: is_container_running(duthost, "bgp"))
+            # successful data retreival indicates data has quiesced.
+            get_snmp_route_count(duthost, hostip, community, INET_CIDR_ROUTE_NUMBER_OID)
 
 
 def test_snmp_ipCidrRouteNumber_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts):
