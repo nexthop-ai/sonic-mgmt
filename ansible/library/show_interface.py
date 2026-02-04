@@ -2,6 +2,7 @@
 
 from ansible.module_utils.basic import AnsibleModule
 import re
+import json
 
 DOCUMENTATION = '''
 module: show_interface.py
@@ -116,6 +117,19 @@ class ShowInterfaceModule(object):
         """
         return ' '.join(line.split()[9:-1])
 
+    def _extract_interface_status_fields(self, int_status, interface, intf_data):
+        int_status[interface]['name'] = interface
+        int_status[interface]['speed'] = intf_data["Speed"]
+        int_status[interface]['fec'] = intf_data["FEC"] if intf_data.get("FEC") else "Unknown"
+        int_status[interface]['alias'] = intf_data["Alias"]
+        int_status[interface]['vlan'] = intf_data["Vlan"]
+        int_status[interface]['oper_state'] = intf_data["Oper"]
+        int_status[interface]['admin_state'] = intf_data["Admin"]
+        int_status[interface]['type'] = intf_data["Type"] if intf_data.get("Type") else "N/A"
+        int_status[interface]["pfc_asym"] = intf_data["Asym PFC"] if intf_data.get("Asym PFC") else "N/A"
+        int_status[interface]['lanes'] = intf_data["Lanes"].split(',')
+        int_status[interface]['mtu'] = intf_data["MTU"]
+
     def collect_interface_status(self, namespace=None, include_internal_intfs=False, include_inband_intfs=False):
         regex_int_fec = re.compile(
             r'(\S+)\s+[\d,N\/A]+\s+(\w+)\s+(\d+)\s+(rs|fc|N\/A|none)\s+'
@@ -128,38 +142,47 @@ class ShowInterfaceModule(object):
         if self.m_args['interfaces'] is not None:
             for interface in self.m_args['interfaces']:
                 self.int_status[interface] = {}
-                command = 'sudo show interface status ' + interface
+                # Using intfutil to get data in json format
+                command = "intfutil -c status -j -i " + interface
                 try:
                     rc, self.out, err = self.module.run_command(
                         command, executable='/bin/bash', use_unsafe_shell=True)
-                    for line in self.out.split("\n"):
-                        line = line.strip()
-                        fec = regex_int_fec.match(line)
-                        old = regex_int.match(line)
-                        if fec and interface == fec.group(1):
-                            self.int_status[interface]['name'] = fec.group(1)
-                            self.int_status[interface]['speed'] = fec.group(2)
-                            self.int_status[interface]['fec'] = fec.group(4)
-                            self.int_status[interface]['alias'] = fec.group(5)
-                            self.int_status[interface]['vlan'] = fec.group(6)
-                            self.int_status[interface]['oper_state'] = fec.group(
-                                7)
-                            self.int_status[interface]['admin_state'] = fec.group(
-                                8)
-                            self.int_status[interface]['type'] = self._fetch_interface_type(
-                                line)
-                        elif old and interface == old.group(1):
-                            self.int_status[interface]['name'] = old.group(1)
-                            self.int_status[interface]['speed'] = old.group(2)
-                            self.int_status[interface]['fec'] = 'Unknown'
-                            self.int_status[interface]['alias'] = old.group(4)
-                            self.int_status[interface]['vlan'] = old.group(5)
-                            self.int_status[interface]['oper_state'] = old.group(
-                                6)
-                            self.int_status[interface]['admin_state'] = old.group(
-                                7)
-                            self.int_status[interface]['type'] = 'N/A'
-                        self.facts['int_status'] = self.int_status
+                    if err == "" and self.out != "":
+                        intf_data = json.loads(self.out)[interface]
+                        self._extract_interface_status_fields(self.int_status, interface, intf_data)
+                    else:
+                        # fallback to legacy logic if intfutil is not available
+                        command = 'sudo show interface status ' + interface
+                        rc, self.out, err = self.module.run_command(
+                            command, executable='/bin/bash', use_unsafe_shell=True)
+                        for line in self.out.split("\n"):
+                            line = line.strip()
+                            fec = regex_int_fec.match(line)
+                            old = regex_int.match(line)
+                            if fec and interface == fec.group(1):
+                                self.int_status[interface]['name'] = fec.group(1)
+                                self.int_status[interface]['speed'] = fec.group(2)
+                                self.int_status[interface]['fec'] = fec.group(4)
+                                self.int_status[interface]['alias'] = fec.group(5)
+                                self.int_status[interface]['vlan'] = fec.group(6)
+                                self.int_status[interface]['oper_state'] = fec.group(
+                                    7)
+                                self.int_status[interface]['admin_state'] = fec.group(
+                                    8)
+                                self.int_status[interface]['type'] = self._fetch_interface_type(
+                                    line)
+                            elif old and interface == old.group(1):
+                                self.int_status[interface]['name'] = old.group(1)
+                                self.int_status[interface]['speed'] = old.group(2)
+                                self.int_status[interface]['fec'] = 'Unknown'
+                                self.int_status[interface]['alias'] = old.group(4)
+                                self.int_status[interface]['vlan'] = old.group(5)
+                                self.int_status[interface]['oper_state'] = old.group(
+                                    6)
+                                self.int_status[interface]['admin_state'] = old.group(
+                                    7)
+                                self.int_status[interface]['type'] = 'N/A'
+                    self.facts['int_status'] = self.int_status
                 except Exception as e:
                     self.module.fail_json(msg=str(e))
                 if rc != 0:
@@ -173,53 +196,64 @@ class ShowInterfaceModule(object):
                     cli_options += " -d all"
                 if include_inband_intfs:
                     cli_options += " -d all"
-                intf_status_cmd = "show interface status{}".format(cli_options)
+                # Using intfutil to get the data in json format
+                intf_status_cmd = "intfutil -c status -j{}".format(cli_options)
                 rc, self.out, err = self.module.run_command(
                     intf_status_cmd, executable='/bin/bash', use_unsafe_shell=True)
-                for line in self.out.split("\n"):
-                    line = line.strip()
-                    fec = regex_int_fec.match(line)
-                    old = regex_int.match(line)
-                    internal = regex_int_internal.match(line)
-                    if fec:
-                        interface = fec.group(1)
+                if err == "" and self.out != "":
+                    self.out = json.loads(self.out)
+                    for interface, intf_data in self.out.items():
                         self.int_status[interface] = {}
-                        self.int_status[interface]['name'] = interface
-                        self.int_status[interface]['speed'] = fec.group(2)
-                        self.int_status[interface]['fec'] = fec.group(4)
-                        self.int_status[interface]['alias'] = fec.group(5)
-                        self.int_status[interface]['vlan'] = fec.group(6)
-                        self.int_status[interface]['oper_state'] = fec.group(7)
-                        self.int_status[interface]['admin_state'] = fec.group(
-                            8)
-                        self.int_status[interface]['type'] = self._fetch_interface_type(
-                            line)
-                    elif old:
-                        interface = old.group(1)
-                        self.int_status[interface] = {}
-                        self.int_status[interface]['name'] = interface
-                        self.int_status[interface]['speed'] = old.group(2)
-                        self.int_status[interface]['fec'] = 'Unknown'
-                        self.int_status[interface]['alias'] = old.group(4)
-                        self.int_status[interface]['vlan'] = old.group(5)
-                        self.int_status[interface]['oper_state'] = old.group(6)
-                        self.int_status[interface]['admin_state'] = old.group(
-                            7)
-                        self.int_status[interface]['type'] = 'N/A'
-                    elif internal and include_internal_intfs:
-                        interface = internal.group(1)
-                        self.int_status[interface] = {}
-                        self.int_status[interface]['name'] = interface
-                        self.int_status[interface]['speed'] = internal.group(2)
-                        self.int_status[interface]['fec'] = internal.group(4)
-                        self.int_status[interface]['alias'] = internal.group(5)
-                        self.int_status[interface]['vlan'] = internal.group(6)
-                        self.int_status[interface]['oper_state'] = internal.group(
-                            7)
-                        self.int_status[interface]['admin_state'] = internal.group(
-                            8)
-                        self.int_status[interface]['type'] = 'N/A'
-                    self.facts['int_status'] = self.int_status
+                        self._extract_interface_status_fields(self.int_status, interface, intf_data)
+                else:
+                    # fallback to legacy logic if intfutil is not available
+                    intf_status_cmd = "show interface status{}".format(cli_options)
+                    rc, self.out, err = self.module.run_command(
+                        intf_status_cmd, executable='/bin/bash', use_unsafe_shell=True)
+                    for line in self.out.split("\n"):
+                        line = line.strip()
+                        fec = regex_int_fec.match(line)
+                        old = regex_int.match(line)
+                        internal = regex_int_internal.match(line)
+                        if fec:
+                            interface = fec.group(1)
+                            self.int_status[interface] = {}
+                            self.int_status[interface]['name'] = interface
+                            self.int_status[interface]['speed'] = fec.group(2)
+                            self.int_status[interface]['fec'] = fec.group(4)
+                            self.int_status[interface]['alias'] = fec.group(5)
+                            self.int_status[interface]['vlan'] = fec.group(6)
+                            self.int_status[interface]['oper_state'] = fec.group(7)
+                            self.int_status[interface]['admin_state'] = fec.group(
+                                8)
+                            self.int_status[interface]['type'] = self._fetch_interface_type(
+                                line)
+                        elif old:
+                            interface = old.group(1)
+                            self.int_status[interface] = {}
+                            self.int_status[interface]['name'] = interface
+                            self.int_status[interface]['speed'] = old.group(2)
+                            self.int_status[interface]['fec'] = 'Unknown'
+                            self.int_status[interface]['alias'] = old.group(4)
+                            self.int_status[interface]['vlan'] = old.group(5)
+                            self.int_status[interface]['oper_state'] = old.group(6)
+                            self.int_status[interface]['admin_state'] = old.group(
+                                7)
+                            self.int_status[interface]['type'] = 'N/A'
+                        elif internal and include_internal_intfs:
+                            interface = internal.group(1)
+                            self.int_status[interface] = {}
+                            self.int_status[interface]['name'] = interface
+                            self.int_status[interface]['speed'] = internal.group(2)
+                            self.int_status[interface]['fec'] = internal.group(4)
+                            self.int_status[interface]['alias'] = internal.group(5)
+                            self.int_status[interface]['vlan'] = internal.group(6)
+                            self.int_status[interface]['oper_state'] = internal.group(
+                                7)
+                            self.int_status[interface]['admin_state'] = internal.group(
+                                8)
+                            self.int_status[interface]['type'] = 'N/A'
+                self.facts['int_status'] = self.int_status
             except Exception as e:
                 self.module.fail_json(msg=str(e))
             if rc != 0:
