@@ -155,15 +155,8 @@ def test_poll_mode_delete(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
     client_thread.join(30)
 
 
-<<<<<<< HEAD
-def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
-||||||| afeda604c
-@pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
-def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost,
-=======
 @pytest.mark.parametrize('setup_streaming_telemetry', [False], indirect=True)
 def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptfhost, enum_upstream_dut_hostname,
->>>>>>> upstream/master
                                  setup_streaming_telemetry, gnxi_path):
     """
     Test poll mode from APPL_DB and query an existing table and no default route, ensure no errors and present data
