@@ -47,27 +47,10 @@ def restart_dhcp_service(duthost):
     duthost.shell("systemctl reset-failed dhcp_relay")
 
     def _is_dhcp_relay_ready():
-<<<<<<< HEAD
-        output = duthost.shell(
-            "docker exec dhcp_relay supervisorctl status | grep dhcp | awk '{print $2}'", module_ignore_errors=True
-        )
-        return (
-            not output["rc"]
-            and output["stderr"] == ""
-            and len(output["stdout_lines"]) != 0
-            and all(element == "RUNNING" for element in output["stdout_lines"])
-        )
-||||||| afeda604c
-        output = duthost.shell('docker exec dhcp_relay supervisorctl status | grep dhcp | awk \'{print $2}\'',
-                               module_ignore_errors=True)
-        return (not output['rc'] and output['stderr'] == '' and len(output['stdout_lines']) != 0 and
-                all(element == 'RUNNING' for element in output['stdout_lines']))
-=======
         output = duthost.shell('docker exec dhcp_relay supervisorctl status | grep dhc | awk \'{print $2}\'',
                                module_ignore_errors=True)
         return (not output['rc'] and output['stderr'] == '' and len(output['stdout_lines']) != 0 and
                 all(element == 'RUNNING' for element in output['stdout_lines']))
->>>>>>> upstream/master
 
     pytest_assert(wait_until(120, 1, 10, _is_dhcp_relay_ready), "dhcp_relay is not ready after restarting")
 
@@ -474,14 +457,6 @@ def validate_counters_and_pkts_consistency(
 def merge_counters(source_counter, merge_counter, is_v6=False):
     for dir in SUPPORTED_DIR:
         for dhcp_type in SUPPORTED_DHCPV6_TYPE if is_v6 else SUPPORTED_DHCPV4_TYPE:
-<<<<<<< HEAD
-            source_counter[dir][dhcp_type] = source_counter.get(dir, {}).get(dhcp_type, 0) + merge_counter.get(
-                dir, {}
-            ).get(dhcp_type, 0)
-||||||| afeda604c
-            source_counter[dir][dhcp_type] = source_counter.get(dir, {}).get(dhcp_type, 0) + \
-                                                                    merge_counter.get(dir, {}).get(dhcp_type, 0)
-=======
             source_counter[dir][dhcp_type] = source_counter.get(dir, {}).get(dhcp_type, 0) + \
                                                                     merge_counter.get(dir, {}).get(dhcp_type, 0)
 
@@ -584,4 +559,3 @@ def sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data):
         for dhcp_relay in dut_dhcp_relay_data:
             vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
             duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
->>>>>>> upstream/master
