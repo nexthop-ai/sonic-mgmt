@@ -1,9 +1,5 @@
 import pytest
-<<<<<<< HEAD
 import time
-||||||| afeda604c
-=======
->>>>>>> upstream/master
 import ipaddress
 import logging
 
