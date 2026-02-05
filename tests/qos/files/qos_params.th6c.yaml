@@ -1,5 +1,5 @@
 qos_params:
-    th6:
+    th6c:
         topo-t0-standalone: &topo-t0-standalone
             cell_size: 254
             hdrm_pool_wm_multiplier: 1
