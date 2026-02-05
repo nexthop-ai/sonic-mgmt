@@ -117,9 +117,8 @@ class AnsibleHostBase(object):
         hostname_res.encoder = AnsibleHostBase.CustomEncoder
 
         if verbose:
-<<<<<<< HEAD
             try:
-                result_json = json.dumps(res, cls=AnsibleHostBase.CustomEncoder)
+                result_json = json.dumps(hostname_res, cls=AnsibleHostBase.CustomEncoder)
                 logger.debug(
                     "{}::{}#{}: [{}] AnsibleModule::{} Result => {}".format(
                         filename,
@@ -128,23 +127,6 @@ class AnsibleHostBase(object):
                         self.hostname,
                         self.module_name, result_json
                     )
-||||||| afeda604c
-            logger.debug(
-                "{}::{}#{}: [{}] AnsibleModule::{} Result => {}".format(
-                    filename,
-                    function_name,
-                    line_number,
-                    self.hostname,
-                    self.module_name, json.dumps(res, cls=AnsibleHostBase.CustomEncoder)
-=======
-            logger.debug(
-                "{}::{}#{}: [{}] AnsibleModule::{} Result => {}".format(
-                    filename,
-                    function_name,
-                    line_number,
-                    self.hostname,
-                    self.module_name, json.dumps(hostname_res, cls=AnsibleHostBase.CustomEncoder)
->>>>>>> upstream/master
                 )
             except (TypeError, ValueError):
                 logger.debug(
@@ -153,7 +135,7 @@ class AnsibleHostBase(object):
                         function_name,
                         line_number,
                         self.hostname,
-                        self.module_name, str(type(res))
+                        self.module_name, str(type(hostname_res))
                     )
                  )
         else:
