@@ -193,7 +193,7 @@ def calculate_field_value(duthost, tbinfo, field):
         """
         hostvars = get_host_visible_vars(duthost.host.options['inventory'], duthost.hostname)
         hwsku = duthost.facts['hwsku']
-        supported_platforms = ['broadcom_th5_hwskus', 'broadcom_th6_hwskus']
+        supported_platforms = ['broadcom_th5_hwskus', 'broadcom_th6c_hwskus', 'broadcom_th6p_hwskus']
         asic_name = None
         for platform in supported_platforms:
             supported_skus = hostvars.get(platform, [])
@@ -203,8 +203,11 @@ def calculate_field_value(duthost, tbinfo, field):
                 continue
         if asic_name == "th5":
             mmu_size = MMU_SIZE_BRCM_TH5
-        elif asic_name == "th6":
-            # TODO determine TH6 MMU size from broadcom
+        elif asic_name == "th6c":
+            # TODO determine TH6c MMU size from broadcom
+            mmu_size = MMU_SIZE_BRCM_TH5
+        elif asic_name == "th6p":
+            # TODO determine TH6p MMU size from broadcom
             mmu_size = MMU_SIZE_BRCM_TH5
         else:
             mmu_size = MMU_SIZE

@@ -94,7 +94,7 @@ def parse_hash_seed(output, asic_name):
 
 def parse_ecmp_offset(outputs, asic_name):
     # Regular expression pattern to extract OFFSET_ECMP values (hexadecimal)
-    if asic_name in ("th5", "th6"):
+    if asic_name in ("th5", "th6c", "th6p"):
         pattern = r'OFFSET_ECMP_PRIMARY=(0x?[0-9a-fA-F]?)'
     else:
         pattern = r'OFFSET_ECMP=(0x?[0-9a-fA-F]?)'
@@ -167,12 +167,12 @@ def check_hash_seed_value(duthost, asic_name, topo_type):
         seed_cmd_input = seed_cmd_td2
     elif asic_name == "td3":
         seed_cmd_input = seed_cmd_td3
-    elif asic_name in ("th5", "th6"):
+    elif asic_name in ("th5", "th6c", "th6p"):
         seed_cmd_input = seed_cmd_th5_th6
     else:
         seed_cmd_input = seed_cmd
     for cmd in seed_cmd_input:
-        if asic_name in ("th5", "th6"):
+        if asic_name in ("th5", "th6c", "th6p"):
             # TH5/TH6 output format is slightly different. Expected pattern comes in a different line
             output = duthost.command(cmd, module_ignore_errors=True)["stdout_lines"][3].strip()
         else:
@@ -193,7 +193,7 @@ def check_ecmp_offset_value(duthost, asic_name, topo_type, hwsku):
     """
     pytest_assert(wait_until(300, 20, 0, check_syncd_is_running, duthost), "syncd is not running!")
 
-    if asic_name in ("th5", "th6"):
+    if asic_name in ("th5", "th6c", "th6p"):
         output = duthost.shell(offset_cmd_th5_th6, module_ignore_errors=True)['stdout']
         logger.info(f"Offset cmd: {offset_cmd_th5_th6}, output: {output}")
     else:
@@ -243,7 +243,7 @@ def test_ecmp_hash_seed_value(localhost, duthosts, tbinfo, enum_rand_one_per_hws
     hwsku = duthost.facts['hwsku']
     supported_platforms = ['broadcom_td2_hwskus', 'broadcom_td3_hwskus', 'broadcom_th_hwskus',
                            'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus',
-                           'broadcom_th6_hwskus']
+                           'broadcom_th6c_hwskus', 'broadcom_th6p_hwskus']
     asic_name = None
     for platform in supported_platforms:
         supported_skus = hostvars.get(platform, [])
@@ -297,7 +297,7 @@ def test_ecmp_offset_value(localhost, duthosts, tbinfo, enum_rand_one_per_hwsku_
     hwsku = duthost.facts['hwsku']
     supported_platforms = ['broadcom_td2_hwskus', 'broadcom_td3_hwskus', 'broadcom_th_hwskus',
                            'broadcom_th2_hwskus', 'broadcom_th3_hwskus', 'broadcom_th5_hwskus',
-                           'broadcom_th6_hwskus']
+                           'broadcom_th6c_hwskus', 'broadcom_th6p_hwskus']
     asic_name = None
     for platform in supported_platforms:
         supported_skus = hostvars.get(platform, [])

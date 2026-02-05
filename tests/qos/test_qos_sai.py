@@ -419,7 +419,7 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
         normal_profile = ["xoff_1", "xoff_2"]
-        if dutConfig["dutAsic"] == 'th6':
+        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
             pytest.skip("Skip this test while buffer tuning is finalized")
         if not dutConfig["dualTor"] and xoffProfile not in normal_profile:
             pytest.skip(
@@ -694,7 +694,7 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if dutConfig["dutAsic"] == 'th6':
+        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
             pytest.skip("Skip this test while buffer tuning is finalized")
         normal_profile = ["xon_1", "xon_2"]
         if not dutConfig["dualTor"] and xonProfile not in normal_profile:
@@ -880,7 +880,7 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
 
-        if dutConfig["dutAsic"] == 'th6':
+        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
             pytest.skip("Skip this test while buffer tuning is finalized")
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
@@ -1419,7 +1419,7 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if dutConfig["dutAsic"] == 'th6':
+        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
             pytest.skip("Skip this test while buffer tuning is finalized")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if "lossy_queue_1" in list(dutQosConfig["param"][portSpeedCableLength].keys()):
@@ -2200,7 +2200,7 @@ class TestQosSai(QosSaiBase):
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         if dutTestParams["basicParams"]["sonic_asic_type"] == 'cisco-8000' or \
-                (dutConfig["dutAsic"] in ('th5', 'th6')) or \
+                (dutConfig["dutAsic"] in ('th5', 'th6c', 'th6p')) or \
                 ('platform_asic' in dutTestParams["basicParams"] and
                  dutTestParams["basicParams"]["platform_asic"] in ["broadcom-dnx", "mellanox", "marvell-teralynx"]):
             disableTest = False
@@ -2391,7 +2391,7 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
 
-        if dutConfig["dutAsic"] == 'th6':
+        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
             pytest.skip("Skip this test while buffer tuning is finalized")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         qosConfig = dutQosConfig["param"]
