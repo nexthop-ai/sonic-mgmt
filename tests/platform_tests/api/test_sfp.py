@@ -499,13 +499,8 @@ class TestSfpApi(PlatformApiTestBase):
                     else:
 
                         if info_dict["type_abbrv_name"] in ["QSFP-DD", "OSFP-8X", "QSFP+C"]:
-<<<<<<< HEAD
                             # This should be updated to be dynamic based on the transceiver type, bug here:
                             # https://github.com/sonic-net/sonic-utilities/issues/4065
-||||||| afeda604c
-                        if info_dict["type_abbrv_name"] in ["QSFP-DD", "OSFP-8X"]:
-=======
->>>>>>> upstream/master
                             active_apsel_hostlane_count = 8
                             UPDATED_EXPECTED_XCVR_INFO_KEYS = self.EXPECTED_XCVR_INFO_KEYS + \
                                 self.EXPECTED_XCVR_NEW_CMIS_INFO_KEYS + \
@@ -538,14 +533,7 @@ class TestSfpApi(PlatformApiTestBase):
                     unexpected_keys = set(actual_keys) - set(UPDATED_EXPECTED_XCVR_INFO_KEYS +
                                                              self.NEWLY_ADDED_XCVR_INFO_KEYS)
                     for key in unexpected_keys:
-<<<<<<< HEAD
-                        # hardware_rev is applicable only for QSFP-DD/OSFP/QSFP+C Xcvrs
-||||||| afeda604c
-                        # hardware_rev is applicable only for QSFP-DD or OSFP
-                        if key == 'hardware_rev' and info_dict["type_abbrv_name"] in ["QSFP-DD", "OSFP-8X"]:
-=======
                         # hardware_rev is applicable only for QSFP-DD, OSFP or QSFP+C
->>>>>>> upstream/master
                         if key == 'hardware_rev' and info_dict["type_abbrv_name"] in ["QSFP-DD", "OSFP-8X", "QSFP+C"]:
                             continue
                         self.expect(False, "Transceiver {} info contains unexpected field '{}'".format(i, key))
