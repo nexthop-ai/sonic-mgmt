@@ -195,22 +195,10 @@ class DHCPTest(DataplaneBaseTest):
         #  Byte 0: Suboption number, always set to 1
         #  Byte 1: Length of suboption data in bytes
         #  Bytes 2+: Suboption data
-<<<<<<< HEAD
         # SONiC's dhcrelay uses the -a flag to set circuit_id to the IP address of the interface
         # that received the DHCP request
         circuit_id_string = self.relay_iface_ip
         self.option82 = struct.pack('BB', 1, len(circuit_id_string))
-||||||| afeda604c
-        # Our circuit_id string is of the form "hostname:portname"
-        circuit_id_string = self.hostname + ":" + self.client_iface_alias
-        self.option82 = struct.pack('BB', 1, len(circuit_id_string))
-=======
-        # Our circuit_id string is of the form "hostname:portname"
-        circuit_id_string = self.hostname + ":" + self.client_iface_alias
-        if self.relay_agent == "sonic-relay-agent":
-            circuit_id_string = circuit_id_string + ":" + self.vlan_iface_name
-        self.option82 = struct.pack('BB', self.CIRCUIT_ID_SUBOPTION, len(circuit_id_string))
->>>>>>> upstream/master
         self.option82 += circuit_id_string.encode('utf-8')
 
         # remote_id is stored as suboption 2 of option 82.
@@ -223,11 +211,6 @@ class DHCPTest(DataplaneBaseTest):
         self.option82 += struct.pack('BB', self.REMOTE_ID_SUBOPTION, len(remote_id_string))
         self.option82 += remote_id_string.encode('utf-8')
 
-<<<<<<< HEAD
-        # In 'dual' testing mode, relay interface IP is stored as suboption 5 of option 82
-||||||| afeda604c
-        # In 'dual' testing mode, vlan ip is stored as suboption 5 of option 82.
-=======
         if self.relay_agent == "sonic-relay-agent":
             # Structure:
             #  Byte 0: Suboption number, always set to 5
@@ -259,8 +242,7 @@ class DHCPTest(DataplaneBaseTest):
                 self.option82 += struct.pack('BB', self.VRF_NAME_SUBOPTION, len(vrf_bytes))
                 self.option82 += vrf_bytes.encode('utf-8')
 
-        # In 'dual' testing mode, vlan ip is stored as suboption 5 of option 82.
->>>>>>> upstream/master
+        # In 'dual' testing mode, relay interface IP is stored as suboption 5 of option 82
         # It consists of the following:
         #  Byte 0: Suboption number, always set to 5
         #  Byte 1: Length of suboption data in bytes, always set to 4 (ipv4 addr has 4 bytes)
@@ -1065,19 +1047,6 @@ class DHCPTest(DataplaneBaseTest):
         testutils.send_packet(self, self.client_port_index, bootp_packet)
 
     def verify_relayed_bootp(self):
-<<<<<<< HEAD
-        source_ip = self.relay_iface_ip if self.enable_source_port_ip_in_relay else self.switch_loopback_ip
-        # No need to distinguish single tor or dual tor, because isc-dhcp-relay wouldn't modify option82 and giaddr
-        # if it's bootp packets https://github.com/isc-projects/dhcp/blob/master/relay/dhcrelay.c#L1024
-        # Hence the giaddr in packet should always be the relay interface IP in both dual tor and single tor scenarios
-        giaddr = self.relay_iface_ip
-||||||| afeda604c
-        source_ip = self.relay_iface_ip if self.enable_source_port_ip_in_relay else self.switch_loopback_ip
-        # No need to distinguish single tor or dual tor, because isc-dhcp-relay wouldn't modify option82 and giaddr
-        # if it's bootp packets https://github.com/isc-projects/dhcp/blob/master/relay/dhcrelay.c#L1024
-        # Hence the giaddr in packet should always be vlan ip in both dual tor or singe tor scenario
-        giaddr = self.relay_iface_ip
-=======
         if self.server_vrf is None and self.vrf_selection is None:
             source_ip = self.relay_iface_ip if self.enable_source_port_ip_in_relay else self.switch_loopback_ip
         else:
@@ -1088,7 +1057,6 @@ class DHCPTest(DataplaneBaseTest):
         elif self.server_id_override or not self.dual_tor:
             giaddr = self.relay_iface_ip
 
->>>>>>> upstream/master
         bootp_packet = self.create_bootp_packet(src_mac=self.uplink_mac, src_ip=source_ip, giaddr=giaddr,
                                                 sport=self.DHCP_SERVER_PORT, hops=2)
 
