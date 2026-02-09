@@ -35,24 +35,29 @@ def configure_community_route_map(host, route_map_name="COMM_LOCAL_PREF", commun
         json_patch = [
             {
                 "op": "add",
-                "path": f"/COMMUNITY_LIST/{community_name}",
+                "path": f"/COMMUNITY_SET/{community_name}",
                 "value": {
-                    "type": "standard",
-                    "members": [
-                        {
-                            "action": "permit",
-                            "community": community,
-                            "seq": "5"
-                        }
-                    ]
+                    "action": "permit",
+                    "set_type": "STANDARD",
+                    "match_action": "ANY",
+                    "community_member": [community]
+                }
+            },
+            {
+                "op": "add",
+                "path": f"/ROUTE_MAP_SET/{route_map_name}",
+                "value": {
+                    "name": route_map_name
                 }
             },
             {
                 "op": "add",
                 "path": f"/ROUTE_MAP/{route_map_name}|10",
                 "value": {
+                    "name": route_map_name,
+                    "stmt_name": "10",
                     "route_operation": "permit",
-                    "match_community_list": community_name,
+                    "match_community": community_name,
                     "set_local_pref": "0"
                 }
             }
@@ -325,10 +330,8 @@ def test_bgp_community_local_pref(duthosts, rand_one_dut_hostname, nbrhosts, tbi
             json_patch = [
                 {
                     "op": "add",
-                    "path": f"/BGP_NEIGHBOR/default|{peer_addr}",
-                    "value": {
-                        "route_map_in": dut_route_map_name
-                    }
+                    "path": f"/BGP_NEIGHBOR_AF/default|{peer_addr}|ipv4_unicast/route_map_in",
+                    "value": [dut_route_map_name]
                 }
             ]
 
