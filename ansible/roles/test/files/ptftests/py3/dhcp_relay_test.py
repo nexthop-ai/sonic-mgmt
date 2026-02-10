@@ -187,7 +187,7 @@ class DHCPTest(DataplaneBaseTest):
         # 'dual' for dual tor testing
         # 'single' for regular single tor testing
         self.dual_tor = (self.test_params['testing_mode'] == 'dual')
-        self.vlan_iface_name = self.test_params.get('downlink_vlan_iface_name', None)
+        self.iface_name = self.test_params.get('downlink_iface_name', None)
 
         # option82 is a byte string created by the relay agent. It contains the circuit_id and remote_id fields.
         # circuit_id is stored as suboption 1 of option 82.
