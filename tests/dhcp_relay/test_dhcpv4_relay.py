@@ -53,8 +53,9 @@ def ignore_expected_loganalyzer_exceptions(
     yield
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.skip_config_dhcpv4_relay_agent
-def test_dhcpv4_feature_flag_validation(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, relay_agent):
+def test_dhcpv4_feature_flag_validation(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, relay_agent, interface_type):
     """
     Test to verify DHCPv4 feature flag behavior:
     1. Enable feature flag and verify sonic-dhcpv4 process starts.
@@ -76,12 +77,13 @@ def test_dhcpv4_feature_flag_validation(duthosts, rand_one_dut_hostname, dut_dhc
     sonic_dhcpv4_flag_config_and_unconfig(duthost, False)
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.skip_config_dhcpv4_relay_agent
 def test_dhcpv4_relay_disabled_validation(ptfhost, dut_dhcp_relay_data, validate_dut_routes_exist,
                                           testing_config, setup_standby_ports_on_rand_unselected_tor,
                                           rand_unselected_dut,
                                           toggle_all_simulator_ports_to_rand_selected_tor_m,   # noqa: F811
-                                          relay_agent):
+                                          relay_agent, interface_type):
 
     """
     Test to verify that when the DHCPv4 feature flag is disabled:
@@ -105,11 +107,11 @@ def test_dhcpv4_relay_disabled_validation(ptfhost, dut_dhcp_relay_data, validate
                                "other_client_port": repr(dhcp_relay['other_client_ports']),
                                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                               "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                               "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                               "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                               "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                               "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                               "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                               "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                               "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                               "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                               "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                                "dest_mac_address": BROADCAST_MAC,
                                "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                                "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -118,7 +120,7 @@ def test_dhcpv4_relay_disabled_validation(ptfhost, dut_dhcp_relay_data, validate
                                "kvm_support": True,
                                "dhcpv4_disable_flag": True,
                                "relay_agent": "sonic-relay-agent",
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])
                                },
                        log_file="/tmp/test_dhcpv4_relay_disabled_no_process_no_response.DHCPTest.log", is_python3=True)
 
@@ -130,12 +132,13 @@ def test_dhcpv4_relay_disabled_validation(ptfhost, dut_dhcp_relay_data, validate
         sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data)
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.parametrize("testcase", ["source_intf", "server_id_override"])
 def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_dut_routes_exist, testing_config,
                                         setup_standby_ports_on_rand_unselected_tor,
                                         rand_unselected_dut,
                                         toggle_all_simulator_ports_to_rand_selected_tor_m,   # noqa: F811
-                                        testcase, relay_agent):
+                                        testcase, relay_agent, interface_type):
 
     """
     Test Case: DHCP relay option82
@@ -162,8 +165,8 @@ def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_d
 
     try:
         for dhcp_relay in dut_dhcp_relay_data:
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+            vlan = str(dhcp_relay['downlink_iface']['name'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
             duthost.shell(f'config dhcpv4_relay del {vlan}')
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
 
@@ -190,11 +193,11 @@ def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_d
                                "other_client_port": repr(dhcp_relay['other_client_ports']),
                                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                               "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                               "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                               "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                               "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                               "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                               "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                               "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                               "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                               "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                               "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                                "dest_mac_address": BROADCAST_MAC,
                                "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                                "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -205,8 +208,8 @@ def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_d
                                "source_interface": source_intf,
                                "server_id_override": server_id_override,
                                "relay_agent": relay_agent,
-                               "link_selection_ip": str(dhcp_relay['downlink_vlan_iface']['link_selection_ip']),
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])
+                               "link_selection_ip": str(dhcp_relay['downlink_iface']['link_selection_ip']),
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])
                                },
                        log_file="/tmp/test_dhcp_relay_option82_suboptions.DHCPTest.log", is_python3=True)
     except LogAnalyzerError as err:
@@ -214,6 +217,7 @@ def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_d
         raise err
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.parametrize("test_mode", [
                                     "discard",
                                     "replace",
@@ -227,7 +231,8 @@ def test_dhcp_relay_agent_mode(
         rand_unselected_dut,
         toggle_all_simulator_ports_to_rand_selected_tor_m,  # noqa: F811
         relay_agent,    # noqa: F811
-        test_mode
+        test_mode,
+        interface_type
 ):
 
     """
@@ -254,8 +259,8 @@ def test_dhcp_relay_agent_mode(
     try:
         for dhcp_relay in dut_dhcp_relay_data:
 
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+            vlan = str(dhcp_relay['downlink_iface']['name'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
             duthost.shell(f'config dhcpv4_relay del {vlan}')
 
             # Update CONFIG_DB
@@ -274,11 +279,11 @@ def test_dhcp_relay_agent_mode(
                     "other_client_port": repr(dhcp_relay['other_client_ports']),
                     "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                     "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                    "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                    "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                    "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                    "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                    "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                    "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                    "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                    "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                    "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                    "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                     "dest_mac_address": BROADCAST_MAC,
                     "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                     "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -287,7 +292,7 @@ def test_dhcp_relay_agent_mode(
                     "kvm_support": True,
                     "relay_agent": relay_agent,
                     "agent_relay_mode": test_mode,
-                    "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name']),
+                    "downlink_iface_name": str(dhcp_relay['downlink_iface']['name']),
                 },
                 log_file="/tmp/test_dhcp_relay_agent_mode.log",
                 is_python3=True
@@ -298,6 +303,7 @@ def test_dhcp_relay_agent_mode(
         raise err
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.parametrize("testcase", ["vrf_selection", "source_intf", "server_id_override"])
 def test_dhcp_relay_with_non_default_vrf(
         ptfhost,
@@ -308,7 +314,8 @@ def test_dhcp_relay_with_non_default_vrf(
         rand_unselected_dut,
         toggle_all_simulator_ports_to_rand_selected_tor_m,  # noqa: F811
         testcase,
-        relay_agent
+        relay_agent,
+        interface_type
 ):
 
     """
@@ -340,9 +347,9 @@ def test_dhcp_relay_with_non_default_vrf(
     link_selection = source_intf = server_id_override = None
 
     for dhcp_relay in dut_dhcp_relay_data:
-        vlan_iface = str(dhcp_relay['downlink_vlan_iface']['name'])
+        vlan_iface = str(dhcp_relay['downlink_iface']['name'])
         portchannels = dhcp_relay['portchannels_with_ips']
-        vlan_ip = "{}/{}".format(dhcp_relay['downlink_vlan_iface']['addr'], dhcp_relay['downlink_vlan_iface']['mask'])
+        vlan_ip = "{}/{}".format(dhcp_relay['downlink_iface']['addr'], dhcp_relay['downlink_iface']['mask'])
 
     # Step 1: Remove IPs from interfaces
     for pc, params in portchannels.items():
@@ -370,7 +377,7 @@ def test_dhcp_relay_with_non_default_vrf(
 
     try:
         for dhcp_relay in dut_dhcp_relay_data:
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
             duthost.shell(f'config dhcpv4_relay del {vlan_iface}')
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
 
@@ -401,11 +408,11 @@ def test_dhcp_relay_with_non_default_vrf(
                                "other_client_port": repr(dhcp_relay['other_client_ports']),
                                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                               "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                               "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                               "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                               "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                               "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                               "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                               "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                               "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                               "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                               "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                                "dest_mac_address": BROADCAST_MAC,
                                "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                                "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -419,8 +426,8 @@ def test_dhcp_relay_with_non_default_vrf(
                                "relay_agent": relay_agent,
                                "client_vrf": CLIENT_VRF_NAME,
                                "portchannels_ip_list": dhcp_relay['portchannels_ip_list'],
-                               "link_selection_ip": str(dhcp_relay['downlink_vlan_iface']['link_selection_ip']),
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])
+                               "link_selection_ip": str(dhcp_relay['downlink_iface']['link_selection_ip']),
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])
                                },
                        log_file="/tmp/test_dhcp_relay_with_non_default_vrf.DHCPTest.log", is_python3=True)
     except LogAnalyzerError as err:
@@ -439,6 +446,7 @@ def test_dhcp_relay_with_non_default_vrf(
         duthost.shell(f"sudo config interface ip add {vlan_iface} {vlan_ip}")
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 def test_dhcp_relay_with_different_non_default_vrf(
         ptfhost,
         dut_dhcp_relay_data,
@@ -447,7 +455,8 @@ def test_dhcp_relay_with_different_non_default_vrf(
         setup_standby_ports_on_rand_unselected_tor,
         rand_unselected_dut,
         toggle_all_simulator_ports_to_rand_selected_tor_m,   # noqa: F811
-        relay_agent
+        relay_agent,
+        interface_type
 ):
     """
     Test Case: test_dhcp_relay_with_different_non_default_vrf
@@ -478,9 +487,9 @@ def test_dhcp_relay_with_different_non_default_vrf(
     testing_mode, duthost = testing_config
 
     for dhcp_relay in dut_dhcp_relay_data:
-        vlan_iface = str(dhcp_relay['downlink_vlan_iface']['name'])
+        vlan_iface = str(dhcp_relay['downlink_iface']['name'])
         portchannels = dhcp_relay['portchannels_with_ips']
-        vlan_ip = "{}/{}".format(dhcp_relay['downlink_vlan_iface']['addr'], dhcp_relay['downlink_vlan_iface']['mask'])
+        vlan_ip = "{}/{}".format(dhcp_relay['downlink_iface']['addr'], dhcp_relay['downlink_iface']['mask'])
 
     # Step 1: Remove IPs from interfaces
     for pc, params in portchannels.items():
@@ -509,7 +518,7 @@ def test_dhcp_relay_with_different_non_default_vrf(
 
     try:
         for dhcp_relay in dut_dhcp_relay_data:
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
             duthost.shell(f'config dhcpv4_relay del {vlan_iface}')
 
@@ -528,11 +537,11 @@ def test_dhcp_relay_with_different_non_default_vrf(
                                "other_client_port": repr(dhcp_relay['other_client_ports']),
                                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                               "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                               "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                               "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                               "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                               "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                               "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                               "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                               "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                               "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                               "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                                "dest_mac_address": BROADCAST_MAC,
                                "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                                "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -541,10 +550,10 @@ def test_dhcp_relay_with_different_non_default_vrf(
                                "kvm_support": True,
                                "relay_agent": relay_agent,
                                "client_vrf": CLIENT_VRF_NAME,
-                               "link_selection_ip": str(dhcp_relay['downlink_vlan_iface']['link_selection_ip']),
+                               "link_selection_ip": str(dhcp_relay['downlink_iface']['link_selection_ip']),
                                "server_vrf": True,
                                "portchannels_ip_list": dhcp_relay['portchannels_ip_list'],
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])},
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])},
                        log_file="/tmp/test_dhcp_relay_with_different_non_default_vrf.DHCPTest.log", is_python3=True)
 
     except LogAnalyzerError as err:
@@ -565,20 +574,21 @@ def test_dhcp_relay_with_different_non_default_vrf(
         duthost.shell(f"sudo config interface ip add {vlan_iface} {vlan_ip}")
 
 
+@pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.parametrize("max_hop_count", [CONFIG_HOP_COUNT, MAX_HOP_COUNT])
 def test_dhcp_max_hop_count(ptfhost, dut_dhcp_relay_data, validate_dut_routes_exist, testing_config,
                             setup_standby_ports_on_rand_unselected_tor,
                             rand_unselected_dut,
                             toggle_all_simulator_ports_to_rand_selected_tor_m, relay_agent,    # noqa: F811
-                            max_hop_count):
+                            max_hop_count, interface_type):
 
     testing_mode, duthost = testing_config
 
     try:
         for dhcp_relay in dut_dhcp_relay_data:
 
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+            vlan = str(dhcp_relay['downlink_iface']['name'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
             duthost.shell(f'config dhcpv4_relay del {vlan}')
 
             # Update CONFIG_DB
@@ -597,11 +607,11 @@ def test_dhcp_max_hop_count(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
                     "other_client_port": repr(dhcp_relay['other_client_ports']),
                     "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                     "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
-                    "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
-                    "server_ip": dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'],
-                    "relay_iface_ip": str(dhcp_relay['downlink_vlan_iface']['addr']),
-                    "relay_iface_mac": str(dhcp_relay['downlink_vlan_iface']['mac']),
-                    "relay_iface_netmask": str(dhcp_relay['downlink_vlan_iface']['mask']),
+                    "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                    "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                    "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                    "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                    "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
                     "dest_mac_address": BROADCAST_MAC,
                     "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
                     "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
@@ -611,7 +621,7 @@ def test_dhcp_max_hop_count(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
                     "relay_agent": relay_agent,
                     "agent_relay_mode": "append",
                     "max_hop_count": max_hop_count,
-                    "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name']),
+                    "downlink_iface_name": str(dhcp_relay['downlink_iface']['name']),
                 },
                 log_file="/tmp/test_dhcp_relay_agent_mode.log",
                 is_python3=True
