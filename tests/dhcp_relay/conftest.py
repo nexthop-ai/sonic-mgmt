@@ -700,33 +700,6 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, setup_
     return dhcp_relay_data_dict
 
 
-def calculate_uplink_interfaces_and_port_indices(mg_facts):
-    uplink_interfaces = []
-    uplink_port_indices = []
-    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
-        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
-            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
-            if 'type' in neighbor_device_info_dict and neighbor_device_info_dict['type'] in \
-                    ['LeafRouter', 'MgmtLeafRouter', 'BackEndLeafRouter']:
-                # If this uplink's physical interface is a member of a portchannel interface,
-                # we record the name of the portchannel interface here, as this is the actual
-                # interface the DHCP relay will listen on.
-                iface_is_portchannel_member = False
-                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
-                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
-                        iface_is_portchannel_member = True
-                        if portchannel_name not in uplink_interfaces:
-                            uplink_interfaces.append(portchannel_name)
-                        break
-                    # If the uplink's physical interface is not a member of a portchannel,
-                    # add it to our uplink interfaces list
-                if not iface_is_portchannel_member:
-                    uplink_interfaces.append(iface_name)
-
-                uplink_port_indices.append(mg_facts['minigraph_ptf_indices'][iface_name])
-    return uplink_interfaces, uplink_port_indices
-
-
 @pytest.fixture(scope="module")
 def one_interface_per_type(dut_dhcp_relay_data):
     """Fixture that returns one VLAN and one routed interface for testing.
