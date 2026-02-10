@@ -145,7 +145,7 @@ def enable_source_port_ip_in_relay(duthosts, rand_one_dut_hostname, tbinfo, requ
 
 
 @pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_interface_binding(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, relay_agent):
+def test_interface_binding(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, interface_type, relay_agent):
     if relay_agent == "isc-relay-agent":
         interfaces_to_test = dut_dhcp_relay_data.get(interface_type, [])
         if not interfaces_to_test:
@@ -302,7 +302,7 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, interface_type, valida
                           "testing_mode": testing_mode,
                           "kvm_support": True,
                           "relay_agent": relay_agent,
-                          "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                          "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
             ptf_runner(ptfhost,
                        "ptftests",
@@ -421,7 +421,7 @@ def test_dhcp_relay_with_source_port_ip_in_relay_enabled(ptfhost, dut_dhcp_relay
                           "enable_source_port_ip_in_relay": True,
                           "kvm_support": True,
                           "relay_agent": relay_agent,
-                          "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                          "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
             ptf_runner(ptfhost,
                        "ptftests",
@@ -514,7 +514,7 @@ def test_dhcp_relay_after_link_flap(ptfhost, dut_dhcp_relay_data, interface_type
                       "testing_mode": testing_mode,
                       "kvm_support": True,
                       "relay_agent": relay_agent,
-                      "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                      "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
         ptf_runner(ptfhost,
                    "ptftests",
@@ -583,7 +583,7 @@ def test_dhcp_relay_start_with_uplinks_down(ptfhost, dut_dhcp_relay_data, interf
                       "testing_mode": testing_mode,
                       "kvm_support": True,
                       "relay_agent": relay_agent,
-                      "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                      "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
         ptf_runner(ptfhost,
                    "ptftests",
@@ -632,7 +632,7 @@ def test_dhcp_relay_unicast_mac(ptfhost, one_interface_per_type, interface_type,
                   "interface_type": interface_type,
                   "kvm_support": True,
                   "relay_agent": relay_agent,
-                  "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                  "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
     ptf_runner(ptfhost,
                "ptftests",
@@ -678,7 +678,7 @@ def test_dhcp_relay_random_sport(ptfhost, dut_dhcp_relay_data, interface_type, v
                       "testing_mode": testing_mode,
                       "kvm_support": True,
                       "relay_agent": relay_agent,
-                      "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])}
+                      "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])}
 
         ptf_runner(ptfhost,
                    "ptftests",
@@ -749,7 +749,7 @@ def test_dhcp_relay_on_dualtor_standby(ptfhost, dut_dhcp_relay_data, interface_t
                                "testing_mode": testing_mode,
                                "kvm_support": True,
                                "relay_agent": relay_agent,
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])},
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])},
                        log_file=("/tmp/dhcp_relay_test.DHCPTest.test_dhcp_relay_on_dualtor_standby.{}.log"
                                  .format(dhcp_relay["downlink_iface"]["name"])),
                        is_python3=True)
@@ -825,7 +825,7 @@ def test_dhcp_relay_monitor_checksum_validation(ptfhost, dut_dhcp_relay_data, in
                                "testing_mode": testing_mode,
                                "kvm_support": True,
                                "relay_agent": relay_agent,
-                               "downlink_vlan_iface_name": str(dhcp_relay['downlink_vlan_iface']['name'])},
+                               "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])},
                        log_file=("/tmp/dhcp_relay_test.DHCPTest.default.{}.log"
                                  .format(dhcp_relay["downlink_iface"]["name"])),
                        is_python3=True)
