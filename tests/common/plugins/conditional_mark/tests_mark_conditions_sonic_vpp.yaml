@@ -1105,6 +1105,13 @@ platform_tests/mellanox/test_psu_power_threshold.py:
     conditions:
       - "asic_type in ['vpp']"
 
+platform_tests/nexthopai:
+  skip:
+    reason: Nexthop hardware-specific tests not supported on VPP
+    conditions_logical_operator: or
+    conditions:
+      - asic_type in ['vpp']
+
 platform_tests/sfp/test_sfpshow.py:
   skip:
     reason: >

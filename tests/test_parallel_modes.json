@@ -19,6 +19,7 @@
     "platform_tests/sfp/test_sfputil.py": "FULL_PARALLEL",
     "platform_tests/test_memory_exhaustion.py": "RP_FIRST",
     "platform_tests/test_reboot.py": "RP_FIRST",
+    "platform_tests/nexthopai/test_reboot_cause.py": "RP_FIRST",
     "platform_tests/test_reload_config.py": "RP_FIRST",
     "platform_tests/test_sequential_restart.py": "FULL_PARALLEL",
     "show_techsupport/test_techsupport.py": "FULL_PARALLEL",
