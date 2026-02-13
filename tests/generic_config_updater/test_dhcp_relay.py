@@ -13,7 +13,7 @@ from tests.common.gu_utils import (
         create_checkpoint, delete_checkpoint, rollback
 )
 from tests.dhcp_relay.conftest import \
-        setup_routed_dhcp_servers, one_interface_per_type     # noqa: F401
+        setup_routed_dhcp_servers, dut_dhcp_relay_data, one_interface_per_type     # noqa: F401
 from tests.dhcp_relay.dhcp_relay_utils import get_dhcrelay_process_cmdline
 
 
@@ -28,7 +28,7 @@ DHCP_RELAY_INTERVAL = 10
 SETUP_ENV_CP = "test_setup_checkpoint"
 
 
-def get_all_dhcp_relay_interfaces(dut_dhcp_relay_data):
+def get_all_dhcp_relay_interfaces(dut_dhcp_relay_data):    # noqa: F811
     """Get all DHCP relay interfaces from both vlan and routed types.
 
     Args:
