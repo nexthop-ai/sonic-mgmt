@@ -306,6 +306,18 @@ bgp/reliable_tsa/test_reliable_tsa_stable.py:
     conditions:
       - "is_chassis==False"
 
+bgp/test_4-byte_asn_community.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_4-byte_as_trans.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
 bgp/test_bgp_aggregate_address.py:
   skip:
     reason: "Skip for multi-ASIC testbed"
@@ -325,6 +337,12 @@ bgp/test_bgp_allow_list.py:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/20217 and '-v6-' in topo_name"
       - "'isolated' in topo_name"
+
+bgp/test_bgp_authentication.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_bbr.py:
   skip:
@@ -390,6 +408,10 @@ bgp/test_bgp_gr_helper.py:
       - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-mgmt/issues/18788"
 
 bgp/test_bgp_gr_helper.py::test_bgp_gr_helper_routes_perserved:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
   xfail:
     reason: "Test case has issue on the t0-isolated-d256u256s2 topo."
     conditions:
@@ -405,11 +427,12 @@ bgp/test_bgp_max_route.py::test_bgp_max_prefix_behavior:
 
 bgp/test_bgp_multipath_relax.py:
   skip:
-    reason: "Not supported topology backend."
+    reason: "Not supported topology backend OR no need to run in unified mode in addition to separate mode"
     conditions_logical_operator: or
     conditions:
       - "'backend' in topo_name"
       - "'t1-isolated' in topo_name"
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_operation_in_ro.py:
   skip:
@@ -419,9 +442,23 @@ bgp/test_bgp_operation_in_ro.py:
 
 bgp/test_bgp_operation_in_ro.py::test_bgp_operations_in_ro:
   skip:
-    reason: "Not supported before release 202503."
+    reason: "Not supported before release 202503 OR no need to run in unified mode in addition to separate mode"
+    conditions_logical_operator: or
     conditions:
       - "release in ['201811', '201911', '202012', '202205', '202211', '202305', '202311', '202405', '202411']"
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_peer_scale.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_peer_shutdown.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_peer_shutdown.py::test_bgp_peer_shutdown:
   xfail:
@@ -431,19 +468,35 @@ bgp/test_bgp_peer_shutdown.py::test_bgp_peer_shutdown:
 
 bgp/test_bgp_port_disable.py:
   skip:
-    reason: "Not supported on public branches."
+    reason: "Not supported on public branches OR no need to run in unified mode in addition to separate mode"
+    conditions_logical_operator: or
     conditions:
       - "'internal' not in branch"
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_bgp_prefix_list.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_queue.py:
   skip:
-    reason: "Not supported on mgmt device"
+    reason: "Not supported on mgmt device OR no need to run in unified mode in addition to separate mode"
+    conditions_logical_operator: or
     conditions:
       - "topo_type in ['m0', 'mx', 'm1']"
+      - "frr_mgmt_config == 'true'"
   xfail:
     reason: "Skipped due to issue https://github.com/sonic-net/sonic-mgmt/issues/18349"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/18349 and ('t1-isolated-d56u2' in topo_name or 't0-isolated-d32u32s2' in topo_name)"
+
+bgp/test_bgp_route_neigh_learning.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_route_neigh_learning.py::test_bgp_neighbor_route_learnning:
   xfail:
@@ -505,11 +558,23 @@ bgp/test_bgp_sentinel.py::test_bgp_sentinel[IPv6:
     conditions:
       - "https://github.com/sonic-net/sonic-buildimage/issues/23938"
 
+bgp/test_bgp_session.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
 bgp/test_bgp_session.py::test_bgp_session_interface_down:
   xfail:
     reason: "xfail for IPv6-only topologies, issue with trying to parse with IPv4 style"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/19916 and '-v6-' in topo_name"
+
+bgp/test_bgp_session_flap.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_session_flap.py::test_bgp_multiple_session_flaps:
   xfail:
@@ -572,6 +637,12 @@ bgp/test_bgp_speaker.py::test_bgp_speaker_bgp_sessions:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/19917 and '-v6-' in topo_name"
 
+bgp/test_bgp_stress_link_flap.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
 bgp/test_bgp_stress_link_flap.py::test_bgp_stress_link_flap[all]:
   xfail:
     reason: "Test case has issue on the t0-isolated-d256u256s2 topo."
@@ -599,10 +670,20 @@ bgp/test_bgp_suppress_fib.py::test_bgp_route_without_suppress:
       - "https://github.com/sonic-net/sonic-buildimage/issues/24679 and asic_type in ['mellanox', 'nvidia']"
 
 bgp/test_bgp_update_replication.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
   xfail:
     reason: "Testcase is not stable on dualtor-aa setup due to GH issue: https://github.com/sonic-net/sonic-mgmt/issues/21110"
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/21110 and 'dualtor-aa' in topo_name"
+
+bgp/test_bgp_update_timer.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_vnet.py:
   skip:
@@ -638,11 +719,37 @@ bgp/test_bgpmon_v6.py::test_bgpmon_no_ipv6_resolve_via_default:
   skip:
     reason: "Not applicable for passive bgpmon_v6"
 
+bgp/test_ipv6_bgp_scale.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_ipv6_nlri_over_ipv4.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_passive_peering.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
+
 bgp/test_ping_bgp_neighbor.py:
   skip:
-    reason: "Only supported on multi-asic system."
+    reason: "Only supported on multi-asic system OR no need to run in unified mode in addition to separate mode"
+    conditions_logical_operator: or
     conditions:
       - "(is_multi_asic is False)"
+      - "frr_mgmt_config == 'true'"
+
+bgp/test_prefix_list.py:
+  skip:
+    reason: "No need to run in unified mode in addition to separate mode"
+    conditions:
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_startup_tsa_tsb_service.py:
   skip:

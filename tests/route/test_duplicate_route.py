@@ -93,14 +93,14 @@ def verify_expected_loganalyzer_logs(
     """
     expectRegex = [
         ".*ERR.* meta_generic_validation_create: object key SAI_OBJECT_TYPE_ROUTE_ENTRY:.* already exists.*",
-        ".*ERR.* create_internal: create failed, object already exists, object type: SAI_OBJECT_TYPE_ROUTE_ENTRY.*",
         ".*ERR.* meta_sai_validate_route_entry:.* already exists.*",
-        ".*ERR.* bulkCreate: Failed to create object with type.*",
         ".*ERR.* SAI_COMMON_API_BULK_CREATE failed in syncd mode.*",
         ".*ERR.* flush_creating_entries: EntityBulker.flush create entries failed.*",
         ".*ERR.* addRoutePost: Failed to create route.*",
+        ".*ERR.* object key SAI_OBJECT_TYPE_ROUTE_ENTRY:.* already exists.*",
         ]
     ignoreRegex = [
+        ".*ERR.* create_internal: create failed, object already exists.*",
         ".*ERR.* create failed, object already exists.*",
         ".*ERR.* bulkCreate: Failed to create object.*",
         ".*ERR.* api SAI_COMMON_API_BULK_CREATE failed in syncd mode.*",
@@ -110,8 +110,6 @@ def verify_expected_loganalyzer_logs(
         ".*ERR.* Failed to add UC route .* Entry Already Exists.",
         r".*ERR.* uc_route_set_async_pre_send_validate .* \[Entry Already Exists\].",
         ".*ERR.* mlnx_create_route_async.* Entry Already Exists.",
-        ".*ERR.* object key SAI_OBJECT_TYPE_ROUTE_ENTRY:.* already exists.*",  # TODO move to expectRegex
-        ".*ERR.* addRoutePost: Failed to create route.*",  # TODO move to expectRegex
     ]
     if loganalyzer:
         # Skip if loganalyzer is disabled

@@ -1122,6 +1122,15 @@ platform_tests/mellanox/test_reboot_cause.py:
       - "asic_type not in ['mellanox', 'nvidia-bluefield']"
 
 #######################################
+#####          nexthop            #####
+#######################################
+platform_tests/nexthopai:
+  skip:
+    reason: "Nexthop hardware-specific tests only supported on Nexthop platforms"
+    conditions:
+      - "'x86_64-nexthop_' not in platform"
+
+#######################################
 #####            sfp              #####
 #######################################
 platform_tests/sfp/test_sfputil.py:

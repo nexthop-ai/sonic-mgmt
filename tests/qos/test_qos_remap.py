@@ -110,6 +110,11 @@ class TestQosRemap:
         if duthost.facts["asic_type"].lower() != "broadcom":
             pytest.skip(f"Test only supports Broadcom ASICs. Current ASIC: {duthost.facts['asic_type']}")
 
+        # Skip in case of Q3d
+        asic_name = duthost.get_asic_name().lower()
+        if asic_name in ["q3d"]:
+            pytest.skip("Test is not suppported for Q3d.")
+
         # Randomly select interface or PortChannel
         interface_name, ptf_port_index = select_test_interface_and_ptf_port(duthost, tbinfo)
         pytest_assert(interface_name and ptf_port_index is not None,
