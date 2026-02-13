@@ -17,7 +17,23 @@ def get_dhcrelay_process_cmdline(duthost, interface_name):
     Returns:
         Command line string of the dhcrelay process, or None if not found
     """
-    # Get PID of dhcrelay process for this interface
+    # First, check for unified dhcrelay process
+    cmd = "docker exec dhcp_relay supervisorctl status | grep 'isc-dhcpv4-relay-unified' | awk '{print $4}'"
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] == 0 and output['stdout'].strip():
+        # Unified process exists - get its command line
+        pid = output['stdout'].strip().rstrip(',')
+        cmd = 'docker exec dhcp_relay ps -fp {} | sed "1d"'.format(pid)
+        output = duthost.shell(cmd, module_ignore_errors=True)
+
+        if output['rc'] == 0:
+            cmdline = output['stdout'].strip()
+            # Verify the interface is included in the unified process
+            if '-id {}'.format(interface_name) in cmdline:
+                return cmdline
+
+    # Fall back to per-interface dhcrelay process (old architecture)
     cmd = "docker exec dhcp_relay supervisorctl status | grep 'dhcpv4-relay-{}' | awk '{{print $4}}'".format(
         interface_name)
     output = duthost.shell(cmd, module_ignore_errors=True)
