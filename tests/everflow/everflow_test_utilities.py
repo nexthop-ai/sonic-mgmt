@@ -1143,7 +1143,14 @@ class BaseEverflowTest(object):
                 # but DMAC and checksum are trickier. For now, update the TTL and SMAC, and
                 # mask off the DMAC and IP Checksum to verify the packet contents.
                 if self.mirror_type() == "egress":
-                    mirror_packet_sent[packet.IP].ttl -= 1
+                    inner_packet.set_do_not_care_scapy(packet.Ether, "dst")
+
+                    if self.acl_ip_version() == 4:
+                        mirror_packet_sent[packet.IP].ttl -= 1
+                        inner_packet.set_do_not_care_scapy(packet.IP, "chksum")
+                    else:
+                        mirror_packet_sent[packet.IPv6].hlim -= 1
+
                     if 't2' in setup['topo']:
                         if duthost.facts['switch_type'] == "voq":
                             mirror_packet_sent[packet.Ether].src = setup[direction]["ingress_router_mac"]
@@ -1152,9 +1159,6 @@ class BaseEverflowTest(object):
                         mirror_packet_sent[packet.Ether].src = setup[direction]["vlan_mac"]
                     else:
                         mirror_packet_sent[packet.Ether].src = setup[direction]["egress_router_mac"]
-
-                    inner_packet.set_do_not_care_scapy(packet.Ether, "dst")
-                    inner_packet.set_do_not_care_scapy(packet.IP, "chksum")
 
                 if multi_binding_acl:
                     inner_packet.set_do_not_care_scapy(packet.Ether, "dst")
