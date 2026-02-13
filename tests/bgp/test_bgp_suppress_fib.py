@@ -851,8 +851,8 @@ def test_bgp_route_with_suppress(duthost, tbinfo, nbrhosts, ptfadapter, localhos
                                  prepare_param, vrf_type, continuous_boot_times, generate_route_and_traffic_data,
                                  request, loganalyzer):
     asic_name = duthost.get_asic_name()
-    if vrf_type == USER_DEFINED_VRF and asic_name == 'th5':
-        pytest.xfail("vrf testing not supported on TH5")
+    if vrf_type == USER_DEFINED_VRF and asic_name in ("th5", "th6c", "th6p"):
+        pytest.xfail("vrf testing not supported on TH5/6")
 
     try:
         if vrf_type == USER_DEFINED_VRF:
