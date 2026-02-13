@@ -13,7 +13,7 @@ from tests.common.gu_utils import (
         create_checkpoint, delete_checkpoint, rollback
 )
 from tests.dhcp_relay.conftest import \
-        setup_routed_dhcp_servers, dut_dhcp_relay_data, one_interface_per_type     # noqa: F401
+        setup_routed_dhcp_servers, one_interface_per_type     # noqa: F401
 from tests.dhcp_relay.dhcp_relay_utils import get_dhcrelay_process_cmdline
 
 
@@ -26,6 +26,26 @@ logger = logging.getLogger(__name__)
 DHCP_RELAY_TIMEOUT = 120
 DHCP_RELAY_INTERVAL = 10
 SETUP_ENV_CP = "test_setup_checkpoint"
+
+
+def get_all_dhcp_relay_interfaces(dut_dhcp_relay_data):
+    """Get all DHCP relay interfaces from both vlan and routed types.
+
+    Args:
+        dut_dhcp_relay_data: Fixture data containing vlan and routed interfaces
+
+    Returns:
+        List of dicts with 'type' and 'data' keys for each interface
+    """
+    all_interfaces = []
+    for interface_type in ['vlan', 'routed']:
+        interfaces = dut_dhcp_relay_data.get(interface_type, [])
+        for iface in interfaces:
+            all_interfaces.append({
+                'type': interface_type,
+                'data': iface
+            })
+    return all_interfaces
 
 
 @pytest.fixture
@@ -101,116 +121,145 @@ def validate_dhcrelay_process(duthost, interface_name, expected_content_list, un
     )
 
 
-@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_dhcp_relay_remove_nonexistent_server(with_checkpoint, one_interface_per_type, interface_type):    # noqa: F811
-    """Test removing a non-existent dhcp_server (should fail).
+def test_dhcp_relay_remove_nonexistent_server(with_checkpoint, dut_dhcp_relay_data):    # noqa: F811
+    """Test removing a non-existent dhcp_server from all interfaces (should fail).
 
     Verifies that GCU rejects attempts to remove a DHCP server at an invalid index.
     """
     duthost = with_checkpoint
 
-    iface = one_interface_per_type.get(interface_type)
-    if not iface:
-        pytest.skip("No {} dhcp_relay interface available".format(interface_type))
-
-    interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet232"
-    table_name = "VLAN" if interface_type == "vlan" else "PORT"
-
-    num_servers = len(iface['downlink_iface']['dhcp_server_addrs'])
-
-    # Try to remove server at invalid index (way beyond the array)
-    dhcp_rm_nonexist_json = [
-        {
-            "op": "remove",
-            "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers + 10)
-        }]
-    dhcp_rm_nonexist_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_rm_nonexist_json)
+    all_interfaces = get_all_dhcp_relay_interfaces(dut_dhcp_relay_data)
+    if not all_interfaces:
+        pytest.skip("No DHCP relay interfaces available")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
     try:
-        output = apply_patch(duthost, json_data=dhcp_rm_nonexist_json, dest_file=tmpfile)
-        expect_op_failure(output)
+        # Test on each interface
+        for iface_info in all_interfaces:
+            interface_type = iface_info['type']
+            iface = iface_info['data']
+
+            interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet104"
+            table_name = "VLAN" if interface_type == "vlan" else "PORT"
+
+            num_servers = len(iface['downlink_iface']['dhcp_server_addrs'])
+
+            logger.info("Testing invalid remove on interface {}".format(interface_name))
+
+            # Try to remove server at invalid index (way beyond the array)
+            dhcp_rm_nonexist_json = [
+                {
+                    "op": "remove",
+                    "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers + 10)
+                }]
+            dhcp_rm_nonexist_json = format_json_patch_for_multiasic(
+                duthost=duthost, json_data=dhcp_rm_nonexist_json)
+
+            output = apply_patch(duthost, json_data=dhcp_rm_nonexist_json, dest_file=tmpfile)
+            expect_op_failure(output)
+
     finally:
         delete_tmpfile(duthost, tmpfile)
 
 
-@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_dhcp_relay_add_duplicate_server(with_checkpoint, one_interface_per_type, interface_type):    # noqa: F811
-    """Test adding a duplicate dhcp_server (should fail).
+def test_dhcp_relay_add_duplicate_server(with_checkpoint, dut_dhcp_relay_data):    # noqa: F811
+    """Test adding a duplicate dhcp_server to all interfaces (should fail).
 
     Verifies that GCU rejects attempts to add a DHCP server that already exists.
     """
     duthost = with_checkpoint
 
-    iface = one_interface_per_type.get(interface_type)
-    if not iface:
-        pytest.skip("No {} dhcp_relay interface available".format(interface_type))
-
-    interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet232"
-    table_name = "VLAN" if interface_type == "vlan" else "PORT"
-
-    existing_server = iface['downlink_iface']['dhcp_server_addrs'][0]  # Get first existing server
-
-    # Try to add the same server again
-    dhcp_add_duplicate_json = [
-        {
-            "op": "add",
-            "path": "/{}/{}/dhcp_servers/0".format(table_name, interface_name),
-            "value": existing_server
-        }]
-    dhcp_add_duplicate_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_add_duplicate_json)
+    all_interfaces = get_all_dhcp_relay_interfaces(dut_dhcp_relay_data)
+    if not all_interfaces:
+        pytest.skip("No DHCP relay interfaces available")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
     try:
-        output = apply_patch(duthost, json_data=dhcp_add_duplicate_json, dest_file=tmpfile)
-        expect_op_failure(output)
+        # Test on each interface
+        for iface_info in all_interfaces:
+            interface_type = iface_info['type']
+            iface = iface_info['data']
+
+            interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet104"
+            table_name = "VLAN" if interface_type == "vlan" else "PORT"
+
+            existing_servers = iface['downlink_iface']['dhcp_server_addrs']
+            if len(existing_servers) == 0:
+                logger.info("Skipping {} - no DHCP servers configured".format(interface_name))
+                continue
+
+            existing_server = existing_servers[0]  # Get first existing server
+
+            logger.info("Testing duplicate add on interface {}".format(interface_name))
+
+            # Try to add the same server again
+            dhcp_add_duplicate_json = [
+                {
+                    "op": "add",
+                    "path": "/{}/{}/dhcp_servers/0".format(table_name, interface_name),
+                    "value": existing_server
+                }]
+            dhcp_add_duplicate_json = format_json_patch_for_multiasic(
+                duthost=duthost, json_data=dhcp_add_duplicate_json)
+
+            output = apply_patch(duthost, json_data=dhcp_add_duplicate_json, dest_file=tmpfile)
+            expect_op_failure(output)
+
     finally:
         delete_tmpfile(duthost, tmpfile)
 
 
-@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_dhcp_relay_add_new_server(with_checkpoint, one_interface_per_type, interface_type):    # noqa: F811
-    """Test adding a new dhcp_server (should succeed).
+def test_dhcp_relay_add_new_server(with_checkpoint, dut_dhcp_relay_data):    # noqa: F811
+    """Test adding a new dhcp_server to all interfaces (should succeed).
 
-    Verifies that GCU can successfully add a new DHCP server to the list.
+    Verifies that GCU can successfully add a new DHCP server to both VLAN and routed interfaces.
     """
     duthost = with_checkpoint
 
-    iface = one_interface_per_type.get(interface_type)
-    if not iface:
-        pytest.skip("No {} dhcp_relay interface available".format(interface_type))
-
-    interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet232"
-    table_name = "VLAN" if interface_type == "vlan" else "PORT"
-
-    new_server = "192.0.0.99"  # definitely not in the existing list
-
-    num_servers = len(iface['downlink_iface']['dhcp_server_addrs'])
-
-    # Add a new DHCP server
-    dhcp_add_json = [
-        {
-            "op": "add",
-            "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers),
-            "value": new_server
-        }]
-    dhcp_add_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_add_json)
+    all_interfaces = get_all_dhcp_relay_interfaces(dut_dhcp_relay_data)
+    if not all_interfaces:
+        pytest.skip("No DHCP relay interfaces available")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
     try:
-        output = apply_patch(duthost, json_data=dhcp_add_json, dest_file=tmpfile)
-        expect_op_success(duthost, output)
+        num_interfaces = len(all_interfaces)
+        # Process each interface
+        for idx, iface_info in enumerate(all_interfaces):
+            interface_type = iface_info['type']
+            iface = iface_info['data']
 
-        pytest_assert(
-            duthost.is_service_fully_started('dhcp_relay'),
-            "dhcp_relay service is not running"
-        )
+            interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet104"
+            table_name = "VLAN" if interface_type == "vlan" else "PORT"
+
+            new_server = "192.0.0.99"
+            num_servers = len(iface['downlink_iface']['dhcp_server_addrs'])
+
+            logger.info("Adding server {} to interface {}".format(new_server, interface_name))
+
+            # Add a new DHCP server
+            dhcp_add_json = [
+                {
+                    "op": "add",
+                    "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers),
+                    "value": new_server
+                }]
+            dhcp_add_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_add_json)
+
+            output = apply_patch(duthost, json_data=dhcp_add_json, dest_file=tmpfile)
+            expect_op_success(duthost, output)
+            pytest_assert(
+                duthost.is_service_fully_started('dhcp_relay'),
+                "dhcp_relay service is not running"
+            )
+            if idx < num_interfaces - 1:
+                # For all but the last interface, just validate immediately
+                validate_dhcrelay_process(duthost, interface_name, [new_server], [])
 
         validate_dhcrelay_process(duthost, interface_name, [new_server], [])
 
@@ -218,43 +267,57 @@ def test_dhcp_relay_add_new_server(with_checkpoint, one_interface_per_type, inte
         delete_tmpfile(duthost, tmpfile)
 
 
-@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_dhcp_relay_remove_existing_server(with_checkpoint, one_interface_per_type, interface_type):    # noqa: F811
-    """Test removing an existing dhcp_server (should succeed).
+def test_dhcp_relay_remove_existing_server(with_checkpoint, dut_dhcp_relay_data):    # noqa: F811
+    """Test removing an existing dhcp_server from all interfaces (should succeed).
 
-    Verifies that GCU can successfully remove a DHCP server from the list.
+    Verifies that GCU can successfully remove a DHCP server from both VLAN and routed interfaces.
     """
     duthost = with_checkpoint
 
-    iface = one_interface_per_type.get(interface_type)
-    if not iface:
-        pytest.skip("No {} dhcp_relay interface available".format(interface_type))
-
-    interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet232"
-    table_name = "VLAN" if interface_type == "vlan" else "PORT"
-
-    existing_servers = iface['downlink_iface']['dhcp_server_addrs']
-    num_servers = len(existing_servers)
-
-    # Remove the last DHCP server
-    server_to_remove = existing_servers[-1]
-    dhcp_rm_json = [
-        {
-            "op": "remove",
-            "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers - 1)
-        }]
-    dhcp_rm_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_rm_json)
+    all_interfaces = get_all_dhcp_relay_interfaces(dut_dhcp_relay_data)
+    if not all_interfaces:
+        pytest.skip("No DHCP relay interfaces available")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
     try:
-        output = apply_patch(duthost, json_data=dhcp_rm_json, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-        pytest_assert(
-            duthost.is_service_fully_started('dhcp_relay'),
-            "dhcp_relay service is not running"
-        )
+        num_interfaces = len(all_interfaces)
+        # Process each interface
+        for idx, iface_info in enumerate(all_interfaces):
+            interface_type = iface_info['type']
+            iface = iface_info['data']
+
+            interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet104"
+            table_name = "VLAN" if interface_type == "vlan" else "PORT"
+
+            existing_servers = iface['downlink_iface']['dhcp_server_addrs']
+            num_servers = len(existing_servers)
+
+            if num_servers == 0:
+                logger.info("Skipping {} - no DHCP servers configured".format(interface_name))
+                continue
+
+            # Remove the last DHCP server
+            server_to_remove = existing_servers[-1]
+            logger.info("Removing server {} from interface {}".format(server_to_remove, interface_name))
+
+            dhcp_rm_json = [
+                {
+                    "op": "remove",
+                    "path": "/{}/{}/dhcp_servers/{}".format(table_name, interface_name, num_servers - 1)
+                }]
+            dhcp_rm_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_rm_json)
+
+            output = apply_patch(duthost, json_data=dhcp_rm_json, dest_file=tmpfile)
+            expect_op_success(duthost, output)
+            pytest_assert(
+                duthost.is_service_fully_started('dhcp_relay'),
+                "dhcp_relay service is not running"
+            )
+            if idx < num_interfaces - 1:
+                # For all but the last interface, just validate immediately
+                validate_dhcrelay_process(duthost, interface_name, [server_to_remove], [])
 
         validate_dhcrelay_process(duthost, interface_name, [], [server_to_remove])
 
@@ -262,43 +325,58 @@ def test_dhcp_relay_remove_existing_server(with_checkpoint, one_interface_per_ty
         delete_tmpfile(duthost, tmpfile)
 
 
-@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
-def test_dhcp_relay_replace_server(with_checkpoint, one_interface_per_type, interface_type):    # noqa: F811
-    """Test replacing a dhcp_server (should succeed).
+def test_dhcp_relay_replace_server(with_checkpoint, dut_dhcp_relay_data):    # noqa: F811
+    """Test replacing a dhcp_server on all interfaces (should succeed).
 
-    Verifies that GCU can successfully replace a DHCP server in the list.
+    Verifies that GCU can successfully replace a DHCP server on both VLAN and routed interfaces.
     """
     duthost = with_checkpoint
 
-    iface = one_interface_per_type.get(interface_type)
-    if not iface:
-        pytest.skip("No {} dhcp_relay interface available".format(interface_type))
-
-    interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet232"
-    table_name = "VLAN" if interface_type == "vlan" else "PORT"
-
-    new_server = "192.0.0.88"
-    old_server = iface['downlink_iface']['dhcp_server_addrs'][0]
-
-    # Replace the first DHCP server
-    dhcp_replace_json = [
-        {
-            "op": "replace",
-            "path": "/{}/{}/dhcp_servers/0".format(table_name, interface_name),
-            "value": new_server
-        }]
-    dhcp_replace_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_replace_json)
+    all_interfaces = get_all_dhcp_relay_interfaces(dut_dhcp_relay_data)
+    if not all_interfaces:
+        pytest.skip("No DHCP relay interfaces available")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
 
     try:
-        output = apply_patch(duthost, json_data=dhcp_replace_json, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-        pytest_assert(
-            duthost.is_service_fully_started('dhcp_relay'),
-            "dhcp_relay service is not running"
-        )
+        num_interfaces = len(all_interfaces)
+        # Process each interface
+        for idx, iface_info in enumerate(all_interfaces):
+            interface_type = iface_info['type']
+            iface = iface_info['data']
+
+            interface_name = iface['downlink_iface']['name']  # e.g., "Vlan1000" or "Ethernet104"
+            table_name = "VLAN" if interface_type == "vlan" else "PORT"
+
+            existing_servers = iface['downlink_iface']['dhcp_server_addrs']
+            if len(existing_servers) == 0:
+                logger.info("Skipping {} - no DHCP servers configured".format(interface_name))
+                continue
+
+            new_server = "192.0.0.88"
+            old_server = existing_servers[0]
+
+            logger.info("Replacing server {} with {} on interface {}".format(old_server, new_server, interface_name))
+
+            # Replace the first DHCP server
+            dhcp_replace_json = [
+                {
+                    "op": "replace",
+                    "path": "/{}/{}/dhcp_servers/0".format(table_name, interface_name),
+                    "value": new_server
+                }]
+            dhcp_replace_json = format_json_patch_for_multiasic(duthost=duthost, json_data=dhcp_replace_json)
+
+            output = apply_patch(duthost, json_data=dhcp_replace_json, dest_file=tmpfile)
+            expect_op_success(duthost, output)
+            pytest_assert(
+                duthost.is_service_fully_started('dhcp_relay'),
+                "dhcp_relay service is not running"
+            )
+            if idx < num_interfaces - 1:
+                # For all but the last interface, just validate immediately
+                validate_dhcrelay_process(duthost, interface_name, [old_server, new_server], [])
 
         validate_dhcrelay_process(duthost, interface_name, [new_server], [old_server])
 
@@ -327,7 +405,6 @@ def test_dhcp_relay_cross_table_operations(with_checkpoint, one_interface_per_ty
     vlan_num_servers = len(vlan_iface['downlink_iface']['dhcp_server_addrs'])
 
     routed_name = routed_iface['downlink_iface']['name']  # e.g., "Ethernet232"
-    routed_server_to_remove = routed_iface['downlink_iface']['dhcp_server_addrs'][-1]
     routed_num_servers = len(routed_iface['downlink_iface']['dhcp_server_addrs'])
 
     new_vlan_server = "192.0.0.77"
@@ -356,6 +433,6 @@ def test_dhcp_relay_cross_table_operations(with_checkpoint, one_interface_per_ty
         )
 
         validate_dhcrelay_process(duthost, vlan_name, [new_vlan_server], [])
-        validate_dhcrelay_process(duthost, routed_name, [], [routed_server_to_remove])
+        validate_dhcrelay_process(duthost, routed_name, [new_vlan_server], [])
     finally:
         delete_tmpfile(duthost, tmpfile)
