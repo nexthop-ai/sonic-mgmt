@@ -186,7 +186,9 @@ def get_port_and_portchannel_members(port_name, all_port_indices, duts_minigraph
     """
 
     # for T2(except UT2) topologies, no need to append, as we are already filtering out the whole upstream lc ports
-    if tbinfo['topo']['type'] == 't2' and 't2_single_node' not in tbinfo['topo']['name']:
+    if (tbinfo['topo']['type'] == 't2') and \
+       ('t2_single_node' not in tbinfo['topo']['name']) and \
+       ('t2-single-node' not in tbinfo['topo']['name']):
         return []
 
     # Search all ASICs for port channel information
