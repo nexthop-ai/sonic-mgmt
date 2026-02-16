@@ -12,7 +12,6 @@ from tests.ptf_runner import ptf_runner
 from tests.common.utilities import wait_until
 from tests.common.helpers.dut_utils import check_link_status
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.utilities import skip_release
 from tests.common import config_reload
 from tests.common.platform.processes_utils import wait_critical_processes
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
@@ -121,7 +120,7 @@ def enable_source_port_ip_in_relay(duthosts, rand_one_dut_hostname, tbinfo, requ
                 if not duthost.is_service_fully_started("dhcp_relay"):
                     return False
                 result = duthost.shell("docker exec dhcp_relay ps -ef | grep dhcrelay | grep -v grep",
-                                    module_ignore_errors=True)
+                                       module_ignore_errors=True)
                 return result['rc'] == 0 and '-si' in result['stdout']
 
             pytest_assert(

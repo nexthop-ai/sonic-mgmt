@@ -55,7 +55,9 @@ def ignore_expected_loganalyzer_exceptions(
 
 @pytest.mark.parametrize("interface_type", ["vlan"])
 @pytest.mark.skip_config_dhcpv4_relay_agent
-def test_dhcpv4_feature_flag_validation(duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, relay_agent, interface_type):
+def test_dhcpv4_feature_flag_validation(
+    duthosts, rand_one_dut_hostname, dut_dhcp_relay_data, relay_agent, interface_type
+):
     """
     Test to verify DHCPv4 feature flag behavior:
     1. Enable feature flag and verify sonic-dhcpv4 process starts.
