@@ -468,9 +468,6 @@ def find_all_matches(nodeid, conditions, session, dynamic_update_skip_reason, ba
     conditional_marks = {}
     matches = []
 
-    # Normalize nodeid - strip 'tests/' prefix if present
-    nodeid = nodeid.removeprefix("tests/")
-
     for condition in conditions:
         # condition is a dict which has only one item, so we use condition.keys()[0] to get its key.
         condition_entry = list(condition.keys())[0]
