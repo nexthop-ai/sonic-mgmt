@@ -1,0 +1,15 @@
+name: Scan for Failing PRs
+
+on:
+  # Run every 2 hours
+  schedule:
+    - cron: '0 */2 * * *'
+
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  scan-prs:
+    uses: nexthop-ai/nh/.github/workflows/scan-failing-prs.reusable.yml@main
+    secrets:
+      GH_TOKEN: ${{ secrets.RABBIT_NEXTHOP_PAT }}
