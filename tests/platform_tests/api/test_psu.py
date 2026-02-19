@@ -12,6 +12,7 @@ from tests.common.utilities import skip_release_for_platform, wait_until
 from tests.platform_tests.api.conftest import skip_absent_psu
 from tests.common.platform.device_utils import platform_api_conn, start_platform_api_service    # noqa: F401
 from tests.platform_tests.utils import daemon_start, daemon_stop, start_cpu_stress, stop_cpu_stress
+from tests.platform_tests.pddf.pddf_helpers import check_pddf_device_json_exists
 
 
 ###################################################
@@ -395,8 +396,13 @@ class TestPsuApi(PlatformApiTestBase):
         logger.info("Nominal Operation Load Sharing Check")
         check_load_sharing(psu_max_powers)
 
+        if not check_pddf_device_json_exists(duthost, skip_if_missing=False):
+            logger.info("Skipping increased load test - platform does not support PDDF")
+            self.assert_expectations()
+            return
+
         logger.info("Increased Power Consumption Load Sharing Check")
-        logger.info("Increased fan speed")
+        logger.info("Increasing fan speed")
         if not self.expect(daemon_stop(duthost, "thermalctld"), "Failed to stop thermalctld daemon"):
             logger.warning("Skipping high load test - thermalctld could not be stopped")
             self.assert_expectations()
@@ -406,7 +412,7 @@ class TestPsuApi(PlatformApiTestBase):
 
         try:
             duthost.shell("sudo pddf_fanutil setspeed 100", module_ignore_errors=True)
-            logger.info("Increased CPU Load")
+            logger.info("Increasing CPU Load")
             max_stress_duration_s = (int)(TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC+SAMPLE_WINDOW_FOR_AVERAGE_POWER_S) * 2
             start_cpu_stress(duthost, max_stress_duration_s)
             time.sleep(TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC)
