@@ -242,9 +242,11 @@ def calculate_counters_per_pkts(pkts, is_v6=False):
                 elif scapy.DHCP6_RelayReply in pkt:
                     message_type_int = pkt[scapy.DHCP6_RelayReply].msgtype  # Relay-Reply
             else:
-                for opt, val in pkt[scapy.DHCP].options:
-                    if opt == "message-type":
-                        message_type_int = val
+                for data in pkt[scapy.DHCP].options:
+                    if isinstance(data, tuple):
+                        opt, val = data
+                        if opt == "message-type":
+                            message_type_int = val
             message_type_str = (
                 (SUPPORTED_DHCPV6_TYPE if is_v6 else SUPPORTED_DHCPV4_TYPE)[message_type_int - 1]
                 if message_type_int is not None and message_type_int > 0
