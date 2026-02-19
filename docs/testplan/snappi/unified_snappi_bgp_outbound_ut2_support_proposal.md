@@ -115,29 +115,29 @@ Each vendor configuration under a topology type contains:
 'VENDOR_NAME': {
     # Device hostnames list
     'device_hostnames': [...],  # Order differs by topology type
-    
+
     # Lower tier device info
     'lower_tier_info': {
         'dut_ip': '...',           # Management IP
         'ports': [...],            # Snappi-connected ports
         'interconnect_port': '...', # Port connecting to DUT
     },
-    
+
     # Snappi ports connected to lower tier
     'lower_tier_snappi_ports': [...],
-    
+
     # Fanout configuration for uplink
     'uplink_fanout': {
         'fanout_ip': '...',
         'port_mapping': [...]
     },
-    
+
     # Portchannel members by ASIC
     'uplink_portchannel_members': {
         'asic0': {...},
         'asic1': {...},  # or None for single-ASIC
     },
-    
+
     # DUT-side interconnect port
     'dut_interconnect_port': {'port_name': '...', 'asic_value': '...'},
 }
