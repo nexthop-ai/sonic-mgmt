@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 CUSTOMIZED_BGP_ROUTER_ID = "8.8.8.8"
 
 
-def set_router_id_config(duthost, router_id=None):
+def set_router_id_config(duthost, router_id=None, tbinfo=None):
     if router_id is None:
         raise ValueError("router_id must be provided for configuration")
     # Check if FRR management framework is enabled
@@ -31,10 +31,10 @@ def set_router_id_config(duthost, router_id=None):
         # restart bgp is needed in non-UMF mode
         cmd = f'sonic-db-cli CONFIG_DB hset "DEVICE_METADATA|localhost" "bgp_router_id" "{router_id}"'
         duthost.shell(cmd, module_ignore_errors=True)
-        restart_bgp(duthost)
+        restart_bgp(duthost, tbinfo)
 
 
-def unset_router_id_config(duthost):
+def unset_router_id_config(duthost, tbinfo=None):
     if duthost.get_frr_mgmt_framework_config():
         # no need to restart bgp in UMF mode
         cmd = 'sonic-db-cli CONFIG_DB hdel "BGP_GLOBALS|default" "router_id"'
@@ -43,7 +43,7 @@ def unset_router_id_config(duthost):
         # restart bgp is needed in non-UMF mode
         cmd = 'sonic-db-cli CONFIG_DB hdel "DEVICE_METADATA|localhost" "bgp_router_id"'
         duthost.shell(cmd, module_ignore_errors=True)
-        restart_bgp(duthost)
+        restart_bgp(duthost, tbinfo)
 
 
 def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, nbrhosts, tbinfo):
@@ -150,15 +150,15 @@ def restart_bgp(duthost, tbinfo):
 @pytest.fixture()
 def router_id_setup_and_teardown(duthosts, enum_frontend_dut_hostname, tbinfo):
     duthost = duthosts[enum_frontend_dut_hostname]
-    set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID)
+    set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID, tbinfo)
     yield
-    unset_router_id_config(duthost)
+    unset_router_id_config(duthost, tbinfo)
 
 
 @pytest.fixture(scope="function")
 def router_id_loopback_setup_and_teardown(duthosts, enum_frontend_dut_hostname, loopback_ip, tbinfo):
     duthost = duthosts[enum_frontend_dut_hostname]
-    set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID)
+    set_router_id_config(duthost, CUSTOMIZED_BGP_ROUTER_ID, tbinfo)
     duthost.shell("sonic-db-cli CONFIG_DB del \"LOOPBACK_INTERFACE|Loopback0|{}/32\"".format(loopback_ip))
     restart_bgp(duthost, tbinfo)
 
@@ -166,7 +166,7 @@ def router_id_loopback_setup_and_teardown(duthosts, enum_frontend_dut_hostname, 
 
     duthost.shell("sonic-db-cli CONFIG_DB hset \"LOOPBACK_INTERFACE|Loopback0|{}/32\" \"NULL\" \"NULL\""
                   .format(loopback_ip), module_ignore_errors=True)
-    unset_router_id_config(duthost)
+    unset_router_id_config(duthost, tbinfo)
     restart_bgp(duthost, tbinfo)
 
 
