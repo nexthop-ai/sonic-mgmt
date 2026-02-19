@@ -521,7 +521,7 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
                          siaddr=DEFAULT_ROUTE_IP,
                          giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
                          chaddr=my_chaddr)
-    circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
+    circuit_id_string = setup["vlan_ips"]["V4"]
     option82 = struct.pack('BB', 1, len(circuit_id_string))
     option82 += circuit_id_string.encode('utf-8')
     remote_id_string = setup["ipv4_vlan_mac"]
