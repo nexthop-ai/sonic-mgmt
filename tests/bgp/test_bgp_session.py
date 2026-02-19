@@ -155,7 +155,7 @@ def check_frr_mgmt_framework_config(duthost):
 
 
 def verify_bgp_session_down(duthost, bgp_neighbor):
-    """Verify the bgp session to the DUT is established."""
+    """Verify the bgp session to the DUT is not established."""
     bgp_facts = duthost.bgp_facts()["ansible_facts"]
     return (
         bgp_neighbor in bgp_facts["bgp_neighbors"]
@@ -207,34 +207,39 @@ def test_bgp_session_interface_down(duthosts, rand_one_dut_hostname, fanouthosts
     logger.debug("duthost {} neighbor {} interface {} test type {} inject failure type {}".format(
         duthost, neighbor_name, local_interfaces, test_type, failure_type))
 
-    if failure_type == "interface":
-        for port in local_interfaces:
-            fanout, fanout_port = fanout_switch_port_lookup(fanouthosts, duthost.hostname, port)
-            if fanout and fanout_port:
-                logger.info("shutdown interface fanout {} port {}".format(fanout, fanout_port))
-                fanout.shutdown(fanout_port)
+    try:
+        if failure_type == "interface":
+            for port in local_interfaces:
+                fanout, fanout_port = fanout_switch_port_lookup(fanouthosts, duthost.hostname, port)
+                if fanout and fanout_port:
+                    logger.info("shutdown interface fanout {} port {}".format(fanout, fanout_port))
+                    fanout.shutdown(fanout_port)
+                    time.sleep(1)
+
+        elif failure_type == "neighbor":
+            for port in local_interfaces:
+                neighbor_port = setup['neighhosts'][neighbor]['interface'][port]['port']
+                logger.info("shutdown interface neighbor {} port {}".format(neighbor_name, neighbor_port))
+                nbrhosts[neighbor_name]['host'].shutdown(neighbor_port)
                 time.sleep(1)
 
-    elif failure_type == "neighbor":
-        for port in local_interfaces:
-            neighbor_port = setup['neighhosts'][neighbor]['interface'][port]['port']
-            logger.info("shutdown interface neighbor {} port {}".format(neighbor_name, neighbor_port))
-            nbrhosts[neighbor_name]['host'].shutdown(neighbor_port)
-            time.sleep(1)
-
-    duthost.shell('show ip bgp summary', module_ignore_errors=True)
-
-    try:
-        # default keepalive is 60 seconds, timeout 180 seconds. Hence wait for 180 seconds before timeout.
+        duthost.shell('show ip bgp summary', module_ignore_errors=True)
+        # default keepalive is 60 seconds, timeout 180 seconds. Add 30s buffer for polling/processing delays.
         pytest_assert(
-            wait_until(180, 10, 0, verify_bgp_session_down, duthost, neighbor),
+            wait_until(210, 10, 0, verify_bgp_session_down, duthost, neighbor),
             "neighbor {} state is still established".format(neighbor)
         )
 
         if test_type == "bgp_docker":
-            duthost.shell("systemctl restart bgp")
+            duthost.shell("sudo systemctl reset-failed bgp", module_ignore_errors=True)
+            duthost.shell("sudo systemctl restart bgp")
+            pytest_assert(wait_until(300, 10, 0, duthost.is_service_fully_started, "bgp"),
+                          "BGP service not fully started after restart")
         elif test_type == "swss_docker":
-            duthost.shell("systemctl restart swss")
+            duthost.shell("sudo systemctl reset-failed swss", module_ignore_errors=True)
+            duthost.shell("sudo systemctl restart swss")
+            pytest_assert(wait_until(300, 10, 0, duthost.is_service_fully_started, "swss"),
+                          "SWSS service not fully started after restart")
         elif test_type == "reboot":
             # Use warm reboot for t0, cold reboot for others
             topo_name = tbinfo["topo"]["name"]
