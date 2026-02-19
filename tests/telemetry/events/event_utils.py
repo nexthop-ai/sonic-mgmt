@@ -123,7 +123,7 @@ def find_test_vlan(duthost):
     for vlan in vlan_brief:
         # Find dhcrelay process
         dhcrelay_process = duthost.shell("docker exec dhcp_relay supervisorctl status \
-                                         | grep isc-dhcpv4-relay-%s | awk '{print $1}'" % vlan)['stdout']
+                                         | grep isc-dhcpv4-relay-unified | awk '{print $1}'")['stdout']
         dhcp6relay_process = duthost.shell("docker exec dhcp_relay supervisorctl status \
                                            | grep dhcp6relay | awk '{print $1}'")['stdout']
         interface_ipv4 = vlan_brief[vlan]['interface_ipv4']
