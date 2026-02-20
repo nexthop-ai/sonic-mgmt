@@ -17,7 +17,12 @@ __all__ = [
     'disable_macsec_port',
     'get_macsec_enable_status',
     'get_macsec_profile',
+<<<<<<< HEAD
     'adjust_mtu',
+||||||| 640e40e33
+    'get_macsec_profile'
+=======
+>>>>>>> upstream/master
     'wait_for_macsec_cleanup'
 ]
 
@@ -283,6 +288,7 @@ def setup_macsec_configuration(duthost, ctrl_links, profile_name, default_priori
     load_all_macsec_info(duthost, ctrl_links, tbinfo)
 
 
+<<<<<<< HEAD
 def adjust_mtu(duthost, ctrl_links, enable, original_mtus):
     _adjusted_list = set()
     MACSEC_OVERHEAD = 32
@@ -372,6 +378,9 @@ def adjust_mtu(duthost, ctrl_links, enable, original_mtus):
     return original_mtus
 
 
+||||||| 640e40e33
+=======
+>>>>>>> upstream/master
 def wait_for_macsec_cleanup(host, interfaces, timeout=90):
     """Wait for MACsec daemon to automatically clean up all MACsec entries.
 

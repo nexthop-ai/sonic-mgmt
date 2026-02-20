@@ -32,7 +32,13 @@ LOOP_TIMES_LEVEL_MAP = {
 
 
 @pytest.fixture(scope='module')
+<<<<<<< HEAD
 def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts, tbinfo):
+||||||| 640e40e33
+def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts):
+=======
+def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts, show_ip_interface_cmd):
+>>>>>>> upstream/master
     duthost = duthosts[rand_one_dut_hostname]
 
     if tbinfo['topo']['type'] == 't2' and is_chassis(duthost):
@@ -58,7 +64,7 @@ def setup(duthosts, rand_one_dut_hostname, nbrhosts, fanouthosts, tbinfo):
     pytest_assert(wait_until(30, 5, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())),
                   "Not all BGP sessions are established on DUT")
 
-    ip_intfs = duthost.show_and_parse('show ip interface')
+    ip_intfs = duthost.show_and_parse(show_ip_interface_cmd)
     logger.debug("setup ip_intfs {}".format(ip_intfs))
 
     # Create a mapping of neighbor IP to interfaces and their details

@@ -139,20 +139,22 @@ wget "https://sonic-build.azurewebsites.net/api/sonic/artifacts?branchName=maste
 
 Follow the instructions from [sonic-platform-vpp](https://github.com/sonic-net/sonic-platform-vpp?tab=readme-ov-file#building-a-kvm-vm-image) and build a **kvm** vm image.
 
-__Note: make sure you rename the vpp image to `sonic-vs.img`.__
-
-```
-mv sonic-vpp.img.gz sonic-vs.img.gz
-```
-
 ### 2. Unzip the image and copy it into `~/sonic-vm/images/` and also `~/veos-vm/images`
-
+* vs image
 ```
 gzip -d sonic-vs.img.gz
 mkdir -p ~/sonic-vm/images
 cp sonic-vs.img ~/sonic-vm/images
 mkdir -p ~/veos-vm/images
 mv sonic-vs.img ~/veos-vm/images
+```
+* vpp image
+```
+gzip -d sonic-vpp.img.gz
+mkdir -p ~/sonic-vm/images
+cp sonic-vpp.img ~/sonic-vm/images
+mkdir -p ~/veos-vm/images
+mv sonic-vpp.img ~/veos-vm/images
 ```
 
 ## Setup sonic-mgmt docker
@@ -405,6 +407,37 @@ Once the topology has been created, we need to give the DUT an initial configura
 ```
 ./testbed-cli.sh -t vtestbed.yaml -m veos_vtb deploy-mg vms-kvm-t0 veos_vtb password.txt
 ```
+
+### IPv6-Only Management Network (Optional)
+
+If you want to configure the DUT with IPv6-only management (no IPv4 on the management interface), use the `--ipv6-only-mgmt` flag:
+
+1. **Set up the local NTP server** (required for IPv6-only management):
+   ```
+   ./setup-ntp-server.sh start
+   ```
+   This deploys a Chrony NTP server container on the management network that DUTs can reach via IPv6.
+
+2. **Generate minigraph with IPv6-only management**:
+   ```
+   ./testbed-cli.sh -t vtestbed.yaml -m veos_vtb gen-mg vms-kvm-t0 veos_vtb password.txt --ipv6-only-mgmt
+   ```
+
+3. **Deploy minigraph with IPv6-only management**:
+   ```
+   ./testbed-cli.sh -t vtestbed.yaml -m veos_vtb deploy-mg vms-kvm-t0 veos_vtb password.txt --ipv6-only-mgmt
+   ```
+
+4. **Access the DUT via IPv6**:
+   ```
+   ssh admin@fec0::ffff:afa:1
+   ```
+   The IPv6 address is defined as `ansible_hostv6` in the inventory file (e.g., `veos_vtb`).
+
+For detailed information about IPv6-only management setup, including configuration options, NTP server setup, and troubleshooting, see [IPv6 Management Setup Guide](../ipv6-management-setup.md).
+
+---
+
 Verify the DUT is created successfully
 In your host run
 ```
