@@ -217,6 +217,7 @@ def wait_until(timeout, interval, delay, condition, *args, **kwargs):
             condition.__name__, timeout), file=sys.stderr)
         return False
 
+
 def check_orchagent_ready(test_case):
     """Check if orchagent restart check succeeds"""
     try:
@@ -1416,8 +1417,22 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
                     pkt_dst_mac, src_port_mac, src_port_ip, dst_port_ip, dst_port_id,
                     src_port_id, exp_ttl, ip_ttl)
 
-            # Read Counters
-            time.sleep(3)
+            # Read Counters - wait for counters to be polled
+            def check_counters_updated():
+                """Check if queue counters have been updated"""
+                try:
+                    _, queue_results_current = sai_thrift_read_port_counters(
+                        self.dst_client, asic_type, sai_dst_port_id)
+                    # Check if any queue counter has changed from baseline
+                    return any(curr != base for curr, base in zip(queue_results_current, queue_results_base))
+                except Exception:
+                    return False
+
+            # Wait up to 10 seconds for counters to update, checking every 1 second
+            if not wait_until(10, 1, 0, check_counters_updated):
+                print("Warning: Counters may not have been updated within timeout", file=sys.stderr)
+
+            # Do a fresh read of counters
             port_results, queue_results = sai_thrift_read_port_counters(self.dst_client, asic_type, sai_dst_port_id)
 
             print(list(map(operator.sub, queue_results,
@@ -4656,7 +4671,7 @@ class PgMinThresholdTest(sai_base_test.ThriftInterfaceDataPlane):
 
             # Wait until received packets >= sent packets
             if not wait_until(10, 2, 2, check_pg_packets_received, self, self.pg0,
-                            pg_counters_base_pg0, recv_counters_base_pg0, self.pg_pkts_to_fill):
+                              pg_counters_base_pg0, recv_counters_base_pg0, self.pg_pkts_to_fill):
                 print("Warning: PG0 did not receive all packets within timeout", file=sys.stderr)
 
             # Read counters after PG0 traffic
@@ -4722,7 +4737,7 @@ class PgMinThresholdTest(sai_base_test.ThriftInterfaceDataPlane):
 
             # Wait until received packets >= sent packets
             if not wait_until(10, 2, 2, check_pg_packets_received, self, self.pg1,
-                            pg_counters_base_pg1, recv_counters_base_pg1, self.pg_pkts_to_fill):
+                              pg_counters_base_pg1, recv_counters_base_pg1, self.pg_pkts_to_fill):
                 print("Warning: PG1 did not receive all packets within timeout", file=sys.stderr)
 
             # Read counters after PG1 traffic
