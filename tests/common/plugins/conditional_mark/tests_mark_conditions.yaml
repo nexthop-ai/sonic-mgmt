@@ -798,12 +798,6 @@ bgp/test_traffic_shift.py::test_load_minigraph_with_traffic_shift_away:
       - "asic_type in ['vs']"
       - https://github.com/sonic-net/sonic-mgmt/issues/6471
 
-bgp/test_traffic_shift_lc.py:
-  skip:
-    reason: "TSA/TSB/TSC is not supported in unified management framework"
-    conditions:
-      - "frr_mgmt_config == 'true'"
-
 bgp/test_traffic_shift_sup.py:
   skip:
     reason: "Not supported on T2 single node topology"

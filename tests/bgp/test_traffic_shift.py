@@ -3,7 +3,7 @@ import re
 import pytest
 from tests.common.devices.eos import EosHost
 from tests.bgp.bgp_helpers import get_routes_not_announced_to_bgpmon, remove_bgp_neighbors, restore_bgp_neighbors, \
-    initial_tsa_check_before_and_after_test
+    initial_tsa_check_before_and_after_test, is_chassis
 from tests.common import config_reload
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.constants import DEFAULT_ASIC_ID
@@ -17,15 +17,18 @@ from tests.bgp.traffic_checker import get_traffic_shift_state, check_tsa_persist
 from tests.bgp.constants import TS_NORMAL, TS_MAINTENANCE, TS_NO_NEIGHBORS
 
 pytestmark = [
-    pytest.mark.topology('t1')
+    pytest.mark.topology('t1', 't2')
 ]
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="module")
-def nbrhosts_to_dut(duthosts, enum_rand_one_per_hwsku_frontend_hostname, nbrhosts):
+def nbrhosts_to_dut(duthosts, enum_rand_one_per_hwsku_frontend_hostname, nbrhosts, tbinfo):
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
+    if tbinfo['topo']['type'] == 't2' and is_chassis(duthost):
+        pytest.skip("t2 chassis dut")
+
     mg_facts = duthost.minigraph_facts(host=duthost.hostname)['ansible_facts']
     nbrhosts_to_dut = {}
     for host in list(nbrhosts.keys()):
