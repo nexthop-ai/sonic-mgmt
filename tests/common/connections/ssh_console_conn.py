@@ -66,6 +66,20 @@ class SSHConsoleConn(BaseConsoleConn):
             self.session_preparation_finalise()
             return
 
+        # For Raritan and similar console servers that show "You are now master for the port" message,
+        # we need to send a newline to trigger the login prompt
+        if self.console_type.endswith("to_port") and re.search(
+            r"(You are now master for the port|Escape Sequence is:)",
+            session_init_msg,
+            flags=re.M
+        ):
+            self.logger.debug("Detected Raritan console server, sending newline to trigger login prompt")
+            self.write_channel(self.RETURN)
+            time.sleep(2)  # Wait for login prompt to appear
+            # Read and log what we got
+            response = self.read_channel()
+            self.logger.debug(f"Response after newline: {response}")
+
         if (self.menu_port):
             # For devices logining via menu port, 2 additional login are needed
             # Since we have attempted all passwords in __init__ of base class until successful login
@@ -141,7 +155,7 @@ class SSHConsoleConn(BaseConsoleConn):
                 # Search for username pattern / send username
                 if not user_sent and re.search(username_pattern, output, flags=re.I):
                     self.write_channel(username + self.RETURN)
-                    time.sleep(1 * delay_factor)
+                    time.sleep(3 * delay_factor)
                     output = self.read_channel()
                     return_msg += output
                     user_sent = True
@@ -149,7 +163,7 @@ class SSHConsoleConn(BaseConsoleConn):
                 # Search for password pattern / send password
                 if user_sent and not password_sent and re.search(pwd_pattern, output, flags=re.I):
                     self.write_channel(password + self.RETURN)
-                    time.sleep(0.5 * delay_factor)
+                    time.sleep(2 * delay_factor)
                     output = self.read_channel()
                     return_msg += output
                     password_sent = True
