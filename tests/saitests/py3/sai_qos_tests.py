@@ -6075,7 +6075,13 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 print("exceeded pkts num sent: %d, expected watermark: %d, actual value: %d" % (
                     pkts_num, ((expected_wm + cell_occupancy) * (packet_length + internal_hdr_size)),
                     pg_shared_wm_res[pg]), file=sys.stderr)
-                assert (expected_wm * (packet_length + internal_hdr_size) <= (
+                lower_bound = expected_wm * (packet_length + internal_hdr_size)
+                upper_bound = (expected_wm + margin + cell_occupancy) * (packet_length + internal_hdr_size)
+                print("  Lower bound: {} bytes".format(lower_bound), file=sys.stderr)
+                print("  Upper bound: {} bytes".format(upper_bound), file=sys.stderr)
+                print("  Within bounds? {} <= {} <= {}".format(lower_bound,
+                      pg_shared_wm_res[pg], upper_bound), file=sys.stderr)
+                assert (expected_wm * (packet_length + internal_hdr_size) <= pg_shared_wm_res[pg] <= (
                         expected_wm + margin + cell_occupancy) * (packet_length + internal_hdr_size))
             else:
                 print("exceeded pkts num sent: %d, expected watermark: %d, actual value: %d" % (

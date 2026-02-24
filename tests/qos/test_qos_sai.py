@@ -1862,7 +1862,6 @@ class TestQosSai(QosSaiBase):
         )
 
     @pytest.mark.parametrize("pgProfile", ["wm_pg_shared_lossless", "wm_pg_shared_lossy"])
-    @pytest.mark.skip("This test is disabled")
     def testQosSaiPgSharedWatermark(
         self, pgProfile, ptfhost, get_src_dst_asic_and_duts, dutTestParams, dutConfig, dutQosConfig,
         resetWatermark, skip_src_dst_different_asic, change_lag_lacp_timer, blockGrpcTraffic,
