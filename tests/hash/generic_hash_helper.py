@@ -27,12 +27,8 @@ ETHERTYPE_RANGE = [0x0801, 0x0900]
 ENCAPSULATION = ['ipinip', 'vxlan', 'nvgre']
 MELLANOX_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT']
 CISCO_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT']
-<<<<<<< HEAD
 BROADCOM_SUPPORTED_HASH_ALGORITHM = ['CRC', 'XOR', 'CRC_32LO', 'CRC_32HI', 'CRC_CCITT', 'CRC_XOR']
-||||||| 640e40e33
-=======
 MARVELL_TERALYNX_HASH_ALGORITHM = ['CRC', 'XOR']
->>>>>>> upstream/master
 DEFAULT_SUPPORTED_HASH_ALGORITHM = ['CRC', 'CRC_CCITT', 'RANDOM', 'XOR']
 
 MELLANOX_ECMP_HASH_FIELDS = [
@@ -51,14 +47,12 @@ CISCO_ECMP_HASH_FIELDS = [
 CISCO_LAG_HASH_FIELDS = [
     'IP_PROTOCOL', 'SRC_IP', 'DST_IP', 'L4_SRC_PORT', 'L4_DST_PORT'
 ]
-<<<<<<< HEAD
 BROADCOM_ECMP_HASH_FIELDS = [
     'SRC_IP', 'DST_IP', 'VLAN_ID', 'IP_PROTOCOL', 'IPV6_FLOW_LABEL', 'L4_SRC_PORT', 'L4_DST_PORT', 'IN_PORT'
 ]
 BROADCOM_LAG_HASH_FIELDS = [
     'VLAN_ID', 'ETHERTYPE', 'SRC_MAC', 'DST_MAC', 'IN_PORT'
-||||||| 640e40e33
-=======
+]
 MARVELL_TERALYNX_ECMP_HASH_FIELDS = [
     'SRC_IP', 'DST_IP', 'VLAN_ID', 'IP_PROTOCOL', 'ETHERTYPE', 'L4_SRC_PORT', 'L4_DST_PORT', 'SRC_MAC',
     'DST_MAC', 'IN_PORT'
@@ -66,7 +60,6 @@ MARVELL_TERALYNX_ECMP_HASH_FIELDS = [
 MARVELL_TERALYNX_LAG_HASH_FIELDS = [
     'SRC_IP', 'DST_IP', 'VLAN_ID', 'IP_PROTOCOL', 'ETHERTYPE', 'L4_SRC_PORT', 'L4_DST_PORT', 'SRC_MAC',
     'DST_MAC', 'IN_PORT'
->>>>>>> upstream/master
 ]
 DEFAULT_ECMP_HASH_FIELDS = [
     'IN_PORT', 'SRC_MAC', 'DST_MAC', 'ETHERTYPE', 'VLAN_ID', 'IP_PROTOCOL', 'SRC_IP', 'DST_IP', 'L4_SRC_PORT',
@@ -84,18 +77,13 @@ HASH_CAPABILITIES = {'mellanox': {'ecmp': MELLANOX_ECMP_HASH_FIELDS,
                                  'lag': DEFAULT_LAG_HASH_FIELDS},
                      'cisco-8000': {'ecmp': CISCO_ECMP_HASH_FIELDS,
                                     'lag': CISCO_LAG_HASH_FIELDS},
-<<<<<<< HEAD
                      'broadcom': {'ecmp': BROADCOM_ECMP_HASH_FIELDS,
-                                  'lag': BROADCOM_LAG_HASH_FIELDS}}
+                                  'lag': BROADCOM_LAG_HASH_FIELDS},
+                     'marvell-teralynx': {'ecmp': MARVELL_TERALYNX_ECMP_HASH_FIELDS,
+                                          'lag': MARVELL_TERALYNX_LAG_HASH_FIELDS}}
 
 ALLOWED_FIELD_COMBINATIONS = {'broadcom': {'ecmp': BROADCOM_ECMP_HASH_FIELDS,
                                            'lag': BROADCOM_LAG_HASH_FIELDS}}
-||||||| 640e40e33
-                                    'lag': CISCO_LAG_HASH_FIELDS}}
-=======
-                     'marvell-teralynx': {'ecmp': MARVELL_TERALYNX_ECMP_HASH_FIELDS,
-                                          'lag': MARVELL_TERALYNX_LAG_HASH_FIELDS}}
->>>>>>> upstream/master
 
 logger = logging.getLogger(__name__)
 vlan_member_to_restore = {}
@@ -118,14 +106,10 @@ def get_supported_hash_algorithms(request):
         supported_hash_algorithm_list = MELLANOX_SUPPORTED_HASH_ALGORITHM[:]
     elif asic_type in 'cisco-8000':
         supported_hash_algorithm_list = CISCO_SUPPORTED_HASH_ALGORITHM[:]
-<<<<<<< HEAD
     elif asic_type in 'broadcom':
         supported_hash_algorithm_list = BROADCOM_SUPPORTED_HASH_ALGORITHM[:]
-||||||| 640e40e33
-=======
     elif asic_type in 'marvell-teralynx':
         supported_hash_algorithm_list = MARVELL_TERALYNX_HASH_ALGORITHM[:]
->>>>>>> upstream/master
     else:
         supported_hash_algorithm_list = DEFAULT_SUPPORTED_HASH_ALGORITHM[:]
     return supported_hash_algorithm_list
@@ -633,14 +617,10 @@ def get_hash_algorithm_from_option(request, hash_algorithm_identifier):
         supported_hash_algorithm_list = MELLANOX_SUPPORTED_HASH_ALGORITHM[:]
     elif asic_type in 'cisco-8000':
         supported_hash_algorithm_list = CISCO_SUPPORTED_HASH_ALGORITHM[:]
-<<<<<<< HEAD
     elif asic_type in 'broadcom':
         supported_hash_algorithm_list = BROADCOM_SUPPORTED_HASH_ALGORITHM[:]
-||||||| 640e40e33
-=======
     elif asic_type in 'marvell-teralynx':
         supported_hash_algorithm_list = MARVELL_TERALYNX_HASH_ALGORITHM[:]
->>>>>>> upstream/master
     else:
         supported_hash_algorithm_list = DEFAULT_SUPPORTED_HASH_ALGORITHM[:]
     if hash_algorithm_identifier == 'all':
