@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 CUSTOMIZED_BGP_ROUTER_ID = "8.8.8.8"
 
 
-<<<<<<< HEAD
 def set_router_id_config(duthost, router_id=None, tbinfo=None):
     if router_id is None:
         raise ValueError("router_id must be provided for configuration")
@@ -45,8 +44,8 @@ def unset_router_id_config(duthost, tbinfo=None):
         cmd = 'sonic-db-cli CONFIG_DB hdel "DEVICE_METADATA|localhost" "bgp_router_id"'
         duthost.shell(cmd, module_ignore_errors=True)
         restart_bgp(duthost, tbinfo)
-||||||| 640e40e33
-=======
+
+
 def verify_bgp_peer(neighbor_type, nbrhost, localip, expected_bgp_router_id, is_v6_topo, vrf="default"):
     if neighbor_type == "sonic":
         if is_v6_topo:
@@ -65,7 +64,6 @@ def verify_bgp_peer(neighbor_type, nbrhost, localip, expected_bgp_router_id, is_
     pytest_assert(match.group(1) == expected_bgp_router_id,
                   "BGP router id is unexpected, local: {}, fetch from remote:{}".format(
                       expected_bgp_router_id, match.group(1)))
->>>>>>> upstream/master
 
 
 def verify_bgp(enum_asic_index, duthost, expected_bgp_router_id, neighbor_type, nbrhosts, tbinfo):
