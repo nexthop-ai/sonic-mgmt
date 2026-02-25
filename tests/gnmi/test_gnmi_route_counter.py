@@ -8,17 +8,15 @@ from tests.common.helpers.bgp import get_bgp_peer_addr
 from tests.common.helpers.dut_utils import is_container_running
 from tests.common.helpers.route_helpers import add_static_route_to_dut, del_static_route_from_dut, get_route_count
 from tests.common.utilities import wait_until
+from tests.common.fixtures.route_counter import ROUTE_COUNTER_UPDATE_TIMEOUT
+from tests.common.fixtures.route_counter import speed_up_route_counter  # noqa: F401
+from tests.common.fixtures.route_counter import wait_for_route_count_sync  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.topology('any')
 ]
-
-
-# Route counter service runs every 30 seconds
-# We need to wait for at least one full cycle plus buffer
-ROUTE_COUNTER_UPDATE_TIMEOUT = 60
 
 
 def get_route_count_from_gnmi(duthost, ptfhost, af, vrf="default"):
@@ -66,12 +64,12 @@ def get_protocol_route_count_from_gnmi(duthost, ptfhost, af, protocol, vrf="defa
     return 0
 
 
-def test_gnmi_rib_route_summary_get(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_rib_route_summary_get(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost):
     """
     Test gNMI GET for RIB_ROUTE_SUMMARY table in STATE_DB
     Verifies that IPv4 and IPv6 total route counts can be retrieved via gNMI
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -88,12 +86,12 @@ def test_gnmi_rib_route_summary_get(duthosts, rand_one_dut_hostname, ptfhost):
                   f"IPv6 count mismatch: gNMI={ipv6_count_gnmi}, CLI={ipv6_count_cli}")
 
 
-def test_gnmi_rib_route_summary_table(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_rib_route_summary_table(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost):
     """
     Test gNMI GET for entire RIB_ROUTE_SUMMARY table
     Verifies that both IPv4 and IPv6 entries are returned with VRF-aware keys
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -114,11 +112,12 @@ def test_gnmi_rib_route_summary_table(duthosts, rand_one_dut_hostname, ptfhost):
 
 
 @pytest.mark.parametrize("ip_version", ["ipv4", "ipv6"])
-def test_gnmi_rib_route_summary_add_remove(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, ip_version):
+def test_gnmi_rib_route_summary_add_remove(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost, tbinfo,
+                                           ip_version):
     """
     Test that RIB_ROUTE_SUMMARY accurately reflects route additions and removals
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -197,12 +196,12 @@ def test_gnmi_rib_route_summary_add_remove(duthosts, rand_one_dut_hostname, ptfh
                     raise
 
 
-def test_gnmi_rib_route_summary_per_protocol(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_rib_route_summary_per_protocol(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost):
     """
     Test gNMI GET for per-protocol route counts in RIB_ROUTE_SUMMARY
     Verifies that protocol-specific route counts are available
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -227,12 +226,12 @@ def test_gnmi_rib_route_summary_per_protocol(duthosts, rand_one_dut_hostname, pt
 
 
 @pytest.mark.parametrize("ip_version", ["ipv4", "ipv6"])
-def test_gnmi_rib_route_summary_static_protocol_count(duthosts, rand_one_dut_hostname, ptfhost,
+def test_gnmi_rib_route_summary_static_protocol_count(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost,
                                                       tbinfo, ip_version):
     """
     Test that per-protocol route counts accurately reflect static route additions
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -308,12 +307,12 @@ def test_gnmi_rib_route_summary_static_protocol_count(duthosts, rand_one_dut_hos
                     raise
 
 
-def test_gnmi_rib_route_summary_bgp_down(duthosts, rand_one_dut_hostname, ptfhost):
+def test_gnmi_rib_route_summary_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, ptfhost):
     """
     Test that RIB_ROUTE_SUMMARY keys are deleted when BGP/FRR is down
     This verifies that the route-counter service properly handles vtysh failures
     """
-    duthost = duthosts[rand_one_dut_hostname]
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     if duthost.is_supervisor_node():
         pytest.skip("Skipping test as supervisor node does not have FRR routes")
 
@@ -336,7 +335,6 @@ def test_gnmi_rib_route_summary_bgp_down(duthosts, rand_one_dut_hostname, ptfhos
         wait_until(60, 10, 1, lambda: not is_container_running(duthost, "bgp"))
 
         # Wait for route-counter to run and detect BGP is down
-        # The service runs every 30 seconds, so we wait for at least one full cycle
         logger.info(f"Waiting {ROUTE_COUNTER_UPDATE_TIMEOUT}s for route-counter to detect BGP is down")
         time.sleep(ROUTE_COUNTER_UPDATE_TIMEOUT)
 

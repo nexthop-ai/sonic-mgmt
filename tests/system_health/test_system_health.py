@@ -518,8 +518,15 @@ def check_system_health_led_info(duthost):
         assert system_led_status.lower() == 'green', \
             f"System status LED is not green, but it is {system_led_status}"
     else:
-        assert system_led_status.lower() in ["yellow", "amber", "red"], \
-            f"System status LED is not yellow, amber, or red, but it is {system_led_status}"
+        # If status is not OK, system LED color should indicate "booting" or "fault".
+        valid_colors = []
+        led_color = get_system_health_config(duthost, 'led_color', {})
+        if "booting" in led_color:
+            valid_colors.append(led_color["booting"])
+        if "fault" in led_color:
+            valid_colors.append(led_color["fault"])
+        assert system_led_status.lower() in valid_colors + ["yellow", "amber", "red"], \
+            f"System status LED is not {', '.join(valid_colors)}, yellow, amber, or red, but it is {system_led_status}"
 
     return True
 

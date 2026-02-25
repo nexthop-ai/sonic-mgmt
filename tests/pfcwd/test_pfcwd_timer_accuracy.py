@@ -173,8 +173,6 @@ class TestPfcwdAllTimer(object):
         """
         Test execution
         """
-        pytest.skip("Disable test until fixed all intermittent issues.")
-
         with DisableLogrotateCronContext(self.dut):
             logger.info("Flush logs")
             self.dut.shell("logrotate -f /etc/logrotate.conf")

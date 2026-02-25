@@ -1015,9 +1015,7 @@ def get_tsa_chassisdb_config(duthost):
         tsa_conf = duthost.shell('sonic-db-cli CHASSIS_APP_DB HGET \'BGP_DEVICE_GLOBAL|STATE\' tsa_enabled')['stdout']
         return tsa_conf
     else:
-        # Linecards and non-chassis systems: read from local CONFIG_DB
-        return duthost.shell(
-            'sonic-db-cli CONFIG_DB HGET \'BGP_DEVICE_GLOBAL|STATE\' tsa_enabled')['stdout']
+        False
 
 
 def get_sup_cfggen_tsa_value(suphost):
