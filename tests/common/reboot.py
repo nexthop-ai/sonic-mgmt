@@ -328,13 +328,8 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
            timeout=0, wait=0, wait_for_ssh=True, wait_warmboot_finalizer=False, warmboot_finalizer_timeout=0,
            reboot_helper=None, reboot_kwargs=None, return_after_reconnect=False,
            safe_reboot=False, check_intf_up_ports=False, wait_for_bgp=False,  wait_for_ibgp=True,
-<<<<<<< HEAD
-           power_on_helper=None, power_on_kwargs=None, skip_console_log=False):
-||||||| 640e40e33
-           safe_reboot=False, check_intf_up_ports=False, wait_for_bgp=False,  wait_for_ibgp=True):
-=======
+           power_on_helper=None, power_on_kwargs=None, skip_console_log=False,
            invocation_type="cli_based", ptf_gnoi=None):
->>>>>>> upstream/master
     """
     reboots DUT
     :param duthost: DUT host object
@@ -357,6 +352,8 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
     :param power_on_helper: helper function to execute after dut powers on, e.g. to set IP address
     :param power_on_kwargs: arguments to pass to the power_on_helper
     :param skip_console_log: skip collecting console log
+    :param invocation_type: type of reboot invocation (cli_based, gnoi, etc.)
+    :param ptf_gnoi: PTF gNOI object for gNOI-based reboots
     :return:
     """
     assert not (safe_reboot and return_after_reconnect)
