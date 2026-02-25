@@ -61,7 +61,6 @@ def setup_gnmi_ntp_client_server(duthosts, rand_one_dut_hostname, ptfhost):
         yield
 
 
-<<<<<<< HEAD
 @pytest.fixture(scope="module", autouse=True)
 def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
     duthost = duthosts[rand_one_dut_hostname]
@@ -74,15 +73,8 @@ def download_gnmi_client(duthosts, rand_one_dut_hostname, localhost):
         localhost.shell("sudo chmod +x gnmi/%s" % file)
 
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config, setup_vrf_configuration):
-||||||| 640e40e33
-@pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
-=======
 @pytest.fixture(scope="module")
-def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
->>>>>>> upstream/master
+def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config, setup_vrf_configuration):
     '''
     Setup GNMI server with client certificates
     '''
@@ -110,16 +102,8 @@ def setup_gnmi_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
     recover_cert_config(duthost)
 
 
-<<<<<<< HEAD
-@pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config={}):
-||||||| 640e40e33
-@pytest.fixture(scope="module", autouse=True)
-def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
-=======
 @pytest.fixture(scope="module")
-def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost):
->>>>>>> upstream/master
+def setup_gnmi_rotated_server(duthosts, rand_one_dut_hostname, localhost, ptfhost, vrf_config={}):
     '''
     Create GNMI client certificates
     '''
