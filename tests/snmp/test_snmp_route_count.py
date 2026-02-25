@@ -8,6 +8,9 @@ from tests.common.helpers.dut_utils import is_container_running
 from tests.common.helpers.route_helpers import add_static_route_to_dut, del_static_route_from_dut, get_route_count
 from tests.common.utilities import wait_until
 from tests.syslog.syslog_utils import create_vrf, remove_vrf, check_vrf
+from tests.common.fixtures.route_counter import ROUTE_COUNTER_UPDATE_TIMEOUT
+from tests.common.fixtures.route_counter import speed_up_route_counter  # noqa: F401
+from tests.common.fixtures.route_counter import wait_for_route_count_sync  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +21,6 @@ pytestmark = [
 
 IP_CIDR_ROUTE_NUMBER_OID = '1.3.6.1.2.1.4.24.3.0'
 INET_CIDR_ROUTE_NUMBER_OID = '1.3.6.1.2.1.4.24.6.0'
-
-# Route counter service runs on a 30s timer, wait a little extra in case it's slow
-ROUTE_COUNTER_UPDATE_TIMEOUT = 45
 
 
 def get_snmp_route_count(duthost, hostip, community, oid):
@@ -37,7 +37,7 @@ def get_snmp_route_count(duthost, hostip, community, oid):
         nonlocal result
         result = duthost.shell(snmp_cmd, module_ignore_errors=True)
         return result is not None and "No Such Instance" not in result["stdout"]
-    pytest_assert(wait_until(ROUTE_COUNTER_UPDATE_TIMEOUT, 5, 0, lambda: fetch_route_count()),
+    pytest_assert(wait_until(ROUTE_COUNTER_UPDATE_TIMEOUT, 1, 0, lambda: fetch_route_count()),
                   f"failed to find OID executing {snmp_cmd}")
 
     pytest_assert(result['rc'] == 0, f"SNMP query failed: {result.get('stderr', 'Unknown error')}")
@@ -411,7 +411,7 @@ def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, cre
             logger.info("Restarting BGP service")
             duthost.shell("sudo config feature state bgp enabled", module_ignore_errors=False)
             wait_until(60, 10, 1, lambda: is_container_running(duthost, "bgp"))
-            # successful data retreival indicates data has quiesced.
+            # successful data retrieval indicates data has quiesced.
             get_snmp_route_count(duthost, hostip, community, INET_CIDR_ROUTE_NUMBER_OID)
 
 
