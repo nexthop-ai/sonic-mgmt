@@ -27,14 +27,9 @@ ConsoleTypeMapper = {
     CONSOLE_SSH_TO_PORT: SSHConsoleConn,
     CONSOLE_SSH_CISCO_CONFIG: SSHConsoleConn,
     CONSOLE_CONSERVER: ConserverConsoleConn,
-<<<<<<< HEAD
     CONSOLE_SSH_LANTRONIX_CONFIG: SSHConsoleConn,
-    CONSOLE_SSH_RARITAN_CONFIG: SSHConsoleConn
-||||||| 640e40e33
-    CONSOLE_CONSERVER: ConserverConsoleConn
-=======
+    CONSOLE_SSH_RARITAN_CONFIG: SSHConsoleConn,
     CONSOLE_LINECARD: LinecardConsoleConn
->>>>>>> upstream/master
 }
 
 
