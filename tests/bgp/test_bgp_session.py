@@ -220,45 +220,19 @@ def test_bgp_session_interface_down(duthosts, rand_one_dut_hostname, fanouthosts
         elif failure_type == "neighbor":
             for port in local_interfaces:
                 neighbor_port = setup['neighhosts'][neighbor]['interface'][port]['port']
+                nbr_data = nbrhosts[neighbor_name]
+                if nbr_data.get('is_multi_vrf_peer', False):
+                    offset = nbr_data['multi_vrf_data']['intf_offset']
+                    intf_prefix, intf_num = re.findall(r"(\D+)(\d+)", neighbor_port)[0]
+                    neighbor_port = intf_prefix + str(int(intf_num) + offset)
+
                 logger.info("shutdown interface neighbor {} port {}".format(neighbor_name, neighbor_port))
                 nbrhosts[neighbor_name]['host'].shutdown(neighbor_port)
                 time.sleep(1)
 
-<<<<<<< HEAD
         duthost.shell('show ip bgp summary', module_ignore_errors=True)
+        duthost.shell('show ipv6 bgp summary', module_ignore_errors=True)
         # default keepalive is 60 seconds, timeout 180 seconds. Add 30s buffer for polling/processing delays.
-||||||| 640e40e33
-    elif failure_type == "neighbor":
-        for port in local_interfaces:
-            neighbor_port = setup['neighhosts'][neighbor]['interface'][port]['port']
-            logger.info("shutdown interface neighbor {} port {}".format(neighbor_name, neighbor_port))
-            nbrhosts[neighbor_name]['host'].shutdown(neighbor_port)
-            time.sleep(1)
-
-    duthost.shell('show ip bgp summary', module_ignore_errors=True)
-
-    try:
-        # default keepalive is 60 seconds, timeout 180 seconds. Hence wait for 180 seconds before timeout.
-=======
-    elif failure_type == "neighbor":
-        for port in local_interfaces:
-            neighbor_port = setup['neighhosts'][neighbor]['interface'][port]['port']
-            nbr_data = nbrhosts[neighbor_name]
-            if nbr_data.get('is_multi_vrf_peer', False):
-                offset = nbr_data['multi_vrf_data']['intf_offset']
-                intf_prefix, intf_num = re.findall(r"(\D+)(\d+)", neighbor_port)[0]
-                neighbor_port = intf_prefix + str(int(intf_num) + offset)
-
-            logger.info("shutdown interface neighbor {} port {}".format(neighbor_name, neighbor_port))
-            nbrhosts[neighbor_name]['host'].shutdown(neighbor_port)
-            time.sleep(1)
-
-    duthost.shell('show ip bgp summary', module_ignore_errors=True)
-    duthost.shell('show ipv6 bgp summary', module_ignore_errors=True)
-
-    try:
-        # default keepalive is 60 seconds, timeout 180 seconds. Hence wait for 180 seconds before timeout.
->>>>>>> upstream/master
         pytest_assert(
             wait_until(210, 10, 0, verify_bgp_session_down, duthost, neighbor),
             "neighbor {} state is still established".format(neighbor)
