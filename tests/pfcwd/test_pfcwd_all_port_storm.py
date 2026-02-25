@@ -207,39 +207,9 @@ class TestPfcwdAllPortStorm(object):
     PFC_STORM_THRESHOLD_PERCENTAGE = 75
     # Threshold percentage for restore verification (100% of stormed ports must restore)
     PFC_RESTORE_THRESHOLD_PERCENTAGE = 100
-<<<<<<< HEAD
 
-    def run_test(self, duthost, storm_hndle, expect_regex, syslog_marker, action, stormed_ports_list=None):
-        """
-        Storm generation/restoration on all ports and verification
-||||||| 640e40e33
-    def run_test(self, duthost, storm_hndle, expect_regex, syslog_marker, action):
-        """
-        Storm generation/restoration on all ports and verification
-=======
->>>>>>> upstream/master
-
-<<<<<<< HEAD
-        Args:
-            duthost (AnsibleHost): DUT instance
-            storm_hndle (PFCMultiStorm): class PFCMultiStorm intance
-            expect_regex (list): list of expect regexs to be matched in the syslog
-            syslog_marker (string): marker prefix written to the syslog
-            action (string): storm/restore action
-            stormed_ports_list (list): list to track which ports actually entered storm state
-        """
-||||||| 640e40e33
-        Args:
-            duthost (AnsibleHost): DUT instance
-            storm_hndle (PFCMultiStorm): class PFCMultiStorm intance
-            expect_regex (list): list of expect regexs to be matched in the syslog
-            syslog_marker (string): marker prefix written to the syslog
-            action (string): storm/restore action
-        """
-=======
     def run_test(self, duthost, storm_hndle, expect_regex, syslog_marker, action, stormed_ports_list=None):
         """Storm generation/restoration on all ports and verification."""
->>>>>>> upstream/master
         loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix=syslog_marker)
         ignore_file = os.path.join(TEMPLATES_DIR, "ignore_pfc_wd_messages")
         reg_exp = loganalyzer.parse_regexp_file(src=ignore_file)
@@ -253,46 +223,12 @@ class TestPfcwdAllPortStorm(object):
 
         with loganalyzer:
             if action == "storm":
-<<<<<<< HEAD
-                # Capture baseline counters before starting storm to avoid false positives from stale counters
                 baseline_counters = get_pfc_storm_baseline_counters(duthost, storm_hndle)
-                logger.info(f"Captured baseline counters for {len(baseline_counters)} ports")
-
-||||||| 640e40e33
-=======
-                baseline_counters = get_pfc_storm_baseline_counters(duthost, storm_hndle)
->>>>>>> upstream/master
                 storm_hndle.start_pfc_storm()
-<<<<<<< HEAD
-                expected_state = "storm"
-                threshold = self.PFC_STORM_THRESHOLD_PERCENTAGE
-            elif action == "restore":
-                baseline_counters = None  # Not needed for restore verification
-||||||| 640e40e33
-            elif action == "restore":
-=======
                 threshold = self.PFC_STORM_THRESHOLD_PERCENTAGE
             else:  # restore
                 baseline_counters = None
->>>>>>> upstream/master
                 storm_hndle.stop_pfc_storm()
-<<<<<<< HEAD
-                expected_state = "restore"
-                threshold = self.PFC_RESTORE_THRESHOLD_PERCENTAGE
-
-            if action == "storm":
-                logger.info(f"Waiting for {threshold}% of ports to reach {expected_state} state")
-            else:
-                logger.info(f"Waiting for {threshold}% of stormed ports to reach {expected_state} state")
-
-            pytest_assert(
-                wait_until(60, 2, 5, verify_all_ports_pfc_storm_in_expected_state, duthost,
-                           storm_hndle, expected_state, baseline_counters, threshold, stormed_ports_list),
-                f"Not enough ports reached expected state {expected_state} "
-                f"(threshold: {threshold}%)"
-||||||| 640e40e33
-            time.sleep(5)
-=======
                 threshold = self.PFC_RESTORE_THRESHOLD_PERCENTAGE
 
             port_type = "ports" if action == "storm" else "stormed ports"
@@ -302,7 +238,6 @@ class TestPfcwdAllPortStorm(object):
                 wait_until(60, 2, 5, verify_all_ports_pfc_storm_in_expected_state, duthost,
                            storm_hndle, action, baseline_counters, threshold, stormed_ports_list),
                 f"Not enough ports reached {action} state (threshold: {threshold}%)"
->>>>>>> upstream/master
             )
 
     def test_all_port_storm_restore(
