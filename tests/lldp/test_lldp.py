@@ -91,38 +91,6 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
     if not list(lldpctl_facts['lldpctl'].items()):
         pytest.fail("No LLDP neighbors received (lldpctl_facts are empty)")
     for k, v in list(lldpctl_facts['lldpctl'].items()):
-<<<<<<< HEAD
-        # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
-        # Get the first key from the chassis dictionary
-        neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
-        assert neighbor in v
-        # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
-        if request.config.getoption("--neighbor_type") == 'eos':
-            assert v[neighbor]['port']['id']['value'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
-                "LLDP neighbor port interface name mismatch. Expected '{}', but got '{}'."
-            ).format(
-                config_facts['DEVICE_NEIGHBOR'][k]['port'],
-                v[neighbor]['port']['id']['value']
-            )
-||||||| 640e40e33
-        # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
-        assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name'], (
-            "LLDP neighbor name mismatch. Expected '{}', but got '{}'."
-        ).format(
-            config_facts['DEVICE_NEIGHBOR'][k]['name'],
-            v['chassis']['name']
-        )
-
-        # Compare the LLDP neighbor interface with minigraph neigbhor interface (exclude the management port)
-        if request.config.getoption("--neighbor_type") == 'eos':
-            assert v['port']['ifname'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
-                "LLDP neighbor port interface name mismatch. Expected '{}', but got '{}'."
-            ).format(
-                config_facts['DEVICE_NEIGHBOR'][k]['port'],
-                v['port']['ifname']
-            )
-
-=======
         if converged:
             exp_intf = config_facts['DEVICE_NEIGHBOR'][k]['port']
             vrf = config_facts['DEVICE_NEIGHBOR'][k]['name']
@@ -130,22 +98,10 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
             new_intf = convergence_info['converged_peers'][primary]['intf_mapping'][vrf]['orig_intf_map'][exp_intf]
             assert v['chassis']['name'] == primary
             assert v['port']['ifname'] == new_intf
->>>>>>> upstream/master
         else:
-<<<<<<< HEAD
-            # Dealing with KVM that advertises port description
-            assert v[neighbor]['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
-                "LLDP neighbor port description mismatch. Expected '{}', but got '{}'."
-||||||| 640e40e33
-            # Dealing with KVM that advertises port description
-            assert v['port']['descr'] == config_facts['DEVICE_NEIGHBOR'][k]['port'], (
-                "LLDP neighbor port description mismatch. Expected '{}', but got '{}'."
-=======
             # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
-            assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name']
             assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name'], (
                 "LLDP neighbor name mismatch. Expected '{}', but got '{}'."
->>>>>>> upstream/master
             ).format(
                 config_facts['DEVICE_NEIGHBOR'][k]['name'],
                 v['chassis']['name']
