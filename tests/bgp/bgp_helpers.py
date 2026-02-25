@@ -423,21 +423,11 @@ def check_routes_on_from_neighbor(setup_info, nbrhosts):
         if setup_info['is_v6_topo'] and "v6" not in list_name.lower():
             continue
         for prefix in prefixes:
-<<<<<<< HEAD
-            downstream_route = host.get_route(prefix)
+            vrf = downstream if nbrhosts[downstream].get('is_multi_vrf_peer', False) else 'default'
+            downstream_route = host.get_route(prefix, vrf=vrf)
             logging.info('downstream_route: {}'.format(downstream_route))
             pytest_assert(check_route_exists(host, downstream_route, prefix),
                           'Announced route {} not found on {}'.format(prefix, downstream))
-||||||| 640e40e33
-            downstream_route = nbrhosts[downstream]['host'].get_route(prefix)
-            route_entries = downstream_route['vrfs']['default']['bgpRouteEntries']
-            pytest_assert(prefix in route_entries, 'Announced route {} not found on {}'.format(prefix, downstream))
-=======
-            vrf = downstream if nbrhosts[downstream].get('is_multi_vrf_peer', False) else 'default'
-            downstream_route = nbrhosts[downstream]['host'].get_route(prefix, vrf=vrf)
-            route_entries = downstream_route['vrfs'][vrf]['bgpRouteEntries']
-            pytest_assert(prefix in route_entries, 'Announced route {} not found on {}'.format(prefix, downstream))
->>>>>>> upstream/master
 
 
 def check_results(results):
@@ -513,14 +503,8 @@ def check_routes_on_neighbors_empty_allow_list(nbrhosts, setup, permit=True):
                 continue
             for prefix in prefixes:
                 prefix_result = {'failed': False, 'prefix': prefix, 'reasons': []}
-<<<<<<< HEAD
-                route_data = nbr_host.get_route(prefix)
-||||||| 640e40e33
-                neigh_route = nbrhosts[node]['host'].get_route(prefix)['vrfs']['default']['bgpRouteEntries']
-=======
                 vrf = node if nbrhosts[node].get('is_multi_vrf_peer', False) else 'default'
-                neigh_route = nbrhosts[node]['host'].get_route(prefix, vrf=vrf)['vrfs'][vrf]['bgpRouteEntries']
->>>>>>> upstream/master
+                route_data = nbr_host.get_route(prefix, vrf=vrf)
 
                 if permit:
                     # All routes should be forwarded
@@ -576,8 +560,8 @@ def check_routes_on_neighbors(nbrhosts, setup, permit=True):
                 continue
             for prefix in prefixes:
                 prefix_result = {'failed': False, 'prefix': prefix, 'reasons': []}
-<<<<<<< HEAD
-                route_data = nbr_host.get_route(prefix)
+                vrf = node if nbrhosts[node].get('is_multi_vrf_peer', False) else 'default'
+                route_data = nbr_host.get_route(prefix, vrf=vrf)
                 if not check_route_exists(nbr_host, route_data, prefix):
                     communityList = []
                     logging.info('{} route {} not found, skipping community check'.format(nbr_host.hostname, prefix))
@@ -585,12 +569,6 @@ def check_routes_on_neighbors(nbrhosts, setup, permit=True):
                     communityList = get_route_communities(nbr_host, route_data, prefix)
                     logging.info('{} route_data: {}'.format(nbr_host.hostname, route_data))
                     logging.info('{} communityList: {}'.format(nbr_host.hostname, communityList))
-||||||| 640e40e33
-                neigh_route = nbrhosts[node]['host'].get_route(prefix)['vrfs']['default']['bgpRouteEntries']
-=======
-                vrf = node if nbrhosts[node].get('is_multi_vrf_peer', False) else 'default'
-                neigh_route = nbrhosts[node]['host'].get_route(prefix, vrf=vrf)['vrfs'][vrf]['bgpRouteEntries']
->>>>>>> upstream/master
 
                 if permit:
                     # All routes should be forwarded
