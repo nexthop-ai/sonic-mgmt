@@ -5,19 +5,9 @@ import pytest
 import re
 import time
 
-<<<<<<< HEAD:tests/gnmi/vrf_aware_tests/test_gnmi_configdb.py
 from tests.gnmi.helper import gnmi_set, gnmi_get, gnoi_reboot
 from tests.gnmi.helper import gnmi_subscribe_polling
 from tests.gnmi.helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
-||||||| 640e40e33:tests/gnmi/test_gnmi_configdb.py
-from .helper import gnmi_set, gnmi_get, gnoi_reboot
-from .helper import gnmi_subscribe_polling
-from .helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
-=======
-from .helper import gnmi_set, gnmi_get
-from .helper import gnmi_subscribe_polling
-from .helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
->>>>>>> upstream/master:tests/gnmi/test_gnmi_configdb.py
 from tests.common.helpers.gnmi_utils import add_gnmi_client_common_name
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
@@ -261,7 +251,6 @@ def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, pt
         assert "bgp_asn" in result["localhost"], "Invalid result: " + match
 
 
-<<<<<<< HEAD:tests/gnmi/vrf_aware_tests/test_gnmi_configdb.py
 def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
     '''
     Verify GNMI native write, full config for configDB
@@ -317,65 +306,6 @@ def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_con
 
 
 def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
-||||||| 640e40e33:tests/gnmi/test_gnmi_configdb.py
-def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost):
-    '''
-    Verify GNMI native write, full config for configDB
-    Toggle interface admin status
-    '''
-    duthost = duthosts[rand_one_dut_hostname]
-    if duthost.is_supervisor_node():
-        pytest.skip("gnmi test relies on port data not present on supervisor card '%s'" % rand_one_dut_hostname)
-    interface = get_first_interface(duthost)
-    assert interface is not None, "Invalid interface"
-
-    # Get ASIC namespace and check interface
-    if duthost.sonichost.is_multi_asic:
-        for asic in duthost.frontend_asics:
-            dic = get_sonic_cfggen_output(duthost, asic.namespace)
-            if interface in dic["PORT"]:
-                break
-    else:
-        dic = get_sonic_cfggen_output(duthost)
-
-    assert "PORT" in dic, "Failed to read running config"
-    assert interface in dic["PORT"], "Failed to get interface %s" % interface
-    assert "admin_status" in dic["PORT"][interface], "Failed to get interface %s" % interface
-
-    # Update full config with GNMI
-    dic["PORT"][interface]["admin_status"] = "down"
-    filename = "full.txt"
-    with open(filename, 'w') as file:
-        json.dump(dic, file)
-    ptfhost.copy(src=filename, dest='/root')
-    delete_list = ["/sonic-db:CONFIG_DB/localhost/"]
-    update_list = ["/sonic-db:CONFIG_DB/localhost/:@/root/%s" % filename]
-    gnmi_set(duthost, ptfhost, delete_list, update_list, [])
-    # Check interface status and gnmi_get result
-    status = get_interface_status(duthost, "admin_status", interface)
-    assert status == "up", "Port status is changed"
-    # GNOI reboot
-    gnoi_reboot(duthost, 0, 0, "abc")
-    pytest_assert(
-        wait_until(600, 10, 0, duthost.critical_services_fully_started),
-        "All critical services should be fully started!")
-    wait_critical_processes(duthost)
-    pytest_assert(
-        wait_until(300, 10, 0, check_interface_status_of_up_ports, duthost),
-        "Not all ports that are admin up on are operationally up")
-    # Check interface status
-    status = get_interface_status(duthost, "admin_status", interface)
-    assert status == "down", "Full config failed to toggle interface %s status" % interface
-    # Startup interface
-    duthost.shell("config interface startup %s" % interface)
-    # Wait for BGP neighbor to be up
-    wait_bgp_neighbor(duthost)
-
-
-def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost):
-=======
-def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost):
->>>>>>> upstream/master:tests/gnmi/test_gnmi_configdb.py
     '''
     Verify GNMI native write, full config replace for configDB
     Toggle interface admin status
