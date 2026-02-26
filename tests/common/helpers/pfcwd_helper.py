@@ -774,7 +774,7 @@ def parser_show_pfcwd_stat(dut, select_port, select_queue):
     admin@bjw-can-7060-1:~$
     """
     logger.info("port {} queue {}".format(select_port, select_queue))
-    pfcwd_stat_output = dut.show_and_parse('show pfcwd stat')
+    pfcwd_stat_output = dut.show_and_parse('show pfcwd stats')
 
     pfcwd_stat = []
     for item in pfcwd_stat_output:
