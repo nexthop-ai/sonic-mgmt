@@ -11,6 +11,7 @@ pytestmark = [
 
 logger = logging.getLogger(__name__)
 
+
 def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
     """Setup SNMPv3 user on DUT"""
     if not username:
@@ -46,6 +47,7 @@ def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
         logger.error(f"Failed to setup SNMPv3 user: {str(e)}")
         raise
 
+
 def cleanup_snmpv3_user(duthost, username):
     """Cleanup SNMPv3 user from DUT"""
     try:
@@ -53,6 +55,7 @@ def cleanup_snmpv3_user(duthost, username):
         duthost.shell(f"sudo config snmp user del {username}", module_ignore_errors=True)
     except Exception as e:
         logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")
+
 
 @pytest.mark.parametrize("oid", [
     SnmpOIDs.SYS_DESCR,
@@ -62,17 +65,20 @@ def cleanup_snmpv3_user(duthost, username):
     SnmpOIDs.IF_NUMBER,
     SnmpOIDs.ENT_PHYSICAL_DESCR
 ])
+@pytest.mark.ignore_loganalyzer([
+    ".*ERR memory_checker:.* cgroup memory usage file .* does not exist on device! Exiting.*"
+])
 def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
     """Test SNMPv3 GET operation for various OIDs"""
     duthost = duthosts[rand_one_dut_hostname]
-    
+
     # Get DUT IP
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     logger.info(f"Testing SNMPv3 GET on host {hostip}")
-    
+
     # Setup SNMPv3 user
     v3_config = None
-    
+
     try:
         # Create SNMPv3 user
         v3_config = setup_snmpv3_user(duthost)
@@ -101,7 +107,7 @@ def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
         # Verify we got a response
         pytest_assert(snmp_facts is not None, f"Failed to get SNMP facts for OID {oid}")
         pytest_assert('ansible_facts' in snmp_facts, f"No ansible_facts in SNMP response for OID {oid}")
-        
+
         facts = snmp_facts['ansible_facts']
         logger.info(f"Retrieved SNMP facts for OID {oid}: {facts}")
 
@@ -116,22 +122,23 @@ def test_snmpv3_get(duthosts, rand_one_dut_hostname, localhost, oid):
         if v3_config:
             cleanup_snmpv3_user(duthost, v3_config["username"])
 
+
 def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
     """Test SNMPv3 GET operation with custom parameters"""
     duthost = duthosts[rand_one_dut_hostname]
-    
+
     # Get custom parameters from pytest command line
     oid = request.config.getoption("--oid", default=SnmpOIDs.SYS_DESCR)
     username = request.config.getoption("--snmp-user", default=None)
     auth_pass = request.config.getoption("--snmp-auth-pass", default=None)
     priv_pass = request.config.getoption("--snmp-priv-pass", default=None)
-    
+
     # Get DUT IP
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
-    
+
     # Setup SNMPv3 user
     v3_config = None
-    
+
     try:
         # Create SNMPv3 user
         v3_config = setup_snmpv3_user(duthost, username, auth_pass, priv_pass)
@@ -160,7 +167,7 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
         # Verify we got a response
         pytest_assert(snmp_facts is not None, "Failed to get SNMP facts")
         pytest_assert('ansible_facts' in snmp_facts, "No ansible_facts in SNMP response")
-        
+
         facts = snmp_facts['ansible_facts']
         logger.info(f"Retrieved SNMP facts for OID {oid}: {facts}")
 
@@ -175,10 +182,10 @@ def test_snmpv3_get_custom(duthosts, rand_one_dut_hostname, localhost, request):
         if v3_config:
             cleanup_snmpv3_user(duthost, v3_config["username"])
 
+
 def pytest_addoption(parser):
     """Add custom command line options"""
     parser.addoption("--oid", action="store", help="OID to query")
     parser.addoption("--snmp-user", action="store", help="SNMPv3 username")
     parser.addoption("--snmp-auth-pass", action="store", help="SNMPv3 auth password")
     parser.addoption("--snmp-priv-pass", action="store", help="SNMPv3 priv password")
-
