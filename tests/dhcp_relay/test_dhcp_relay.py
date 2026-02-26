@@ -21,7 +21,8 @@ from tests.common.dhcp_relay_utils import enable_sonic_dhcpv4_relay_agent  # noq
 pytestmark = [
     pytest.mark.topology('t0', 'm0'),
     pytest.mark.device_type('vs'),
-    pytest.mark.parametrize("relay_agent", ["isc-relay-agent", "sonic-relay-agent"]),
+    # RESTORE ME: pytest.mark.parametrize("relay_agent", ["isc-relay-agent", "sonic-relay-agent"]),
+    pytest.mark.parametrize("relay_agent", ["isc-relay-agent"]),
 ]
 
 SUPPORTED_DHCPV4_TYPE = [

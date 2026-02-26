@@ -62,6 +62,7 @@ def test_dhcpcom_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data,
     dut_hwsku = duthost.facts["hwsku"]
     client_packets_per_sec = PACKET_RATE_PER_SEC_MAP.get(dut_hwsku, DEFAULT_PACKET_RATE_PER_SEC) \
         if request.config.option.max_packets_per_sec is None else request.config.option.max_packets_per_sec
+    relay_agent = "isc-relay-agent"
     logger.info("Testing mode: {}, client packets per second: {}, error margin: {}".format(
         testing_mode, client_packets_per_sec, error_margin))
     for dhcp_relay in interfaces_to_test:
@@ -90,6 +91,7 @@ def test_dhcpcom_relay_counters_stress(ptfhost, ptfadapter, dut_dhcp_relay_data,
             "packets_send_duration": packets_send_duration,
             "client_packets_per_sec": client_packets_per_sec,
             "testing_mode": testing_mode,
+            "relay_agent": relay_agent,
             "kvm_support": True
         }
         count_file = '/tmp/dhcp_stress_test_{}'.format(dhcp_type)
