@@ -180,8 +180,10 @@ def check_pmon_uptime_minutes(duthost, minimal_runtime=6):
 
 def pytest_generate_tests(metafunc):
     val = metafunc.config.getoption('--fw-pkg')
-    if 'fw_pkg_name' in metafunc.fixturenames and val:
-        metafunc.parametrize('fw_pkg_name', val.split(','), scope="module")
+
+    if 'fw_pkg_name' in metafunc.fixturenames:
+        params = val.split(',') if val else [None]
+        metafunc.parametrize('fw_pkg_name', params, scope="module")
 
     if 'power_off_delay' in metafunc.fixturenames:
         delays = metafunc.config.getoption('power_off_delay')
