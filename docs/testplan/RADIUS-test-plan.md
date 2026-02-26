@@ -100,10 +100,7 @@ Configuration files:
   * show lldp table
   * show ip bgp summary
   * show ip route
-<<<<<<< HEAD
   * docker ps
-=======
->>>>>>> upstream/master
   * sudo cat /var/log/syslog
 - Test read-only user access to restricted commands:
   * sudo config -h
@@ -156,8 +153,6 @@ Configuration files:
   * Remove management VRF
   * Verify SSH accessibility after VRF removal
 
-<<<<<<< HEAD
-=======
 ### 4.7 IPv6 RADIUS Server Support
 
 **Test Case 8: IPv6-only RADIUS Authentication (`test_radius_ipv6_only`)**
@@ -197,7 +192,6 @@ Configuration files:
 - Clean up:
   * Restore original RADIUS server configuration
 
->>>>>>> upstream/master
 ## 5 Implementation Details
 
 ### 5.1 Test Framework
