@@ -21,33 +21,6 @@ def lldp_setup(duthosts, enum_rand_one_per_hwsku_hostname, patch_lldpctl, unpatc
     unpatch_lldpctl(localhost, duthost)
 
 
-def get_interfaces_with_mgmt_ip(lldp_facts, skip_pattern=None):
-    """
-    Get a list of interfaces that have neighbors with management IP information.
-
-    Args:
-        lldp_facts: The LLDP facts dictionary
-        skip_pattern: Regex pattern for interfaces to skip (default: None)
-
-    Returns:
-        List of interface names that have neighbors with management IP
-    """
-    interfaces_with_mgmt_ip = []
-
-    for intf_name, intf_data in lldp_facts.items():
-        # Skip interfaces matching the pattern
-        if skip_pattern and re.match(skip_pattern, intf_name):
-            continue
-
-        for neigh_name, neigh_data in intf_data.items():
-            # Check if chassis exists and has at least one entry with mgmt-ip
-            if 'chassis' not in neigh_data or 'mgmt-ip' not in neigh_data['chassis']:
-                continue
-            interfaces_with_mgmt_ip.append(intf_name)
-            break
-    return interfaces_with_mgmt_ip
-
-
 @pytest.mark.bsl
 def test_snmp_lldp(duthosts, enum_rand_one_per_hwsku_hostname, localhost, creds_all_duts, tbinfo):
     """
@@ -158,10 +131,9 @@ def test_snmp_lldp(duthosts, enum_rand_one_per_hwsku_hostname, localhost, creds_
             'ansible_facts']['lldpctl']
         if lldp_facts_ns is not None:
             lldp_facts.update(lldp_facts_ns)
-
-    # Get interfaces with management IP information
     pattern = re.compile(r'^eth0|^Ethernet-IB')
-    nei = get_interfaces_with_mgmt_ip(lldp_facts, pattern)
+    nei = [k for k, v in list(lldp_facts.items()) if not re.match(
+        pattern, k) and 'mgmt-ip' in v['chassis']]
     logger.info(
         "neighbors {} send chassis management IP information".format(nei))
 

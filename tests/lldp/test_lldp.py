@@ -100,6 +100,7 @@ def test_lldp(duthosts, enum_rand_one_per_hwsku_frontend_hostname, localhost,
             assert v['port']['ifname'] == new_intf
         else:
             # Compare the LLDP neighbor name with minigraph neigbhor name (exclude the management port)
+            assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name']
             assert v['chassis']['name'] == config_facts['DEVICE_NEIGHBOR'][k]['name'], (
                 "LLDP neighbor name mismatch. Expected '{}', but got '{}'."
             ).format(
@@ -155,20 +156,19 @@ def check_lldp_neighbor(duthost, localhost, eos, sonic, collect_techsupport_all_
 
     for k, v in list(lldpctl_facts['lldpctl'].items()):
         try:
-            neighbor = config_facts['DEVICE_NEIGHBOR'][k]['name']
-            hostip = v[neighbor]['chassis']['mgmt-ip']
+            hostip = v['chassis']['mgmt-ip']
         except Exception:
-            logger.info(f"Neighbor device {neighbor} does not sent management IP via lldp")
-            hostip = nei_meta[neighbor]['mgmt_addr']
+            logger.info("Neighbor device {} does not sent management IP via lldp".format(v['chassis']['name']))
+            hostip = nei_meta[v['chassis']['name']]['mgmt_addr']
 
         if request.config.getoption("--neighbor_type") == 'eos':
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=eos['snmp_rocommunity'])[
                 'ansible_facts']
-            neighbor_interface = v[neighbor]['port']['id']['value']
+            neighbor_interface = v['port']['ifname']
         else:
             nei_lldp_facts = localhost.lldp_facts(host=hostip, version='v2c', community=sonic['snmp_rocommunity'])[
                 'ansible_facts']
-            neighbor_interface = v[neighbor]['port']['id']['value']
+            neighbor_interface = v['port']['local']
         # Verify the published DUT system name field is correct
         assert nei_lldp_facts['ansible_lldp_facts'][neighbor_interface]['neighbor_sys_name'] == duthost.hostname, (
             "LLDP neighbor system name mismatch for interface '{}'. "
