@@ -203,12 +203,14 @@ def snmp_physical_entity_and_sensor_info(duthosts, enum_rand_one_per_hwsku_hostn
     if not are_transceiver_tables_in_sync(duthost):
         # Wait for transceiver tables to be synchronized
         wait_for_transceiver_tables_sync(duthost)
-        # When the tables are just populated/synched the snmp-subagent takes ~60 seconds
-        # before the interface map is repopulated through reinit_data
-        # Restarting the snmp-subagent could work as well through
-        # "docker exec snmp supervisorctl restart snmp-subagent" but could potentially
-        # mask issues. Hence waiting for the mapping to populate automatically
-        time.sleep(60)
+    # When the tables are just populated/synched the snmp-subagent takes ~60 seconds
+    # before the interface map is repopulated through reinit_data. Allow 60 extra
+    # seconds as buffer. Always wait since it's possible the test is run immediately after
+    # STATE_DB becomes in-sync.
+    # Restarting the snmp-subagent could work as well through
+    # "docker exec snmp supervisorctl restart snmp-subagent" but could potentially
+    # mask issues. Hence waiting for the mapping to populate automatically
+    time.sleep(120)
 
     return get_entity_and_sensor_mib(duthost, localhost, creds_all_duts)
 
