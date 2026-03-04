@@ -635,9 +635,27 @@ def get_neighbor_info(duthost, dest_port, tbinfo, resolved=True, ip_version=4):
 
 
 # TODO: This can probably be moved to a shared location in a later PR.
-def load_acl_rules_config(table_name, rules_file):
+def load_acl_rules_config(table_name, rules_file, duthost=None):
     with open(rules_file, "r") as f:
         acl_rules = yaml.safe_load(f)
+
+    # Filter out TCP flags rules for XGS platforms (Broadcom non-DNX)
+    # XGS platforms do not support TCP_FLAGS field in MIRROR ACL tables
+    if duthost is not None:
+        is_xgs_platform = (duthost.facts["asic_type"] == "broadcom" and
+                           duthost.facts.get("platform_asic") != 'broadcom-dnx')
+
+        if is_xgs_platform:
+            filtered_rules = []
+            for rule in acl_rules:
+                # Check if the rule has TCP flags qualifier
+                if 'qualifiers' in rule and 'transport' in rule['qualifiers']:
+                    if 'tcp-flags' in rule['qualifiers']['transport']:
+                        # Skip this rule for XGS platforms
+                        logging.info("Skipping TCP flags rule for XGS platform: {}".format(rule))
+                        continue
+                filtered_rules.append(rule)
+            acl_rules = filtered_rules
 
     rules_config = {"acl_table_name": table_name, "rules": acl_rules}
 
@@ -936,7 +954,7 @@ class BaseEverflowTest(object):
             config_method,
             rules=EVERFLOW_V4_RULES
     ):
-        rules_config = load_acl_rules_config(table_name, os.path.join(FILE_DIR, rules))
+        rules_config = load_acl_rules_config(table_name, os.path.join(FILE_DIR, rules), duthost)
         duthost.host.options["variable_manager"].extra_vars.update(rules_config)
 
         if config_method == CONFIG_MODE_CLI:
