@@ -17,6 +17,7 @@ from paramiko.ssh_exception import SSHException
 class SSHConsoleConn(BaseConsoleConn):
     def __init__(self, **kwargs):
         self.menu_port = None
+        self._session_ready = False
 
         if "console_username" not in kwargs \
                 or "console_password" not in kwargs:
@@ -116,6 +117,8 @@ class SSHConsoleConn(BaseConsoleConn):
         time.sleep(0.3 * self.global_delay_factor)
         self.clear_buffer()
 
+        self._session_ready = True
+
     def login_stage_2(self,
                       username,
                       password,
@@ -209,9 +212,8 @@ class SSHConsoleConn(BaseConsoleConn):
 
     def cleanup(self):
         # If we are in SONiC, send an exit to logout
-        if not self.console_type.endswith("config"):
-            self.send_command(command_string="exit",
-                              expect_string="login:")
+        if not self.console_type.endswith("config") and self._session_ready:
+            self.send_command(command_string="exit", expect_string="login:")
         # remote_conn must be closed, or the SSH session will be kept on Digi,
         # and any other login is prevented
         self.remote_conn.close()
