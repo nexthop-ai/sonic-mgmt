@@ -483,6 +483,7 @@ def sonic_dhcpv4_flag_config_and_unconfig(duthost, dhcpv4_config_flag=False):
 def enable_sonic_dhcpv4_relay_agent(duthost, request):
     """
     Fixture to enable the DHCP relay feature flag and restart the service.
+    Automatically detects and uses interface_type parameter if available, defaults to 'vlan'.
     """
     if "skip_config_dhcpv4_relay_agent" in request.keywords:
         yield
@@ -493,23 +494,33 @@ def enable_sonic_dhcpv4_relay_agent(duthost, request):
     else:
         dut_dhcp_relay_data = None
 
+    # Extract interface_type if it's a parameter in the test, default to 'vlan'
+    interface_type = 'vlan'
+    if "interface_type" in request.fixturenames:
+        interface_type = request.getfixturevalue("interface_type")
+
     try:
-        if request.getfixturevalue("relay_agent") == "sonic-relay-agent":
+        if "sonic-relay-agent" in request.getfixturevalue("relay_agent"):
             sonic_dhcpv4_flag_config_and_unconfig(duthost, True)
-            sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, True)
+            sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, True, interface_type)
         yield
     finally:
         # Cleanup: disable the feature flag
-        if request.getfixturevalue("relay_agent") == "sonic-relay-agent":
+        if "sonic-relay-agent" in request.getfixturevalue("relay_agent"):
             sonic_dhcpv4_flag_config_and_unconfig(duthost, False)
-            sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data)
+            sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data, interface_type)
 
 
-def check_dhcpv4_socket_status(duthost, dut_dhcp_relay_data=None, process_and_socket_check=None):
+def check_dhcpv4_socket_status(duthost, dut_dhcp_relay_data=None, process_and_socket_check=None, interface_type='vlan'):
     """
-    Check if the DHCP relay agent is running and listening on expected sockets.
+    Check if the DHCP relay agent is running and listening on expected sockets for a specific interface type.
     Works for dhcp4relay.
 
+    Args:
+        duthost: DUT host object
+        dut_dhcp_relay_data: DHCP relay data dictionary
+        process_and_socket_check: Process and socket check parameter
+        interface_type: Interface type ('vlan' or 'routed')
     """
     # If checking for socket bindings
     cmd = "docker exec -t dhcp_relay ss -nlp | grep dhcp4relay"
@@ -527,37 +538,52 @@ def check_dhcpv4_socket_status(duthost, dut_dhcp_relay_data=None, process_and_so
             logger.error("Missing expected socket match: %s", pattern)
             return False
 
-    # Validate presence of DHCPv4 socket for each downlink VLAN interface from test data
+    # Validate presence of DHCPv4 socket for each downlink interface from test data
     if dut_dhcp_relay_data is None:
-        logger.error("Missing dut_dhcp_relay_data for VLAN check")
+        logger.error("Missing dut_dhcp_relay_data for interface check")
         return False
 
-    for dhcp_relay in dut_dhcp_relay_data:
-        vlan_iface_name = dhcp_relay['downlink_vlan_iface']['name']
-        vlan_pattern = r"%{}:67.*dhcp4relay".format(re.escape(vlan_iface_name))
-        if not re.search(vlan_pattern, output):
-            logger.error("Missing expected DHCPv4 VLAN socket for %s:67", vlan_iface_name)
+    for dhcp_relay in dut_dhcp_relay_data.get(interface_type, []):
+        iface_name = dhcp_relay['downlink_iface']['name']
+        iface_pattern = r"%{}:67.*dhcp4relay".format(re.escape(iface_name))
+        if not re.search(iface_pattern, output):
+            logger.error("Missing expected DHCPv4 socket for %s:67", iface_name)
             return False
 
     return True
 
 
-def sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, socket_check=True):
+def sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, socket_check=True, interface_type='vlan'):
+    """
+    Configure DHCP relay on the DUT for a specific interface type.
 
+    Args:
+        duthost: DUT host object
+        dut_dhcp_relay_data: DHCP relay data dictionary
+        socket_check: Whether to check socket status after configuration
+        interface_type: Interface type ('vlan' or 'routed')
+    """
     if dut_dhcp_relay_data:
-        for dhcp_relay in dut_dhcp_relay_data:
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers} {vlan}')
+        for dhcp_relay in dut_dhcp_relay_data.get(interface_type, []):
+            iface = str(dhcp_relay['downlink_iface']['name'])
+            dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
+            duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers} {iface}')
 
         if socket_check:
             pytest_assert(wait_until(40, 5, 0, check_dhcpv4_socket_status, duthost, dut_dhcp_relay_data,
-                          "sonic_dhcpv4_socket_check"))
+                          "sonic_dhcpv4_socket_check", interface_type))
 
 
-def sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data):
+def sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data, interface_type='vlan'):
+    """
+    Remove DHCP relay configuration from the DUT for a specific interface type.
 
+    Args:
+        duthost: DUT host object
+        dut_dhcp_relay_data: DHCP relay data dictionary
+        interface_type: Interface type ('vlan' or 'routed')
+    """
     if dut_dhcp_relay_data:
-        for dhcp_relay in dut_dhcp_relay_data:
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
+        for dhcp_relay in dut_dhcp_relay_data.get(interface_type, []):
+            iface = str(dhcp_relay['downlink_iface']['name'])
+            duthost.shell(f'config dhcpv4_relay del {iface}', module_ignore_errors=True)

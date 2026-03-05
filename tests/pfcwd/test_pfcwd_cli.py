@@ -438,7 +438,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             action(string) : PTF test action
         """
         asic_type = dut.facts['asic_type']
-        pfcwd_stat = self.dut.show_and_parse('show pfcwd stat')
+        pfcwd_stat = self.dut.show_and_parse('show pfcwd stats')
         logger.info("before storm start: pfcwd_stat {}".format(pfcwd_stat))
 
         logger.info("--- Storm detection path for port {} ---".format(port))

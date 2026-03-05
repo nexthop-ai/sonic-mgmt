@@ -127,10 +127,13 @@ def enable_zmq_fixture(duthost, enable_mgmt_vrf=False):
     # the device already enable SmartSwitch
     if subtype == "SmartSwitch":
         if enable_mgmt_vrf:
-            # Enable management VRF before config save
+            # Enable management VRF in CONFIG_DB without applying immediately.
+            # Using sonic-db-cli instead of 'config vrf add mgmt' to avoid
+            # disrupting SSH connectivity before the config reload.
             logger.debug("Enabling management VRF")
-            duthost.shell("sudo config vrf add mgmt",
-                          module_ignore_errors=True)
+            duthost.shell(
+                'sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" '
+                '"mgmtVrfEnabled" "true"')
             save_reload_config(duthost)
         return initial_mgmt_vrf_enabled, subtype
 
@@ -140,9 +143,13 @@ def enable_zmq_fixture(duthost, enable_mgmt_vrf=False):
     logger.debug("set subtype subtype: {}".format(result))
 
     if enable_mgmt_vrf:
-        # Enable management VRF before config save
+        # Enable management VRF in CONFIG_DB without applying immediately.
+        # Using sonic-db-cli instead of 'config vrf add mgmt' to avoid
+        # disrupting SSH connectivity before the config reload.
         logger.debug("Enabling management VRF")
-        duthost.shell("sudo config vrf add mgmt", module_ignore_errors=True)
+        duthost.shell(
+            'sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" '
+            '"mgmtVrfEnabled" "true"')
 
     save_reload_config(duthost)
 
@@ -185,8 +192,9 @@ def cleanup_zmq_fixture(duthost, initial_mgmt_vrf_enabled,
     if enable_mgmt_vrf and initial_mgmt_vrf_enabled is not None:
         if not initial_mgmt_vrf_enabled:
             logger.debug("Restoring management VRF to disabled state")
-            duthost.shell("sudo config vrf del mgmt",
-                          module_ignore_errors=True)
+            duthost.shell(
+                'sonic-db-cli CONFIG_DB hset "MGMT_VRF_CONFIG|vrf_global" '
+                '"mgmtVrfEnabled" "false"')
 
     # Only reload if we made changes
     if subtype != "SmartSwitch" or \

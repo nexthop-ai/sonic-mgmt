@@ -3720,15 +3720,17 @@ mvrf/test_mgmtvrf.py:
 
 mvrf/test_mgmtvrf.py::TestReboot::test_fastboot:
   skip:
-    reason: "Dualtor topology doesn't support advanced-reboot"
+    reason: "Dualtor topology doesn't support advanced-reboot; advanced-reboot is not yet supported by x86_64-nexthop_5010* platform"
     conditions:
       - "topo_name in ['dualtor', 'dualtor-56', 'dualtor-120', 'dualtor-aa', 'dualtor-aa-56', 'dualtor-aa-64-breakout']"
+      - "platform.startswith('x86_64-nexthop_5010')"
 
 mvrf/test_mgmtvrf.py::TestReboot::test_warmboot:
   skip:
-    reason: "Dualtor topology doesn't support advanced-reboot"
+    reason: "Dualtor topology doesn't support advanced-reboot; advanced-reboot is not yet supported by x86_64-nexthop_5010* platform"
     conditions:
       - "topo_name in ['dualtor', 'dualtor-56', 'dualtor-120', 'dualtor-aa', 'dualtor-aa-56', 'dualtor-aa-64-breakout']"
+      - "platform.startswith('x86_64-nexthop_5010')"
 
 #######################################
 #####           mx              #####

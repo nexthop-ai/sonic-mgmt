@@ -33,6 +33,7 @@ def test_dhcp_relay_restart_with_stress(ptfhost, one_interface_per_type, interfa
         pytest.skip("No {} dhcp_relay interface available".format(interface_type))
 
     testing_mode, duthost = testing_config
+    relay_agent = "isc-relay-agent"
 
     # Unit: s, indicates duration time for sending stress packets
     duration = request.config.getoption("--stress_restart_duration")
@@ -60,6 +61,7 @@ def test_dhcp_relay_restart_with_stress(ptfhost, one_interface_per_type, interfa
                             "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
                             "uplink_mac": str(dhcp_relay['uplink_mac']),
                             "testing_mode": testing_mode,
+                            "relay_agent": relay_agent,
                             "duration": duration,
                             "pps": pps,
                             "kvm_support": True},
@@ -106,6 +108,7 @@ def test_dhcp_relay_restart_with_stress(ptfhost, one_interface_per_type, interfa
                             "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
                             "uplink_mac": str(dhcp_relay['uplink_mac']),
                             "testing_mode": testing_mode,
+                            "relay_agent": relay_agent,
                             "circuit_id": str(dhcp_relay['downlink_iface']['addr']),
                             "kvm_support": True},
                    log_file="/tmp/dhcp_relay_test.stress.DHCPTest.{}.log".format(
@@ -129,6 +132,7 @@ def test_dhcp_relay_stress(ptfhost, ptfadapter, dut_dhcp_relay_data, interface_t
     testing_mode, duthost = testing_config
     packets_send_duration = 120
     client_packets_per_sec = 10000
+    relay_agent = "isc-relay-agent"
 
     for dhcp_relay in interfaces_to_test:
         client_port_name = str(dhcp_relay['client_iface']['name'])
@@ -156,6 +160,7 @@ def test_dhcp_relay_stress(ptfhost, ptfadapter, dut_dhcp_relay_data, interface_t
             "client_packets_per_sec": client_packets_per_sec,
             "testing_mode": testing_mode,
             "circuit_id": str(dhcp_relay['downlink_iface']['addr']),
+            "relay_agent": relay_agent,
             "kvm_support": True
         }
         count_file = '/tmp/dhcp_stress_test_{}'.format(dhcp_type)

@@ -1046,7 +1046,8 @@ class EverflowIPv4Tests(BaseEverflowTest):
         def update_acl_rule_config(duthost, table_name, session_name, config_method,
                                    rules=everflow_utils.EVERFLOW_V4_RULES):
             rules_config = everflow_utils.load_acl_rules_config(table_name,
-                                                                os.path.join(everflow_utils.FILE_DIR, rules))
+                                                                os.path.join(everflow_utils.FILE_DIR, rules),
+                                                                duthost)
             rules_config['rules'] = [
                 rule for rule in rules_config['rules']
                 if 'transport' not in rule.get('qualifiers', {}) or
