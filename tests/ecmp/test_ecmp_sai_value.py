@@ -50,7 +50,7 @@ for i in range(8):
     seed_cmd_th5_th6.append('bcmcmd "dsh -c \'get RTAG7_HASH_SEED_Br{' + str(i) + '}.ipipe0\'"')
 
 offset_cmd = 'bcmcmd  "dump RTAG7_PORT_BASED_HASH 0 392 OFFSET_ECMP"'
-offset_cmd_th5_th6 = 'bcmcmd "bsh -c \'pt dump RTAG7_PORT_BASED_HASH 0 351 OFFSET_ECMP\'"'
+offset_cmd_th5_th6 = 'bcmcmd "bsh -c \'pt dump RTAG7_PORT_BASED_HASH\'"'
 
 
 @pytest.fixture
@@ -193,9 +193,18 @@ def check_ecmp_offset_value(duthost, asic_name, topo_type, hwsku):
     """
     pytest_assert(wait_until(300, 20, 0, check_syncd_is_running, duthost), "syncd is not running!")
 
+    sai_tunnel_support = False
+    t1_default_hash_offset = '0xa'
     if asic_name in ("th5", "th6c", "th6p"):
         output = duthost.shell(offset_cmd_th5_th6, module_ignore_errors=True)['stdout']
         logger.info(f"Offset cmd: {offset_cmd_th5_th6}, output: {output}")
+
+        #check if sai_tunnel_support is enabled
+        show_config_cmd = 'bcmcmd "show config"'
+        show_config_output = duthost.shell(show_config_cmd, module_ignore_errors=True)['stdout']
+        if re.search(r'sai_tunnel_support', show_config_output):
+            sai_tunnel_support = True
+            t1_default_hash_offset = '0xc'
     else:
         output = duthost.shell(offset_cmd, module_ignore_errors=True)['stdout']
 
@@ -214,12 +223,17 @@ def check_ecmp_offset_value(duthost, asic_name, topo_type, hwsku):
             pytest_assert(offset_count == 392, "the count of 0 OFFSET_ECMP is not correct. \
                           Expected {}, but got {}.".format(392, offset_count))
     elif topo_type == "t1":
-        offset_count = offset_list.count('0xa')
+        offset_count = offset_list.count(t1_default_hash_offset)
         if hwsku in ["Arista-7060CX-32S-C32", "Arista-7050QX32S-Q32", "Arista-7050-QX-32S"]:
             pytest_assert(offset_count >= 33, "the count of 0xa OFFSET_ECMP is not correct. \
                           Expected >= 33, but got {}.".format(offset_count))
         else:
-            pytest_assert(offset_count >= 67, "the count of 0xa OFFSET_ECMP is not correct. \
+            if sai_tunnel_support:
+                # TH5/TH6 with sai_tunnel_support
+                pytest_assert(offset_count >= 66, "the count of 0xc OFFSET_ECMP is not correct. \
+                          Expected >= 66, but got {}.".format(offset_count))
+            else:
+                pytest_assert(offset_count >= 67, "the count of 0xa OFFSET_ECMP is not correct. \
                           Expected >= 67, but got {}.".format(offset_count))
     else:
         pytest.fail("Unsupported topology type: {}".format(topo_type))
