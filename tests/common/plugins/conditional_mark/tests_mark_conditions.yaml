@@ -5410,7 +5410,6 @@ vrf/test_vrf.py:
     conditions:
       - "asic_type in ['vs', 'mellanox', 'nvidia']"
       - "topo_type not in ['t0']"
-      - "https://github.com/sonic-net/sonic-mgmt/issues/21700"
 
 vrf/test_vrf.py::TestVrfAclRedirect:
   skip:
@@ -5439,7 +5438,6 @@ vrf/test_vrf_attr.py:
     conditions:
       - "asic_type in ['vs', 'mellanox', 'nvidia']"
       - "topo_type not in ['t0']"
-      - "https://github.com/sonic-net/sonic-mgmt/issues/21700"
 
 vrf/test_vrf_attr.py::TestVrfAttrSrcMac::test_vrf1_neigh_with_default_router_mac:
   skip:
