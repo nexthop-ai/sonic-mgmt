@@ -551,7 +551,7 @@ def disable_egress_data_plane(duthost, dut_port, queue, pir):
 
     # Get the blocking scheduler OID from ASIC_DB
     scheduler_oid = get_scheduler_oid_by_attributes(duthost, type=SCHEDULER_TYPE,
-                                                    weight=SCHEDULER_WEIGHT, pir=SCHEDULER_PIR)
+                                                    weight=SCHEDULER_WEIGHT, pir=pir)
     pytest_assert(scheduler_oid, "Failed to find blocking scheduler OID in ASIC_DB")
 
     # Get current scheduler usage count before applying scheduler to specific queue
@@ -566,11 +566,6 @@ def disable_egress_data_plane(duthost, dut_port, queue, pir):
     pytest_assert(wait_until(60, 5, 0, validate_scheduler_configuration,
                              duthost, dut_port, queue, BLOCK_DATA_PLANE_SCHEDULER_NAME),
                   f"Blocking scheduler configuration failed for port {dut_port} queue {queue}")
-
-    # Get the blocking scheduler OID from ASIC_DB
-    scheduler_oid = get_scheduler_oid_by_attributes(duthost, type=SCHEDULER_TYPE,
-                                                    weight=SCHEDULER_WEIGHT, pir=pir)
-    pytest_assert(scheduler_oid, "Failed to find blocking scheduler OID in ASIC_DB")
 
     # Wait for the blocking scheduler configuration to take effect in ASIC_DB
     # Expected count should increase by 1 after applying scheduler to specific queue
