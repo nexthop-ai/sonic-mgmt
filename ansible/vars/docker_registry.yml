@@ -1,8 +1,2 @@
-<<<<<<< HEAD
 docker_registry_host: container-registry.sw.internal.nexthop.ai:443
-||||||| 47aed9675
-docker_registry_host: sonicdev-microsoft.azurecr.io:443
-=======
-docker_registry_host: sonicdev-microsoft.azurecr.io:443
 debian_docker_registry_host: publicmirror.azurecr.io:443
->>>>>>> upstream/master
