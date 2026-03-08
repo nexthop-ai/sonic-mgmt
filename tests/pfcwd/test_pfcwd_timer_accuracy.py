@@ -285,14 +285,6 @@ class TestPfcwdAllTimer(object):
                     )
                     break
 
-<<<<<<< HEAD
-        err_msg = ("Not able to capture timestamp for all iterations. Total iteration captured {}. Expected {}.".format(
-            len(self.all_detect_time), check_point+1))
-        logger.info("Verify that all timestamp are captured properly")
-        if len(self.all_detect_time) < check_point+1:
-            pytest.fail(err_msg)
-||||||| 47aed9675
-=======
         # Validate that we have enough samples before accessing list by index
         # If more than half of iterations failed to collect timestamps, fail with a clear message
         required_samples = check_point + 1
@@ -308,7 +300,6 @@ class TestPfcwdAllTimer(object):
                     detect_count, ITERATION_NUM, detect_failures,
                     restore_count, ITERATION_NUM, restore_failures,
                     required_samples))
->>>>>>> upstream/master
 
         err_msg = ("Real detection time is greater than configured: Real detect time: {} "
                    "Expected: {} (wd_detect_time + wd_poll_time)".format(self.all_detect_time[check_point],
