@@ -275,20 +275,12 @@ def memory_checker_dut_and_container(duthosts, enum_rand_one_per_hwsku_frontend_
         (duthost, container)
     """
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
-<<<<<<< HEAD
-    container = MemoryCheckerContainer("gnmi", duthost)
-||||||| 47aed9675
-
-    container_name = get_test_container(duthost)
-    container = MemoryCheckerContainer(container_name, duthost)
-=======
 
     # Always test gnmi — telemetry is deprecated and may be masked via
     # systemd even when its Docker image is present.
     # See: https://github.com/sonic-net/sonic-mgmt/issues/22349
     container_name = "gnmi"
     container = MemoryCheckerContainer(container_name, duthost)
->>>>>>> upstream/master
 
     pytest_require("Celestica-E1031" not in duthost.facts["hwsku"]
                    and (("20191130" in duthost.os_version and
