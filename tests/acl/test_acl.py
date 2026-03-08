@@ -1089,13 +1089,7 @@ class BaseAclTest(six.with_metaclass(ABCMeta, object)):
             return True
 
         logger.info('Wait all rule counters are ready')
-<<<<<<< HEAD
         return wait_until(300, 2, 0, self.check_rule_counters_internal, duthost)
-||||||| 47aed9675
-        return wait_until(60, 2, 0, self.check_rule_counters_internal, duthost)
-=======
-        return wait_until(120, 2, 0, self.check_rule_counters_internal, duthost)
->>>>>>> upstream/master
 
     def check_rule_counters_internal(self, duthost):
         for asic_id in duthost.get_frontend_asic_ids():
