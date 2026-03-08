@@ -194,13 +194,7 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
 
     # Remove default route and wait till there is no entry
     duthost.shell("config bgp shutdown all")
-<<<<<<< HEAD
-    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "0"),
-||||||| 47aed9675
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "0"),
-=======
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "0", is_ipv6_only),
->>>>>>> upstream/master
+    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "0", is_ipv6_only),
                   "ROUTE_TABLE default route not missing")
 
     ptf_result = ptfhost.shell(cmd)
@@ -230,13 +224,7 @@ def test_poll_mode_default_route(duthosts, enum_rand_one_per_hwsku_hostname, ptf
 
     # Add back default route
     duthost.shell("config bgp startup all")
-<<<<<<< HEAD
-    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "1"),
-||||||| 47aed9675
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "1"),
-=======
-    pytest_assert(wait_until(60, 5, 0, verify_route_table_status, duthost, namespace, "1", is_ipv6_only),
->>>>>>> upstream/master
+    pytest_assert(wait_until(60, 5, 15, verify_route_table_status, duthost, namespace, "1", is_ipv6_only),
                   "ROUTE_TABLE default route missing")
 
     # Give 60 seconds for client to connect to server and then 60 for default route to populate after bgp session start
