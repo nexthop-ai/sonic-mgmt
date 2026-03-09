@@ -586,18 +586,9 @@ def sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data, interface_type='vlan
         interface_type: Interface type ('vlan' or 'routed')
     """
     if dut_dhcp_relay_data:
-<<<<<<< HEAD
         for dhcp_relay in dut_dhcp_relay_data.get(interface_type, []):
             iface = str(dhcp_relay['downlink_iface']['name'])
             duthost.shell(f'config dhcpv4_relay del {iface}', module_ignore_errors=True)
-||||||| 47aed9675
-        for dhcp_relay in dut_dhcp_relay_data:
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
-=======
-        for dhcp_relay in dut_dhcp_relay_data:
-            vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
 
 
 def check_routes_to_dhcp_server(duthost, dut_dhcp_relay_data):
@@ -610,7 +601,7 @@ def check_routes_to_dhcp_server(duthost, dut_dhcp_relay_data):
     default_gw_ip = dut_dhcp_relay_data[0]['default_gw_ip']
     dhcp_servers = set()
     for dhcp_relay in dut_dhcp_relay_data:
-        dhcp_servers |= set(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
+        dhcp_servers |= set(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
 
     for dhcp_server in dhcp_servers:
         rtInfo = duthost.get_ip_route_info(ipaddress.ip_address(dhcp_server))
@@ -656,4 +647,51 @@ def check_dhcp_stress_status(duthost, test_duration_seconds):
                 process_name, process_status = dhcp_process_status_line.split()[0], dhcp_process_status_line.split()[1],
                 assert process_status == "RUNNING", "{} is not running!".format(process_name)
     time.sleep(sleep_time)
->>>>>>> upstream/master
+
+
+def get_dhcrelay_process_cmdline(duthost, interface_name):
+    """Get the dhcrelay process command line for a specific interface.
+
+    Args:
+        duthost: DUT host object
+        interface_name: Name of the interface (e.g., 'Ethernet0' or 'Vlan1000')
+
+    Returns:
+        Command line string of the dhcrelay process, or None if not found
+    """
+    # First, check for unified dhcrelay process
+    cmd = "docker exec dhcp_relay supervisorctl status | grep 'isc-dhcpv4-relay-unified' | awk '{print $4}'"
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] == 0 and output['stdout'].strip():
+        # Unified process exists - get its command line
+        pid = output['stdout'].strip().rstrip(',')
+        cmd = 'docker exec dhcp_relay ps -fp {} | sed "1d"'.format(pid)
+        output = duthost.shell(cmd, module_ignore_errors=True)
+
+        if output['rc'] == 0:
+            cmdline = output['stdout'].strip()
+            # Verify the interface is included in the unified process
+            if '-id {}'.format(interface_name) in cmdline:
+                return cmdline
+
+    # Fall back to per-interface dhcrelay process (old architecture)
+    cmd = "docker exec dhcp_relay supervisorctl status | grep 'dhcpv4-relay-{}' | awk '{{print $4}}'".format(
+        interface_name)
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] != 0 or not output['stdout'].strip():
+        logger.warning("No dhcrelay process found for interface {}".format(interface_name))
+        return None
+
+    pid = output['stdout'].strip().rstrip(',')
+
+    # Get command line for this PID
+    cmd = 'docker exec dhcp_relay ps -fp {} | sed "1d"'.format(pid)
+    output = duthost.shell(cmd, module_ignore_errors=True)
+
+    if output['rc'] != 0:
+        logger.warning("Failed to get process info for PID {}".format(pid))
+        return None
+
+    return output['stdout'].strip()
