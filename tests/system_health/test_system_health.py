@@ -529,25 +529,10 @@ def check_system_health_led_info(duthost):
         assert system_status_lower == expected_normal, \
             f"System status LED is not the configured 'normal' color ({expected_normal}), but it is {system_led_status}"
     else:
-<<<<<<< HEAD
-        # If status is not OK, system LED color should indicate "booting" or "fault".
-        valid_colors = []
-        led_color = get_system_health_config(duthost, 'led_color', {})
-        if "booting" in led_color:
-            valid_colors.append(led_color["booting"])
-        if "fault" in led_color:
-            valid_colors.append(led_color["fault"])
-        assert system_led_status.lower() in valid_colors + ["yellow", "amber", "red"], \
-            f"System status LED is not {', '.join(valid_colors)}, yellow, amber, or red, but it is {system_led_status}"
-||||||| 47aed9675
-        assert system_led_status.lower() in ["yellow", "amber", "red"], \
-            f"System status LED is not yellow, amber, or red, but it is {system_led_status}"
-=======
         # Logic for faulted system: Iterate through led_cfg to find a match among non-normal keys
         not_normal = {color for key, color in led_cfg.items() if key != "normal"}
         assert system_status_lower in not_normal, \
             f"System status LED '{system_led_status}' does not match any colors defined in config: {not_normal}"
->>>>>>> upstream/master
 
     return True
 
