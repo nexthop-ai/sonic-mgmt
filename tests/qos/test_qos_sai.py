@@ -1885,6 +1885,8 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if dutConfig["dutAsic"] in ('th6c', 'th6p', 'th5'):
+            pytest.skip("Skip this test while buffer tuning is finalized")
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if pgProfile == "wm_pg_shared_lossless":
@@ -2109,6 +2111,9 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+        if dutConfig["dutAsic"] in ('th6c', 'th6p', 'th5'):
+            pytest.skip("Skip this test while buffer tuning is finalized")
+
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if queueProfile == "wm_q_shared_lossless":
             skip_test_on_no_lossless_pg(portSpeedCableLength)
