@@ -664,12 +664,12 @@ def verify_pfc_storm_in_expected_state(dut, port, queue, expected_state, baselin
 
 def _parse_pfcwd_stats(dut):
     """
-    Parse 'show pfcwd stat' output into a lookup dictionary.
+    Parse 'show pfcwd stats' output into a lookup dictionary.
 
     Returns:
         dict: {(port, queue): {'status': str, 'storm_detect_count': int, 'restored_count': int}}
     """
-    pfcwd_stat_output = dut.show_and_parse('show pfcwd stat')
+    pfcwd_stat_output = dut.show_and_parse('show pfcwd stats')
     stats_dict = {}
 
     for item in pfcwd_stat_output:
