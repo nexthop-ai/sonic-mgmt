@@ -2,6 +2,7 @@ import pytest
 import time
 import ipaddress
 import logging
+import netaddr
 
 from tests.common.utilities import wait_until
 from tests.common.helpers.assertions import pytest_assert as py_assert
@@ -190,13 +191,14 @@ def extract_interface_from_vlan(duthost, interface_name, vlan_name, ip_address):
             try:
                 result = duthost.shell('sonic-db-cli CONFIG_DB keys "VLAN_MEMBER|{}|{}"'.format(vlan_name,
                                                                                                 interface_name))
-                return vlan_name not in result['stdout']
+                # If the key doesn't exist (member removed), stdout should be empty
+                return len(result['stdout'].strip()) == 0
             except Exception as e:
                 logger.debug("Exception checking VLAN member removal: {}".format(e))
                 return False
 
         py_assert(
-            wait_until(10, 1, 0, _vlan_member_removed),
+            wait_until(100, 1, 0, _vlan_member_removed),
             "Interface {} was not removed from {} in CONFIG_DB within timeout".format(interface_name, vlan_name)
         )
 
@@ -213,7 +215,7 @@ def extract_interface_from_vlan(duthost, interface_name, vlan_name, ip_address):
                 return False
 
         py_assert(
-            wait_until(10, 1, 0, _ip_address_added),
+            wait_until(100, 1, 0, _ip_address_added),
             "IP address {} was not added to {} in CONFIG_DB within timeout".format(ip_address, interface_name)
         )
         logger.info("Verified IP address {} added to {} in CONFIG_DB".format(ip_address, interface_name))
@@ -223,10 +225,20 @@ def extract_interface_from_vlan(duthost, interface_name, vlan_name, ip_address):
 
         def _interface_is_up():
             try:
-                result = duthost.shell("show ip interfaces | grep -w {}".format(interface_name),
-                                       module_ignore_errors=True)
+                try:
+                    addr_obj = ipaddress.ip_interface(ip_address)
+                    is_ipv6 = addr_obj.version == 6
+                except ValueError:
+                    is_ipv6 = ':' in ip_address  # Fallback check
+
+                if is_ipv6:
+                    cmd = "show ipv6 interfaces | grep -w {}".format(interface_name)
+                else:
+                    cmd = "show ip interfaces | grep -w {}".format(interface_name)
+
+                result = duthost.shell(cmd, module_ignore_errors=True)
                 if result['rc'] != 0:
-                    logger.debug("Interface {} not found in 'show ip interfaces'".format(interface_name))
+                    logger.debug("Interface {} not found in show command output".format(interface_name))
                     return False
 
                 return ip_address.split('/')[0] in result['stdout']
@@ -308,7 +320,7 @@ def wait_for_dhcp_relay_ready_on_interface(duthost, interface_name, timeout=60):
 
 
 def build_dhcp_relay_data_dict(duthost, tbinfo, mg_facts, config_facts, standby_duthost, downlink_iface_name,
-                               downlink_addr, downlink_mask, dhcp_server_addrs):
+                               downlink_addr, downlink_mask, dhcp_server_addrs, routed_interface_ports=None):
     """
     Build a dhcp_relay_data dictionary for both VLAN and routed interfaces.
 
@@ -322,10 +334,13 @@ def build_dhcp_relay_data_dict(duthost, tbinfo, mg_facts, config_facts, standby_
         downlink_addr: IPv4 address of the downlink interface
         downlink_mask: Netmask of the downlink interface
         dhcp_server_addrs: List of DHCP server addresses
+        routed_interface_ports: List of ports configured as routed interfaces (to exclude from VLAN members)
 
     Returns:
         dict: dhcp_relay_data dictionary with all required fields
     """
+    if routed_interface_ports is None:
+        routed_interface_ports = []
     uplink_interfaces, uplink_port_indices = calculate_uplink_interfaces_and_port_indices(mg_facts)
 
     switch_loopback_ip = mg_facts['minigraph_lo_interfaces'][0]['addr']
@@ -356,9 +371,9 @@ def build_dhcp_relay_data_dict(duthost, tbinfo, mg_facts, config_facts, standby_
     if downlink_iface_name.startswith('Vlan'):
         vlan_member_table = config_facts.get('VLAN_MEMBER', {})
         if downlink_iface_name in vlan_member_table:
-            # Filter out PortChannels, keep only Ethernet interfaces
+            # Filter out PortChannels and routed interface ports
             vlan_members = [port for port in vlan_member_table[downlink_iface_name].keys()
-                            if 'PortChannel' not in port]
+                            if 'PortChannel' not in port and port not in routed_interface_ports]
 
     if vlan_members:
         # VLAN case: find first member with alias
@@ -626,37 +641,9 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, setup_
     if 'dualtor' in tbinfo['topo']['name']:
         standby_duthost = [duthost for duthost in duthosts if duthost != duthosts[rand_one_dut_hostname]][0]
 
-    # SONiC spawns one DHCP relay agent per VLAN interface configured on the DUT
-    vlan_dict = mg_facts['minigraph_vlans']
-    for vlan_iface_name, vlan_info_dict in list(vlan_dict.items()):
-        vlan_addr = None
-        vlan_mask = None
-        for vlan_interface_info_dict in mg_facts['minigraph_vlan_interfaces']:
-            if vlan_interface_info_dict['attachto'] == vlan_iface_name:
-                vlan_addr = vlan_interface_info_dict['addr']
-                vlan_mask = vlan_interface_info_dict['mask']
-                break
-
-        if not vlan_addr:
-            continue  # Skip VLANs without IP configuration
-
-        dhcp_relay_data = build_dhcp_relay_data_dict(
-            duthost=duthost,
-            tbinfo=tbinfo,
-            mg_facts=mg_facts,
-            standby_duthost=standby_duthost,
-            config_facts=config_facts,
-            downlink_iface_name=vlan_iface_name,
-            downlink_addr=vlan_addr,
-            downlink_mask=vlan_mask,
-            dhcp_server_addrs=mg_facts['dhcp_servers']
-        )
-
-        if dhcp_relay_data:
-            dhcp_relay_data_dict['vlan'].append(dhcp_relay_data)
-
     port_table = config_facts.get('PORT', {})
     interface_table = config_facts.get('INTERFACE', {})
+    routed_interface_ports = []
 
     for port_name, port_config in port_table.items():
         dhcp_servers = port_config.get('dhcp_servers', [])
@@ -682,6 +669,9 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, setup_
         if port_name not in mg_facts.get('minigraph_ptf_indices', {}):
             continue
 
+        # Track this port as a routed interface
+        routed_interface_ports.append(port_name)
+
         dhcp_relay_data = build_dhcp_relay_data_dict(
             duthost=duthost,
             tbinfo=tbinfo,
@@ -691,11 +681,42 @@ def dut_dhcp_relay_data(duthosts, rand_one_dut_hostname, ptfhost, tbinfo, setup_
             downlink_iface_name=port_name,
             downlink_addr=port_ipv4_addr,
             downlink_mask=port_ipv4_mask,
-            dhcp_server_addrs=dhcp_servers
+            dhcp_server_addrs=dhcp_servers,
+            routed_interface_ports=routed_interface_ports
         )
 
         if dhcp_relay_data:
             dhcp_relay_data_dict['routed'].append(dhcp_relay_data)
+
+    # SONiC spawns one DHCP relay agent per VLAN interface configured on the DUT
+    vlan_dict = mg_facts['minigraph_vlans']
+    for vlan_iface_name, vlan_info_dict in list(vlan_dict.items()):
+        vlan_addr = None
+        vlan_mask = None
+        for vlan_interface_info_dict in mg_facts['minigraph_vlan_interfaces']:
+            if vlan_interface_info_dict['attachto'] == vlan_iface_name:
+                vlan_addr = vlan_interface_info_dict['addr']
+                vlan_mask = vlan_interface_info_dict['mask']
+                break
+
+        if not vlan_addr:
+            continue  # Skip VLANs without IP configuration
+
+        dhcp_relay_data = build_dhcp_relay_data_dict(
+            duthost=duthost,
+            tbinfo=tbinfo,
+            mg_facts=mg_facts,
+            standby_duthost=standby_duthost,
+            config_facts=config_facts,
+            downlink_iface_name=vlan_iface_name,
+            downlink_addr=vlan_addr,
+            downlink_mask=vlan_mask,
+            dhcp_server_addrs=mg_facts['dhcp_servers'],
+            routed_interface_ports=routed_interface_ports
+        )
+
+        if dhcp_relay_data:
+            dhcp_relay_data_dict['vlan'].append(dhcp_relay_data)
 
     return dhcp_relay_data_dict
 
@@ -777,3 +798,311 @@ def clean_processes_after_stress_test(ptfhost):
         return result['stdout'].strip() == '0'
 
     wait_until(10, 1, 0, _no_stress_test_processes)
+
+
+def check_dhcp6relay_ready(duthost):
+    wait_until(60, 5, 10, lambda: ("RUNNING" in duthost.shell(
+        "docker exec dhcp_relay supervisorctl status " +
+        "dhcp-relay:dhcp6relay | awk '{print $2}'")["stdout"]))
+
+
+def build_dhcpv6_relay_data_dict(duthost, tbinfo, mg_facts, downlink_iface_name,
+                                 downlink_addr, downlink_mask, dhcpv6_server_addrs, vlan_members=None):
+    """
+    Build a dhcpv6_relay_data dictionary for both VLAN and routed interfaces.
+
+    Args:
+        duthost: DUT host object
+        tbinfo: Testbed information
+        mg_facts: Minigraph facts dictionary
+        downlink_iface_name: Name of the downlink interface (e.g., 'Vlan1000' or 'Ethernet0')
+        downlink_addr: IPv6 address of the downlink interface
+        downlink_mask: Netmask of the downlink interface
+        dhcpv6_server_addrs: List of DHCPv6 server addresses
+        vlan_members: List of VLAN members (for VLAN interfaces only)
+
+    Returns:
+        dict: dhcpv6_relay_data dictionary with all required fields
+    """
+    # Gather information about the downlink interface
+    downlink_iface = {}
+    downlink_iface['name'] = downlink_iface_name
+    downlink_iface['addr'] = downlink_addr
+    downlink_iface['mask'] = downlink_mask
+    downlink_iface['dhcpv6_server_addrs'] = dhcpv6_server_addrs
+
+    # Obtain MAC address of the interface
+    res = duthost.shell('cat /sys/class/net/{}/address'.format(downlink_iface_name))
+    downlink_iface['mac'] = res['stdout']
+
+    # Determine client interface
+    client_iface = {}
+    if vlan_members:
+        # For VLAN interfaces, use first VLAN member
+        client_iface['name'] = vlan_members[0]
+        client_iface['alias'] = mg_facts['minigraph_port_name_to_alias_map'][client_iface['name']]
+        client_iface['port_idx'] = mg_facts['minigraph_ptf_indices'][client_iface['name']]
+    else:
+        # For routed interfaces, the interface itself is the client interface
+        client_iface['name'] = downlink_iface_name
+        client_iface['alias'] = mg_facts['minigraph_port_name_to_alias_map'].get(
+            downlink_iface_name, downlink_iface_name)
+        client_iface['port_idx'] = mg_facts['minigraph_ptf_indices'][downlink_iface_name]
+
+    # Obtain uplink port indices for this DHCP relay agent
+    uplink_interfaces = []
+    uplink_port_indices = []
+    topo_type = tbinfo['topo']['type']
+    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
+        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
+            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
+            if 'type' not in neighbor_device_info_dict:
+                continue
+            nei_type = neighbor_device_info_dict['type']
+            if topo_type == 't0' and nei_type == 'LeafRouter' or \
+               topo_type == 'm0' and nei_type == 'MgmtLeafRouter' or \
+               topo_type == 'mx' and nei_type == 'MgmtToRRouter':
+                # If this uplink's physical interface is a member of a portchannel interface,
+                # we record the name of the portchannel interface here, as this is the actual
+                # interface the DHCP relay will listen on.
+                iface_is_portchannel_member = False
+                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
+                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
+                        iface_is_portchannel_member = True
+                        if portchannel_name not in uplink_interfaces:
+                            uplink_interfaces.append(portchannel_name)
+                        break
+                # If the uplink's physical interface is not a member of a portchannel,
+                # add it to our uplink interfaces list
+                if not iface_is_portchannel_member:
+                    uplink_interfaces.append(iface_name)
+                uplink_port_indices.append(mg_facts['minigraph_ptf_indices'][iface_name])
+
+    # Get link-local address
+    command = "ip addr show {} | grep inet6 | grep 'scope link' | awk '{{print $2}}'".format(downlink_iface_name)
+    res = duthost.shell(command)
+    down_interface_link_local = ""
+    down_interface_link_local_with_prefix_len = ""
+    if res['stdout'] != "":
+        down_interface_link_local_with_prefix_len = res['stdout']
+        down_interface_link_local = down_interface_link_local_with_prefix_len.split("/")[0]
+
+    dhcp_relay_data = {}
+    dhcp_relay_data['downlink_iface'] = downlink_iface
+    dhcp_relay_data['client_iface'] = client_iface
+    dhcp_relay_data['uplink_interfaces'] = uplink_interfaces
+    dhcp_relay_data['uplink_port_indices'] = uplink_port_indices
+    dhcp_relay_data['down_interface_link_local'] = down_interface_link_local
+    dhcp_relay_data['down_interface_link_local_with_prefix_len'] = down_interface_link_local_with_prefix_len
+    dhcp_relay_data['loopback_iface'] = mg_facts['minigraph_lo_interfaces']
+    dhcp_relay_data['loopback_ipv6'] = mg_facts['minigraph_lo_interfaces'][1]['addr']
+    if 'dualtor' in tbinfo['topo']['name']:
+        dhcp_relay_data['is_dualtor'] = True
+    else:
+        dhcp_relay_data['is_dualtor'] = False
+
+    res = duthost.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
+    dhcp_relay_data['uplink_mac'] = res['stdout']
+
+    return dhcp_relay_data
+
+
+@pytest.fixture(scope="module")
+def setup_routed_dhcpv6_servers(duthosts, rand_one_dut_hostname, tbinfo):
+    """
+    Setup fixture that ensures at least some routed interfaces have dhcpv6_servers configured.
+    This enables testing of DHCPv6 relay on routed interfaces.
+
+    This fixture will:
+    1. Take a config checkpoint (for guaranteed rollback)
+    2. Extract a VLAN member to create a routed interface
+    3. Configure dhcpv6_servers on the routed interface
+    4. Save config (so tests can do 'config reload' and get our changes)
+    5. Yield for tests to run
+    6. Restore original configuration via checkpoint rollback
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+
+    dhcpv6_servers = mg_facts.get('dhcpv6_servers', [])
+    if not dhcpv6_servers:
+        logger.info("No dhcpv6_servers found in minigraph - routed interface tests will be skipped")
+        yield
+        return
+
+    checkpoint_name = "dhcpv6_relay_test_checkpoint"
+    logger.info("Creating config checkpoint: {}".format(checkpoint_name))
+    duthost.shell("sudo config checkpoint {}".format(checkpoint_name))
+
+    try:
+        logger.info("Attempting to extract VLAN member for routed interface testing")
+        vlan_member_info = find_vlan_member_for_extraction(duthost, tbinfo, require_ptf_index=True)
+
+        if not vlan_member_info:
+            logger.info("No suitable VLAN member found for extraction - routed interface tests will be skipped")
+            yield
+            return
+
+        candidate_interface = vlan_member_info['interface']
+        extracted_from_vlan = vlan_member_info['vlan']
+        original_tagging_mode = vlan_member_info['tagging_mode']
+        test_ipv6_address = "fc00:100::1/64"
+
+        logger.info("Extracting {} from {} for DHCPv6 relay testing".format(
+            candidate_interface, extracted_from_vlan))
+        if not extract_interface_from_vlan(duthost, candidate_interface,
+                                           extracted_from_vlan, test_ipv6_address):
+            logger.error("Failed to extract {} from {}".format(
+                candidate_interface, extracted_from_vlan))
+            yield
+            return
+
+        logger.info("Configuring dhcpv6_servers on routed interface: {}".format(candidate_interface))
+        dhcpv6_servers_str = ' '.join(dhcpv6_servers)
+        cmd = "config interface dhcp_relay add {} {}".format(candidate_interface, dhcpv6_servers_str)
+        result = duthost.shell(cmd, module_ignore_errors=True)
+        if result['rc'] != 0:
+            logger.error("Failed to configure dhcpv6_servers on {} - skipping routed interface tests".format(
+                candidate_interface))
+            yield
+            return
+
+        # Wait for dhcp6relay to be ready
+        check_dhcp6relay_ready(duthost)
+
+        # Save config so that 'config reload' during tests will pick up our changes
+        logger.info("Saving config with routed interface configuration")
+        duthost.shell("sudo config save -y")
+
+        yield
+
+        logger.info("Attempting manual cleanup before rollback")
+        duthost.shell("config interface dhcp_relay del {}".format(candidate_interface), module_ignore_errors=True)
+
+        if extracted_from_vlan is not None:
+            logger.info("Restoring {} to {}".format(candidate_interface, extracted_from_vlan))
+            restore_success = restore_interface_to_vlan(duthost, candidate_interface,
+                                                        extracted_from_vlan, test_ipv6_address,
+                                                        original_tagging_mode)
+            if not restore_success:
+                logger.warning("Failed to restore {} to {} - will rely on rollback".format(
+                    candidate_interface, extracted_from_vlan))
+
+    finally:
+        logger.info("Rolling back to checkpoint: {}".format(checkpoint_name))
+        result = duthost.shell("sudo config rollback {}".format(checkpoint_name), module_ignore_errors=True)
+        logger.info("Rollback result: rc={}, stdout={}, stderr={}".format(
+            result.get('rc'), result.get('stdout'), result.get('stderr')))
+
+        # Save the restored config so pytest's config_reload gets the original config
+        logger.info("Saving restored config to file")
+        result = duthost.shell("sudo config save -y", module_ignore_errors=True)
+        logger.info("Config save result: rc={}, stdout={}, stderr={}".format(
+            result.get('rc'), result.get('stdout'), result.get('stderr')))
+
+        logger.info("Deleting checkpoint: {}".format(checkpoint_name))
+        duthost.shell("sudo config checkpoint delete {}".format(checkpoint_name), module_ignore_errors=True)
+
+
+@pytest.fixture(scope="module")
+def dut_dhcpv6_relay_data(duthosts, rand_one_dut_hostname, tbinfo, setup_routed_dhcpv6_servers):
+    """ Fixture which returns a dictionary keyed by interface type ('vlan', 'routed')
+        where each value is a list of dictionaries containing data necessary to test
+        DHCPv6 relay agents running on the DuT for that interface type.
+        This fixture is scoped to the module, as the data it gathers can be used by
+        all tests in this module. It does not need to be run before each test.
+
+        Returns:
+            Dict with keys 'vlan' and 'routed', each containing a list of interface dicts:
+            {
+                'vlan': [<dhcpv6_relay_data>, <dhcpv6_relay_data>, ...],
+                'routed': [<dhcpv6_relay_data>, <dhcpv6_relay_data>, ...]
+            }
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+    dhcp_relay_data_dict = {'vlan': [], 'routed': []}
+
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+    config_facts = duthost.get_running_config_facts()
+
+    # Collect routed interfaces with DHCPv6 relay configured
+    port_table = config_facts.get('PORT', {})
+    interface_table = config_facts.get('INTERFACE', {})
+    routed_interface_ports = []
+
+    for port_name, port_config in port_table.items():
+        dhcpv6_servers = port_config.get('dhcpv6_servers', [])
+        if not dhcpv6_servers:
+            continue
+
+        port_ipv6_addr = None
+        port_ipv6_mask = None
+        if port_name in interface_table:
+            for ip_prefix in interface_table[port_name].keys():
+                try:
+                    ip_obj = ipaddress.ip_interface(ip_prefix)
+                    if ip_obj.version == 6:
+                        port_ipv6_addr = str(ip_obj.ip)
+                        port_ipv6_mask = str(ip_obj.netmask)
+                        break
+                except ValueError:
+                    continue
+
+        if not port_ipv6_addr:
+            continue  # Skip ports without IPv6 addresses
+
+        if port_name not in mg_facts.get('minigraph_ptf_indices', {}):
+            continue
+
+        # Track this port as a routed interface
+        routed_interface_ports.append(port_name)
+
+        dhcp_relay_data = build_dhcpv6_relay_data_dict(
+            duthost=duthost,
+            tbinfo=tbinfo,
+            mg_facts=mg_facts,
+            downlink_iface_name=port_name,
+            downlink_addr=port_ipv6_addr,
+            downlink_mask=port_ipv6_mask,
+            dhcpv6_server_addrs=dhcpv6_servers,
+            vlan_members=None
+        )
+
+        if dhcp_relay_data:
+            dhcp_relay_data_dict['routed'].append(dhcp_relay_data)
+
+    # SONiC spawns one DHCP relay agent per VLAN interface configured on the DUT
+    vlan_dict = mg_facts['minigraph_vlans']
+    for vlan_iface_name, vlan_info_dict in list(vlan_dict.items()):
+        vlan_members = [port for port in vlan_info_dict['members']
+                        if 'PortChannel' not in port and port not in routed_interface_ports]
+        if not vlan_members:
+            continue
+
+        vlan_addr = None
+        vlan_mask = None
+        for vlan_interface_info_dict in mg_facts['minigraph_vlan_interfaces']:
+            if (vlan_interface_info_dict['attachto'] == vlan_iface_name) and \
+               (netaddr.IPAddress(str(vlan_interface_info_dict['addr'])).version == 6):
+                vlan_addr = vlan_interface_info_dict['addr']
+                vlan_mask = vlan_interface_info_dict['mask']
+                break
+
+        if not vlan_addr:
+            continue  # Skip VLANs without IPv6 configuration
+
+        dhcp_relay_data = build_dhcpv6_relay_data_dict(
+            duthost=duthost,
+            tbinfo=tbinfo,
+            mg_facts=mg_facts,
+            downlink_iface_name=vlan_iface_name,
+            downlink_addr=vlan_addr,
+            downlink_mask=vlan_mask,
+            dhcpv6_server_addrs=mg_facts['dhcpv6_servers'],
+            vlan_members=vlan_members
+        )
+
+        if dhcp_relay_data:
+            dhcp_relay_data_dict['vlan'].append(dhcp_relay_data)
+
+    return dhcp_relay_data_dict
