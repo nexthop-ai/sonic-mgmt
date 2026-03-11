@@ -28,8 +28,12 @@ Fixes # (issue)
     - [ ] Skipped for non-supported platforms
 - [ ] Test case improvement
 
+#### Upstream required
 
-### Back port request
+- [ ] Yes
+- [ ] No
+
+#### Which release branch to backport/forwardport
 - [ ] 202505
 - [ ] 202511
 

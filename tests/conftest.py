@@ -2855,6 +2855,102 @@ def compare_running_config(pre_running_config, cur_running_config):
             return False
 
 
+def detect_bgp_schema_migration(pre_running_config, cur_running_config):
+    """
+    Detect if BGP configuration has migrated between separated and unified FRR management modes.
+
+    This function checks for three key indicators of BGP schema migration:
+    1. BGP_NEIGHBOR key format change (flat "IP" vs VRF-based "VRF|IP")
+    2. DEVICE_METADATA docker_routing_config_mode change (separated <-> unified)
+    3. New unified FRR management tables added/removed
+
+    Args:
+        pre_running_config: Configuration before test
+        cur_running_config: Configuration after test
+
+    Returns:
+        tuple: (is_migrated: bool, migration_details: dict)
+    """
+    migration_details = {
+        'bgp_neighbor_migrated': False,
+        'device_metadata_changed': False,
+        'new_bgp_tables_added': False,
+        'bgp_tables_removed': False,
+        'migration_direction': None,  # 'to_unified' or 'to_separated'
+        'new_tables': [],
+        'removed_tables': []
+    }
+
+    # Check 1: BGP_NEIGHBOR schema migration (flat <-> VRF-based)
+    if 'BGP_NEIGHBOR' in pre_running_config and 'BGP_NEIGHBOR' in cur_running_config:
+        pre_keys = list(pre_running_config['BGP_NEIGHBOR'].keys())
+        cur_keys = list(cur_running_config['BGP_NEIGHBOR'].keys())
+
+        if pre_keys and cur_keys:
+            pre_has_vrf = any('|' in key for key in pre_keys)
+            cur_has_vrf = any('|' in key for key in cur_keys)
+
+            # Detect migration direction
+            if not pre_has_vrf and cur_has_vrf:
+                migration_details['bgp_neighbor_migrated'] = True
+                migration_details['migration_direction'] = 'to_unified'
+            elif pre_has_vrf and not cur_has_vrf:
+                migration_details['bgp_neighbor_migrated'] = True
+                migration_details['migration_direction'] = 'to_separated'
+
+    # Check 2: DEVICE_METADATA docker_routing_config_mode change
+    if 'DEVICE_METADATA' in pre_running_config and 'DEVICE_METADATA' in cur_running_config:
+        pre_metadata = pre_running_config.get('DEVICE_METADATA', {}).get('localhost', {})
+        cur_metadata = cur_running_config.get('DEVICE_METADATA', {}).get('localhost', {})
+
+        pre_mode = pre_metadata.get('docker_routing_config_mode', '')
+        cur_mode = cur_metadata.get('docker_routing_config_mode', '')
+        cur_frr_mgmt = cur_metadata.get('frr_mgmt_framework_config', '')
+
+        # Detect separated -> unified migration
+        if pre_mode == 'separated' and cur_mode == 'unified' and cur_frr_mgmt == 'true':
+            migration_details['device_metadata_changed'] = True
+            if not migration_details['migration_direction']:
+                migration_details['migration_direction'] = 'to_unified'
+        # Detect unified -> separated migration
+        elif pre_mode == 'unified' and cur_mode == 'separated':
+            migration_details['device_metadata_changed'] = True
+            if not migration_details['migration_direction']:
+                migration_details['migration_direction'] = 'to_separated'
+
+    # Check 3: Unified FRR management tables added/removed
+    unified_frr_tables = [
+        'BGP_PEER_GROUP', 'BGP_PEER_GROUP_AF', 'BGP_NEIGHBOR_AF',
+        'BGP_GLOBALS', 'BGP_GLOBALS_AF_NETWORK',
+        'PREFIX', 'PREFIX_SET', 'COMMUNITY_SET',
+        'ROUTE_MAP', 'ROUTE_MAP_SET'
+    ]
+
+    for table in unified_frr_tables:
+        # Table added (separated -> unified)
+        if table not in pre_running_config and table in cur_running_config:
+            migration_details['new_bgp_tables_added'] = True
+            migration_details['new_tables'].append(table)
+            if not migration_details['migration_direction']:
+                migration_details['migration_direction'] = 'to_unified'
+        # Table removed (unified -> separated)
+        elif table in pre_running_config and table not in cur_running_config:
+            migration_details['bgp_tables_removed'] = True
+            migration_details['removed_tables'].append(table)
+            if not migration_details['migration_direction']:
+                migration_details['migration_direction'] = 'to_separated'
+
+    # Migration is detected if any of the three indicators are present
+    is_migrated = (
+        migration_details['bgp_neighbor_migrated'] or
+        migration_details['device_metadata_changed'] or
+        migration_details['new_bgp_tables_added'] or
+        migration_details['bgp_tables_removed']
+    )
+
+    return is_migrated, migration_details
+
+
 @pytest.fixture(scope="module", autouse=True)
 def core_dump_and_config_check(duthosts, tbinfo, parallel_run_context, request,
                                # make sure the tear down of sanity_check happened after core_dump_and_config_check
@@ -2981,6 +3077,7 @@ def core_dump_and_config_check(duthosts, tbinfo, parallel_run_context, request,
 
         core_dump_check_failed = False
         config_db_check_failed = False
+        config_db_check_skipped_due_to_migration = False
 
         check_result = {}
 
@@ -3133,9 +3230,27 @@ def core_dump_and_config_check(duthosts, tbinfo, parallel_run_context, request,
                     if pre_only_config[duthost.hostname][cfg_context] or \
                             cur_only_config[duthost.hostname][cfg_context] or \
                             inconsistent_config[duthost.hostname][cfg_context]:
-                        config_db_check_failed = True
 
-            if core_dump_check_failed or config_db_check_failed:
+                        # Check if this is a BGP schema migration (expected change)
+                        is_bgp_migration, migration_details = detect_bgp_schema_migration(
+                            pre_running_config, cur_running_config
+                        )
+
+                        if is_bgp_migration:
+                            logger.info(
+                                "BGP schema migration detected on {} ({}), skipping config check "
+                                "but will restore config to ensure consistency. "
+                                "Migration details: {}".format(
+                                    duthost.hostname,
+                                    cfg_context if cfg_context else "default",
+                                    json.dumps(migration_details)
+                                )
+                            )
+                            config_db_check_skipped_due_to_migration = True
+                        else:
+                            config_db_check_failed = True
+
+            if core_dump_check_failed or config_db_check_failed or config_db_check_skipped_due_to_migration:
                 check_result = {
                     "core_dump_check": {
                         "failed": core_dump_check_failed,
@@ -3143,22 +3258,35 @@ def core_dump_and_config_check(duthosts, tbinfo, parallel_run_context, request,
                     },
                     "config_db_check": {
                         "failed": config_db_check_failed,
+                        "skipped_due_to_migration": config_db_check_skipped_due_to_migration,
                         "pre_only_config": pre_only_config,
                         "cur_only_config": cur_only_config,
                         "inconsistent_config": inconsistent_config
                     }
                 }
-                logger.warning("Core dump or config check failed for {}, results: {}"
-                               .format(module_name, json.dumps(check_result)))
+
+                # Log appropriately based on status
+                if config_db_check_skipped_due_to_migration:
+                    logger.info(
+                        "Config check skipped for {} due to expected BGP schema migration. "
+                        "Restoring config to ensure DUT consistency. Details: {}".format(
+                            module_name, json.dumps(check_result)
+                        )
+                    )
+                else:
+                    logger.warning("Core dump or config check failed for {}, results: {}"
+                                   .format(module_name, json.dumps(check_result)))
 
                 restore_config_db_and_config_reload(duts_data, duthosts, request)
             else:
                 logger.info("Core dump and config check passed for {}".format(module_name))
 
         if check_result:
-            logger.debug("core_dump_and_config_check failed, check_result: {}".format(json.dumps(check_result)))
+            logger.debug("core_dump_and_config_check result: {}".format(json.dumps(check_result)))
             add_custom_msg(request, f"{DUT_CHECK_NAMESPACE}.core_dump_check_failed", core_dump_check_failed)
             add_custom_msg(request, f"{DUT_CHECK_NAMESPACE}.config_db_check_failed", config_db_check_failed)
+            add_custom_msg(request, f"{DUT_CHECK_NAMESPACE}.config_db_check_skipped_due_to_migration",
+                           config_db_check_skipped_due_to_migration)
 
 
 @pytest.fixture(scope="module", autouse=True)
