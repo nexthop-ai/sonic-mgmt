@@ -377,12 +377,12 @@ def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, cre
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     community = creds_all_duts[duthost.hostname]["snmp_rocommunity"]
 
-    logger.info(f"Testing inetCidrRouteNumber with BGP down on {duthost.hostname}")
+    logger.info(f"Testing OID {snmp_oid} with BGP down on {duthost.hostname}")
 
     bgp_stopped = False
     try:
         # First verify we can get a route count with BGP running
-        initial_count = get_snmp_route_count(duthost, hostip, community, INET_CIDR_ROUTE_NUMBER_OID)
+        initial_count = get_snmp_route_count(duthost, hostip, community, snmp_oid)
         logger.info(f"Initial route count with BGP running: {initial_count}")
         pytest_assert(initial_count > 0, "Expected non-zero route count with BGP running")
 
@@ -395,7 +395,7 @@ def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, cre
         time.sleep(ROUTE_COUNTER_UPDATE_TIMEOUT)
 
         # Verify SNMP returns no value (not 0)
-        snmp_cmd = f"docker exec snmp snmpget -v2c -c {community} {hostip} {INET_CIDR_ROUTE_NUMBER_OID}"
+        snmp_cmd = f"docker exec snmp snmpget -v2c -c {community} {hostip} {snmp_oid}"
         result = duthost.shell(snmp_cmd, module_ignore_errors=True)
 
         logger.info(f"SNMP query result with BGP down: rc={result['rc']}, stdout={result.get('stdout', '')}, "
@@ -411,8 +411,9 @@ def _test_snmp_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, cre
             logger.info("Restarting BGP service")
             duthost.shell("sudo config feature state bgp enabled", module_ignore_errors=False)
             wait_until(60, 10, 1, lambda: is_container_running(duthost, "bgp"))
+            time.sleep(ROUTE_COUNTER_UPDATE_TIMEOUT)
             # successful data retrieval indicates data has quiesced.
-            get_snmp_route_count(duthost, hostip, community, INET_CIDR_ROUTE_NUMBER_OID)
+            get_snmp_route_count(duthost, hostip, community, snmp_oid)
 
 
 def test_snmp_ipCidrRouteNumber_bgp_down(duthosts, enum_rand_one_per_hwsku_frontend_hostname, creds_all_duts):

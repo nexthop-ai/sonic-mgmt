@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 # Route counter service runs on a 30s timer by default
 # During tests we speed it up to 5s for faster test execution
-ROUTE_COUNTER_TEST_INTERVAL = 3
-ROUTE_COUNTER_UPDATE_TIMEOUT = 6  # Wait for 2 cycles to be safe
+ROUTE_COUNTER_TEST_INTERVAL = 5
+ROUTE_COUNTER_UPDATE_TIMEOUT = 10  # Wait for 2 cycles to be safe
 
 
 @pytest.fixture(scope='module', autouse=True)
