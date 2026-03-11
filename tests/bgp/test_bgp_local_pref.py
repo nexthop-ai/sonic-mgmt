@@ -23,6 +23,25 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def ignore_expected_loganalyzer_exceptions(duthosts, loganalyzer):
+    """
+    Ignore expected YANG validation errors that occur during route-map updates.
+
+    These errors are expected and auto-recovered by the Generic Config Updater.
+    The GCU logs these errors during validation but then successfully applies the patch.
+    """
+    if loganalyzer:
+        ignore_errors = [
+            r".*ERR sonic_yang: Data Loading Failed:Invalid JSON data \(unexpected value\).*",
+            r".*ERR sonic_yang: Data Loading Failed:Too many \"route_map_in\" elements.*",
+        ]
+        for duthost in duthosts:
+            loganalyzer[duthost.hostname].ignore_regex.extend(ignore_errors)
+
+    yield
+
+
 def configure_community_route_map(host, route_map_name="COMM_LOCAL_PREF", community="1234:5678", is_dut=False):
     """
     Configure route-map to match on community and set local preference
