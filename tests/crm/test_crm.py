@@ -308,28 +308,16 @@ def verify_thresholds(duthost, asichost, **kwargs):
                     kwargs["th_hi"] = used_percent + 1
                     loganalyzer.expect_regex = [EXPECT_CLEAR]
 
-<<<<<<< HEAD
             kwargs['crm_used'], kwargs['crm_avail'] = get_crm_stats(kwargs['crm_cmd'], duthost)
             cmd = template.render(**kwargs)
 
             with loganalyzer:
                 asichost.command(cmd)
                 # Make sure CRM counters updated
-                time.sleep(CRM_UPDATE_TIME)
+                wait_until(CRM_UPDATE_TIME, CRM_POLLING_INTERVAL, 0, lambda: True)
     finally:
         # Always restore rsyslog config
         restore_swss_rsyslog_rate_limit(duthost, edited_containers)
-||||||| 47aed9675
-        with loganalyzer:
-            asichost.command(cmd)
-            # Make sure CRM counters updated
-            time.sleep(CRM_UPDATE_TIME)
-=======
-        with loganalyzer:
-            asichost.command(cmd)
-            # Make sure CRM counters updated
-            wait_until(CRM_UPDATE_TIME, CRM_POLLING_INTERVAL, 0, lambda: True)
->>>>>>> upstream/master
 
 
 def get_crm_stats(cmd, duthost):
