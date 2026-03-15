@@ -5440,11 +5440,36 @@ vrf/test_vrf_attr.py:
       - "asic_type in ['vs', 'mellanox', 'nvidia']"
       - "topo_type not in ['t0']"
 
+vrf/test_vrf_attr.py::TestVrfAttrIpAction::test_vrf2_fwd_pkts_with_ip_opt:
+  skip:
+    reason: "On broadcom, SAI does not support changing IP options behavior on VRFs"
+    conditions:
+      - "asic_type in ['broadcom']"
+
+vrf/test_vrf_attr.py::TestVrfAttrIpState::test_vrf1_drop_v4:
+  skip:
+    reason: "On broadcom, SAI does not support enable/disable V4 routing on VRFs."
+    conditions:
+      - "asic_type in ['broadcom']"
+
+vrf/test_vrf_attr.py::TestVrfAttrIpState::test_vrf2_drop_v6:
+  skip:
+    reason: "On broadcom, SAI does not support enable/disable V6 routing on VRFs."
+    conditions:
+      - "asic_type in ['broadcom']"
+
 vrf/test_vrf_attr.py::TestVrfAttrSrcMac::test_vrf1_neigh_with_default_router_mac:
   skip:
     reason: "RIF MAC taking precedence over VRF MAC / Vrf test are skipped in PR testing."
     conditions:
-      - "asic_type in ['barefoot', 'vs']"
+      - "asic_type in ['barefoot', 'vs', 'broadcom']"
+
+vrf/test_vrf_attr.py::TestVrfAttrTTL::test_vrf2_fwd_pkts_with_ttl_1:
+  skip:
+    reason: "On broadcom, SAI does not support changing TTL 1 behavior on VRFs."
+    conditions:
+      - "asic_type in ['broadcom']"
+
 
 #######################################
 #####           vxlan            #####
