@@ -16,6 +16,7 @@ from tests.ptf_runner import ptf_runner
 from tests.common.dualtor.mux_simulator_control import mux_server_url       # noqa: F401
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor_m    # noqa: F401
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_random_side            # noqa: F401
+from tests.common.dualtor.nic_simulator_control import mux_status_from_nic_simulator                        # noqa: F401
 from tests.common.dualtor.dual_tor_utils import config_active_active_dualtor_active_standby                 # noqa: F401
 from tests.common.dualtor.dual_tor_utils import validate_active_active_dualtor_setup                        # noqa: F401
 from tests.common.dualtor.dual_tor_common import active_active_ports                                        # noqa: F401
@@ -313,7 +314,7 @@ def ecmp_inner_header_hash_supported(global_hash_capabilities):
 def test_basic_fib(duthosts, ptfhost, tbinfo, ipv4, ipv6, mtu,
                    toggle_all_simulator_ports_to_random_side,           # noqa: F811
                    updated_tbinfo, mux_server_url,                      # noqa: F401, F811
-                   mux_status_from_nic_simulator,
+                   mux_status_from_nic_simulator,                       # noqa: F811
                    ignore_ttl, single_fib_for_duts,                     # noqa: F401, F811
                    duts_running_config_facts, duts_minigraph_facts,
                    validate_active_active_dualtor_setup,                # noqa: F401, F811
@@ -350,7 +351,7 @@ def test_basic_fib(duthosts, ptfhost, tbinfo, ipv4, ipv6, mtu,
             "ptf_test_port_map": ptf_test_port_map_active_active(
                 ptfhost, updated_tbinfo, duthosts, mux_server_url,
                 duts_running_config_facts, duts_minigraph_facts,
-                mux_status_from_nic_simulator()
+                mux_status_from_nic_simulator
             ),
             "ipv4": ipv4,
             "ipv6": ipv6,
@@ -596,7 +597,7 @@ def test_hash(add_default_route_to_dut, duthosts, tbinfo, setup_vlan,      # noq
             "ptf_test_port_map": ptf_test_port_map_active_active(
                 ptfhost, updated_tbinfo, duthosts, mux_server_url,
                 duts_running_config_facts, duts_minigraph_facts,
-                mux_status_from_nic_simulator()
+                mux_status_from_nic_simulator
             ),
             "hash_keys": hash_keys,
             "src_ip_range": ",".join(src_ip_range),
@@ -652,7 +653,7 @@ def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,               
                params={"fib_info_files": fib_files[:3],   # Test at most 3 DUTs
                        "ptf_test_port_map": ptf_test_port_map_active_active(
                            ptfhost, tbinfo, duthosts, mux_server_url, duts_running_config_facts,
-                           duts_minigraph_facts, mux_status_from_nic_simulator()),
+                           duts_minigraph_facts, mux_status_from_nic_simulator),
                        "hash_keys": hash_keys,
                        "src_ip_range": ",".join(src_ip_range),
                        "dst_ip_range": ",".join(dst_ip_range),
@@ -675,8 +676,8 @@ def test_ipinip_hash(add_default_route_to_dut, duthost, duthosts,               
 
 def test_ipinip_hash_negative(add_default_route_to_dut, duthosts,           # noqa: F811
                               ptfhost, ipver, tbinfo, mux_server_url, ignore_ttl, single_fib_for_duts,  # noqa: F811
-                              duts_running_config_facts, duts_minigraph_facts, mux_status_from_nic_simulator,
-                              request):                  # noqa: F811
+                              duts_running_config_facts, duts_minigraph_facts,  # noqa: F811
+                              mux_status_from_nic_simulator, request):          # noqa: F811
     hash_keys = ['inner_length']
     fib_files = fib_info_files_per_function(duthosts, ptfhost, duts_running_config_facts, duts_minigraph_facts,
                                             tbinfo, request)
@@ -698,7 +699,7 @@ def test_ipinip_hash_negative(add_default_route_to_dut, duthosts,           # no
                        "ptf_test_port_map": ptf_test_port_map_active_active(
                            ptfhost, tbinfo, duthosts, mux_server_url,
                            duts_running_config_facts, duts_minigraph_facts,
-                           mux_status_from_nic_simulator()
+                           mux_status_from_nic_simulator
                ),
                    "hash_keys": hash_keys,
                    "src_ip_range": ",".join(src_ip_range),
@@ -757,7 +758,7 @@ def test_vxlan_hash(add_default_route_to_dut, duthost, duthosts,                
                        "ptf_test_port_map": ptf_test_port_map_active_active(
                                                                     ptfhost, tbinfo, duthosts, mux_server_url,
                                                                     duts_running_config_facts, duts_minigraph_facts,
-                                                                    mux_status_from_nic_simulator()),
+                                                                    mux_status_from_nic_simulator),
                        "hash_keys": hash_keys,
                        "src_ip_range": ",".join(src_ip_range),
                        "dst_ip_range": ",".join(dst_ip_range),
@@ -822,7 +823,7 @@ def test_nvgre_hash(add_default_route_to_dut, duthost, duthosts,                
                        "ptf_test_port_map": ptf_test_port_map_active_active(
                            ptfhost, tbinfo, duthosts, mux_server_url,
                            duts_running_config_facts, duts_minigraph_facts,
-                           mux_status_from_nic_simulator()),
+                           mux_status_from_nic_simulator),
                        "hash_keys": hash_keys,
                        "src_ip_range": ",".join(src_ip_range),
                        "dst_ip_range": ",".join(dst_ip_range),
@@ -846,7 +847,7 @@ def test_ecmp_group_member_flap(
     duthosts, ptfhost, tbinfo, ipv4, ipv6, mtu,
     toggle_all_simulator_ports_to_random_side,  # noqa: F811
     updated_tbinfo, mux_server_url,  # noqa: F401, F811
-    mux_status_from_nic_simulator, ignore_ttl,
+    mux_status_from_nic_simulator, ignore_ttl,  # noqa: F811
     single_fib_for_duts,  # noqa: F401, F811
     duts_running_config_facts, duts_minigraph_facts,
     validate_active_active_dualtor_setup, request  # noqa: F401, F811
@@ -907,7 +908,7 @@ def test_ecmp_group_member_flap(
             "ptf_test_port_map": ptf_test_port_map_active_active(
                 ptfhost, updated_tbinfo, duthosts, mux_server_url,
                 duts_running_config_facts, duts_minigraph_facts,
-                mux_status_from_nic_simulator()
+                mux_status_from_nic_simulator
             ),
             "ipv4": ipv4,
             "ipv6": ipv6,
@@ -963,7 +964,7 @@ def test_ecmp_group_member_flap(
             "ptf_test_port_map": ptf_test_port_map_active_active(
                 ptfhost, updated_tbinfo, duthosts, mux_server_url,
                 duts_running_config_facts, duts_minigraph_facts,
-                mux_status_from_nic_simulator()
+                mux_status_from_nic_simulator
             ),
             "ipv4": ipv4,
             "ipv6": ipv6,
@@ -1012,7 +1013,7 @@ def test_ecmp_group_member_flap(
             "ptf_test_port_map": ptf_test_port_map_active_active(
                 ptfhost, updated_tbinfo, duthosts, mux_server_url,
                 duts_running_config_facts, duts_minigraph_facts,
-                mux_status_from_nic_simulator()
+                mux_status_from_nic_simulator
             ),
             "ipv4": ipv4,
             "ipv6": ipv6,

@@ -18,7 +18,7 @@ logger = logging.getLogger('MyLogger')
 logger.setLevel(logging.DEBUG)
 
 # Maximum number of processes to be created
-MAX_PROCESS_NUM = 4
+MAX_PROCESS_NUM = 8
 
 
 class PacketSender():

@@ -452,6 +452,9 @@ def remove_qos_map(duthost, map_type, map_name):
     """
     Remove a QoS map from DUT configuration.
 
+    This function first checks if the map is referenced in PORT_QOS_MAP and removes
+    those references before removing the map.
+
     Args:
         duthost: DUT host object
         map_type (str): Type of map to remove ('DSCP_TO_TC_MAP', 'TC_TO_QUEUE_MAP', 'TC_TO_DSCP_MAP')
@@ -473,6 +476,32 @@ def remove_qos_map(duthost, map_type, map_name):
         if not isinstance(map_name, str) or not map_name:
             logger.error("map_name must be a non-empty string")
             return False
+
+        # Convert map type to PORT_QOS_MAP field name
+        port_qos_field = map_type.lower()
+
+        # Remove references from PORT_QOS_MAP to avoid dangling leafrefs
+        logger.info("Checking for {} references in PORT_QOS_MAP".format(map_type))
+        config_facts = duthost.asic_instance().config_facts(source="running")["ansible_facts"]
+        port_qos_map = config_facts.get('PORT_QOS_MAP', {})
+
+        removed_refs = []
+        for intf, qos_map in port_qos_map.items():
+            if qos_map.get(port_qos_field) == map_name:
+                cmd = "sonic-db-cli CONFIG_DB hdel 'PORT_QOS_MAP|{}' {}".format(intf, port_qos_field)
+                result = duthost.shell(cmd, module_ignore_errors=True)
+                if result['rc'] == 0:
+                    removed_refs.append(intf)
+                    logger.info("Removed {} reference from {}".format(port_qos_field, intf))
+                else:
+                    logger.warning("Failed to remove {} reference from {}: {}".format(
+                        port_qos_field, intf, result.get('stderr', 'Unknown error')))
+
+        if removed_refs:
+            logger.info("Removed {} references from {} interface(s)".format(
+                port_qos_field, len(removed_refs)))
+        else:
+            logger.info("No {} references found in PORT_QOS_MAP".format(port_qos_field))
 
         # Remove the map using sonic-cfggen
         config_data = {map_type: {map_name: None}}

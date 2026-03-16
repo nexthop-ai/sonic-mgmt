@@ -321,6 +321,7 @@ def set_pfc_timers():
     """
     pfc_timers = {'pfc_wd_detect_time': 400,
                   'pfc_wd_restore_time': 400,
+                  'pfc_wd_restore_time_hw': 1000,
                   'pfc_wd_restore_time_large': 3000,
                   'pfc_wd_poll_time': 400
                   }
@@ -424,6 +425,41 @@ def fetch_vendor_specific_diagnosis_re(duthost):
         return ""
 
     return VENDOR_SPEC_ADDITIONAL_INFO_RE.get(duthost.facts["asic_type"], "")
+
+
+def is_pfcwd_hw_recovery_enabled(duthost):
+    """
+    Check if PFC watchdog is using hardware-based recovery mechanism.
+
+    Hardware-based recovery uses ASIC-level PFC DLR (Deadlock Recovery) which only
+    controls egress/TX traffic by ignoring PFC XOFF. It does not have the capability
+    to control ingress/RX traffic.
+
+    This function queries the STATE_DB to check the RECOVERY_MECHANISM attribute
+    in the PFC_WD_STATE_TABLE|PFC_WD entry.
+
+    Args:
+        duthost(AnsibleHost): DUT instance
+
+    Returns:
+        bool: True if RECOVERY_MECHANISM is "hardware", False otherwise (software recovery)
+    """
+    try:
+        cmd = 'sonic-db-cli STATE_DB HGET "PFC_WD_STATE_TABLE|PFC_WD" "RECOVERY_MECHANISM"'
+        result = duthost.shell(cmd, module_ignore_errors=True)
+
+        # Get output and clean it up
+        output = result.get('stdout', '').strip().strip('"').strip("'").lower()
+
+        # Return True only if output is "hardware"
+        is_hardware = (output == "hardware")
+        logger.info("PFC watchdog recovery mechanism: {} (hardware={})".format(
+            output or "not set", is_hardware))
+        return is_hardware
+
+    except Exception as e:
+        logger.error("Exception while checking recovery mechanism: {}".format(str(e)))
+        return False
 
 
 @pytest.fixture(scope='class', autouse=False)

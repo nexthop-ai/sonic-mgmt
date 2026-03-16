@@ -52,7 +52,8 @@ from tests.common.helpers.custom_msg_utils import add_custom_msg
 from tests.common.helpers.dut_ports import encode_dut_port_name
 from tests.common.helpers.dut_utils import encode_dut_and_container_name
 from tests.common.helpers.parallel_utils import ParallelCoordinator, ParallelStatus, ParallelRunContext
-from tests.common.helpers.pfcwd_helper import TrafficPorts, select_test_ports, set_pfc_timers
+from tests.common.helpers.pfcwd_helper import TrafficPorts, select_test_ports, set_pfc_timers, \
+    is_pfcwd_hw_recovery_enabled
 from tests.common.system_utils import docker
 from tests.common.testbed import TestbedInfo
 from tests.common.utilities import get_inventory_files, wait_until
@@ -3642,8 +3643,12 @@ def setup_pfc_test(
     logger.info("--- Stopping Pfcwd ---")
     duthost.command("pfcwd stop")
 
-    # set poll interval
-    duthost.command("pfcwd interval {}".format(setup_info['pfc_timers']['pfc_wd_poll_time']))
+    # set poll interval (only for software recovery mechanism)
+    if is_pfcwd_hw_recovery_enabled(duthost):
+        logger.info("--- Hardware recovery mechanism detected - poll interval not supported ---")
+    else:
+        logger.info("--- Setting poll interval for software recovery mechanism ---")
+        duthost.command("pfcwd interval {}".format(setup_info['pfc_timers']['pfc_wd_poll_time']))
 
     # set bulk counter chunk size
     logger.info("--- Setting bulk counter polling chunk size ---")
@@ -3996,7 +4001,7 @@ def pytest_runtest_setup(item):
             fixtureinfo.names_closure.append("setup_dualtor_mux_ports")
 
 
-@pytest.fixture(scope="module", autouse=False)
+@pytest.fixture(scope="module", autouse=True)
 def yang_validation_check(request, duthosts):
     """
     YANG validation check that runs before and after each test module
