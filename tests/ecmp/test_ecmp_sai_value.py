@@ -199,7 +199,7 @@ def check_ecmp_offset_value(duthost, asic_name, topo_type, hwsku):
         output = duthost.shell(offset_cmd_th5_th6, module_ignore_errors=True)['stdout']
         logger.info(f"Offset cmd: {offset_cmd_th5_th6}, output: {output}")
 
-        #check if sai_tunnel_support is enabled
+        # check if sai_tunnel_support is enabled
         show_config_cmd = 'bcmcmd "show config"'
         show_config_output = duthost.shell(show_config_cmd, module_ignore_errors=True)['stdout']
         if re.search(r'sai_tunnel_support', show_config_output):
@@ -246,8 +246,8 @@ def test_ecmp_hash_seed_value(localhost, duthosts, tbinfo, enum_rand_one_per_hws
     Check ecmp HASH_SEED
     """
     pytest_require(
-        not (parameter == "warm-reboot" and "dualtor" in tbinfo["topo"]["name"]),
-        "Skip warm reboot test on dualtor topology"
+        not (parameter == "warm-reboot" and ("dualtor" in tbinfo["topo"]["name"] or "t0" in tbinfo["topo"]["type"])),
+        "Skip warm reboot test on t0 and dualtor topologies"
     )
 
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
@@ -301,9 +301,10 @@ def test_ecmp_offset_value(localhost, duthosts, tbinfo, enum_rand_one_per_hwsku_
     Check ecmp HASH_OFFSET
     """
     pytest_require(
-        not (parameter == "warm-reboot" and "dualtor" in tbinfo["topo"]["name"]),
-        "Skip warm reboot test on dualtor topology"
+        not (parameter == "warm-reboot" and ("dualtor" in tbinfo["topo"]["name"] or "t0" in tbinfo["topo"]["type"])),
+        "Skip warm reboot test on t0 and dualtor topologies"
     )
+
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     asic = duthost.facts["asic_type"]
     topo_type = tbinfo['topo']['type']
