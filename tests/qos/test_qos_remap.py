@@ -69,7 +69,7 @@ class TestQosRemap:
         # Cleanup after test
         logger.info("Cleaning up QoS maps after test")
         try:
-            # Remove only TC_TO_DSCP_MAP
+            # Remove the TC_TO_DSCP_MAP entry
             result = remove_qos_map(duthost, 'TC_TO_DSCP_MAP', 'REMAP_TEST')
             if result:
                 logger.info("✓ Cleaned up TC_TO_DSCP_MAP 'REMAP_TEST'")
