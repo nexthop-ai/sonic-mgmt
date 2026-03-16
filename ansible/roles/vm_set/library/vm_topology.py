@@ -597,6 +597,18 @@ class VMTopology(object):
             else:
                 self.add_br_if_to_docker(
                     mgmt_bridge, 'apiserver', MGMT_PORT_NAME)
+        else:
+            ext_if = PTF_MGMT_IF_TEMPLATE % self.vm_set_name if api_server_pid is None else 'apiserver'
+            if VMTopology.intf_exists(ext_if):
+                logging.info("External interface '%s' exists on host", ext_if)
+                _, if_to_br = VMTopology.brctl_show(mgmt_bridge)
+                if ext_if not in if_to_br:
+                    logging.info("Adding '%s' to bridge '%s'", ext_if, mgmt_bridge)
+                    VMTopology.cmd("brctl addif %s %s" % (mgmt_bridge, ext_if))
+                    logging.info("Successfully added '%s' to bridge '%s'", ext_if, mgmt_bridge)
+            else:
+                logging.warning("External interface '%s' does NOT exist on host!", ext_if)
+
         self.add_ip_to_docker_if(MGMT_PORT_NAME, mgmt_ip, mgmt_ipv6_addr=mgmt_ipv6_addr,
                                  mgmt_gw=mgmt_gw, mgmt_gw_v6=mgmt_gw_v6,
                                  extra_mgmt_ip_addr=extra_mgmt_ip_addr, api_server_pid=api_server_pid)

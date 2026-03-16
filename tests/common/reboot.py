@@ -177,7 +177,7 @@ REBOOT_CAUSE_HISTORY_TITLE = ["name", "cause", "time", "user", "comment"]
 
 # Retry logic config
 MAX_RETRIES = 3
-RETRY_BACKOFF_TIME = 15
+RETRY_BACKOFF_SECONDS = 15
 
 
 def check_warmboot_finalizer_inactive(duthost):
@@ -392,10 +392,10 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
         prev_reboot_cause_history = duthost.show_and_parse("show reboot-cause history")
 
     if not skip_console_log:
-        wait_conlsole_connection = 5
+        wait_console_connection = 5
         console_thread_res = pool.apply_async(
-            collect_console_log, args=(duthost, localhost, timeout + wait_conlsole_connection))
-        time.sleep(wait_conlsole_connection)
+            collect_console_log, args=(duthost, localhost, RETRY_BACKOFF_SECONDS))
+        time.sleep(wait_console_connection)
 
     # Perform reboot
     if duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts'].get("is_smartswitch"):
@@ -625,9 +625,9 @@ def sync_reboot_history_queue_with_dut(dut):
             e_type, e_value, e_traceback = sys.exc_info()
             logger.info("Exception type: %s" % e_type.__name__)
             logger.info("Exception message: %s" % e_value)
-            logger.info("Backing off for %d seconds before retrying", ((retry_count + 1) * RETRY_BACKOFF_TIME))
+            logger.info("Backing off for %d seconds before retrying", ((retry_count + 1) * RETRY_BACKOFF_SECONDS))
 
-            time.sleep(((retry_count + 1) * RETRY_BACKOFF_TIME))
+            time.sleep(((retry_count + 1) * RETRY_BACKOFF_SECONDS))
             continue
 
     # If retry logic did not yield reboot cause history from DUT,
@@ -742,24 +742,27 @@ def check_determine_reboot_cause_service(dut):
             Current sub-state: {sub_state}"
 
 
-def try_create_dut_console(duthost, localhost, conn_graph_facts, creds):
+def try_create_dut_console(duthost, localhost, conn_graph_facts, creds, retry_backoff_seconds: int = 0):
     try:
-        dut_sonsole = create_duthost_console(duthost, localhost, conn_graph_facts, creds)
+        dut_sonsole = create_duthost_console(
+            duthost, localhost, conn_graph_facts, creds, retry_backoff_seconds=retry_backoff_seconds
+        )
     except Exception as err:
-        logger.warning(f"Fail to create dut console. Please check console config or if console works ro not. {err}")
+        logger.warning(f"Fail to create dut console. Please check console config or if console works or not. {err}")
         return None
     logger.info("creating dut console succeeds")
     return dut_sonsole
 
 
-def collect_console_log(duthost, localhost, timeout):
+def collect_console_log(duthost, localhost, retry_backoff_seconds):
     creds = creds_on_dut(duthost)
     conn_graph_facts = get_graph_facts(duthost, localhost, [duthost.hostname])
-    dut_console = try_create_dut_console(duthost, localhost, conn_graph_facts, creds)
+    dut_console = try_create_dut_console(
+        duthost, localhost, conn_graph_facts, creds, retry_backoff_seconds=retry_backoff_seconds
+    )
     if dut_console:
-        if dut_console:
-            logger.info("start: collect console log")
-            return dut_console
+        logger.info("start: collect console log")
+        return dut_console
     else:
         logger.warning("dut console is not ready, we cannot get log by console")
         return None

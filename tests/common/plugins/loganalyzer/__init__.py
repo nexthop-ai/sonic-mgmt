@@ -154,3 +154,23 @@ def ignore_port_phy_attr_errors_on_vs(duthosts, loganalyzer):
                         r"does not support.*attribute.*"
                     ]
                 )
+
+@pytest.fixture(autouse=True)
+def ignore_fec_alignment_errors(duthosts, loganalyzer):
+    ASIC_LIST = ["th6"]
+    if loganalyzer:
+        for duthost in duthosts:
+            platform_asic = duthost.facts["platform_asic"].lower()
+            asic_name = duthost.get_asic_name().lower()
+            if platform_asic == "broadcom" and asic_name in ASIC_LIST:
+                loganalyzer[duthost.hostname].ignore_regex.extend(
+                    [
+                        (r".*ERR syncd#syncd: \[none\] SAI_API_PORT:_brcm_sai_port_get_fec_alignment_lock_status:"
+                         r"[\d]+ FEC AM is not supported for port [\d]+.*"),
+                        (r".*ERR syncd#syncd: .* SAI_API_PORT:brcm_sai_get_port_attribute_cmn:"
+                         r"[\d]+ Fec Alignment lock status failed failed with error -[\d]+.*"),
+                        (r".*ERR swss#orchagent: :- verifyPortSupportsAllPhyAttr: PORT_PHY_ATTR: Port .*"
+                         r"does not support FEC_ALIGNMENT_LOCK attribute \(status=-[\d]+\).*")
+                    ]
+                )
+    yield
