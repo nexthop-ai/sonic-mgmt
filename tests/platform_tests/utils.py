@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import yaml
 
@@ -38,8 +39,16 @@ def get_config_from_yaml(file_path):
     Returns:
         dict: The loaded configuration
     """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Config file not found: {file_path}")
     with open(file_path) as stream:
-        return yaml.safe_load(stream)
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Malformed YAML in config file '{file_path}': {e}") from e
+    if config is None:
+        raise ValueError(f"Config file is empty: {file_path}")
+    return config
 
 
 def _verify_daemon_status(duthost, daemon_name, expected_status):
