@@ -411,7 +411,7 @@ r, ".* ERR swss#orchagent: :- queryTrimQueueIndexAttrCapabilities: Failed to get
 #Ignore UDF syslogs
 r, ".* SAI API: SAI_API_UDF, status: SAI_STATUS_INVALID_PARAMETER.*"
 
-# https://nexthopai.atlassian.net/browse/NOS-5628
+# TODO: Revert this ignore once BCM CSP fix lands - https://nexthopai.atlassian.net/browse/NOS-5672
 # Ignore SAI_API_TUNNEL create failures due to SRv6 SOC enablement
 r, ".* ERR swss\d*#orchagent.*Encountered failure in create operation.*SAI API: SAI_API_TUNNEL.*SAI_STATUS_INVALID_PARAMETER.*"
 
