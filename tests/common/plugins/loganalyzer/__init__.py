@@ -156,8 +156,8 @@ def ignore_port_phy_attr_errors_on_vs(duthosts, loganalyzer):
                 )
 
 @pytest.fixture(autouse=True)
-def ignore_fec_alignment_errors(duthosts, loganalyzer):
-    ASIC_LIST = ["th6"]
+def ignore_sai_port_phy_attribute_errors(duthosts, loganalyzer):
+    ASIC_LIST = ["th5", "th6"]
     if loganalyzer:
         for duthost in duthosts:
             platform_asic = duthost.facts["platform_asic"].lower()
@@ -168,9 +168,13 @@ def ignore_fec_alignment_errors(duthosts, loganalyzer):
                         (r".*ERR syncd#syncd: \[none\] SAI_API_PORT:_brcm_sai_port_get_fec_alignment_lock_status:"
                          r"[\d]+ FEC AM is not supported for port [\d]+.*"),
                         (r".*ERR syncd#syncd: .* SAI_API_PORT:brcm_sai_get_port_attribute_cmn:"
-                         r"[\d]+ Fec Alignment lock status failed failed with error -[\d]+.*"),
+                         r"[\d]+ Fec Alignment lock status failed failed with error -(8|327680).*"),
                         (r".*ERR swss#orchagent: :- verifyPortSupportsAllPhyAttr: PORT_PHY_ATTR: Port .*"
-                         r"does not support FEC_ALIGNMENT_LOCK attribute \(status=-[\d]+\).*")
+                         r"does not support (FEC_ALIGNMENT_LOCK|RX_SIGNAL_DETECT) attribute \(status=-[\d]+\).*"),
+                        (r".*ERR syncd#syncd: .* SAI_API_PORT:brcm_sai_get_port_attribute_cmn:"
+                         r"[\d]+ RX signal detect status get [\d]+ attrib [\d]+ failed with error Feature"
+                         "unavailable.*")
                     ]
                 )
     yield
+
