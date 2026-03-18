@@ -9,11 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 pytestmark = [
-    # Run only when MACsec tests are enabled ("--enable_macsec"), but on any topology
-    # since this test only depends on DUT-level MACsec/FIPS state, not specific
-    # neighbor wiring like other MACsec dataplane/controlplane tests.
+    # Run only when MACsec tests are enabled ("--enable_macsec"), on the same
+    # topologies as the rest of the MACsec suite.
     pytest.mark.macsec_required,
-    pytest.mark.topology("any"),
+    pytest.mark.topology("t0", "t2", "t0-sonic"),
 ]
 
 
