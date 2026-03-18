@@ -4,7 +4,6 @@ import time
 import logging
 import ipaddress
 import json
-import six
 from collections import defaultdict
 from tests.ptf_runner import ptf_runner
 from tests.common import config_reload
@@ -68,6 +67,8 @@ def configure_interfaces(cfg_facts, duthost, ptfhost, vlan_ip):
     for index, ip in enumerate(vlan_ip.hosts()):
         if len(ip_to_port) == NUM_NHs:
             break
+        if index >= len(port_list):
+            break
         ip_to_port[str(ip)] = port_list[index]
 
     return port_list, ip_to_port
@@ -108,7 +109,7 @@ def setup_neighbors(duthost, ptfhost, ip_to_port):
 
         neigh_mac = ptfhost.shell("cat /sys/class/net/eth" + str(port) + "/address")["stdout_lines"][0]
         ptf_to_dut_mac_map[port] = neigh_mac
-        if isinstance(ipaddress.ip_address(six.text_type(ip)), ipaddress.IPv4Address):
+        if isinstance(ipaddress.ip_address(ip), ipaddress.IPv4Address):
             neigh_entries['NEIGH'][vlan_name + "|" + ip] = {
                 "neigh": neigh_mac,
                 "family": "IPv4"
@@ -268,7 +269,7 @@ def link_startup(duthost, ip_to_port, prefix_list, shutdown_link):
 def compute_exp_flow_count(port_list, down_links, exp_flows=NUM_FLOWS):
     exp_flow_count = {}
     down_link_count = len(down_links)
-    exp_flows += down_link_count * (exp_flows / (len(port_list) - down_link_count))
+    exp_flows += down_link_count * (exp_flows // (len(port_list) - down_link_count))
     for port in port_list:
         exp_flow_count[port] = exp_flows
     for link in down_links:
@@ -484,7 +485,7 @@ def rh_ecmp_to_regular_ecmp_transitions(ptfhost, duthost, router_mac,
 
     time.sleep(3)
 
-    exp_flows = (len(port_list) * NUM_FLOWS) / len(net_ports)
+    exp_flows = (len(port_list) * NUM_FLOWS) // len(net_ports)
     exp_flow_count = compute_exp_flow_count(net_ports, [], exp_flows)
 
     partial_ptf_runner(ptfhost, 'net_port_hashing', dst_ip, exp_flow_count)
@@ -543,6 +544,15 @@ def common_setup_teardown(tbinfo, duthosts, rand_one_dut_hostname, ptfhost):
 
 def test_resilient_ecmp(common_setup_teardown, ptfhost):
     duthost, cfg_facts, router_mac, net_ports = common_setup_teardown
+
+    # Count available VLAN member ports
+    vlan_members = cfg_facts.get('VLAN_MEMBER', {})
+    total_vlan_ports = sum(len(ports) for ports in vlan_members.values())
+    if total_vlan_ports < NUM_NHs:
+        pytest.skip(
+            "Not enough VLAN member ports for test: need {}, have {} "
+            "(topology may not support {} next-hops)".format(NUM_NHs, total_vlan_ports, NUM_NHs)
+        )
 
     # IPv4 test
     port_list, ipv4_to_port = setup_test_config(duthost, ptfhost, cfg_facts,
