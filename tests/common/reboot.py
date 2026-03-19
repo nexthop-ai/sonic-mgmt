@@ -391,11 +391,20 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
         logger.info('Fetching reboot cause history before rebooting')
         prev_reboot_cause_history = duthost.show_and_parse("show reboot-cause history")
 
+    console_obj = None
     if not skip_console_log:
-        wait_console_connection = 5
         console_thread_res = pool.apply_async(
             collect_console_log, args=(duthost, localhost, RETRY_BACKOFF_SECONDS))
-        time.sleep(wait_console_connection)
+
+        # Block and wait for console to be ready before starting reboot
+        # 3 attempts to establish console connection
+        console_wait_max_seconds = sum(range(3 + 1)) * RETRY_BACKOFF_SECONDS
+        logger.info(f"Waiting up to {console_wait_max_seconds}s for console connection before reboot...")
+        try:
+            console_obj = console_thread_res.get(timeout=console_wait_max_seconds)
+        except Exception as e:
+            logger.warning(f"Console connection timed out or failed: {e}, proceeding with reboot anyway")
+            console_obj = None
 
     # Perform reboot
     if duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts'].get("is_smartswitch"):
@@ -418,26 +427,13 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
     if not wait_for_ssh:
         pool.terminate()
         return
-    dut_console = None
+
     try:
         wait_for_startup(duthost, localhost, delay, timeout)
-        try:
-            dut_console = console_thread_res.get()
-        except Exception as console_err:
-            logger.warning(f'Failed to get console thread result: {console_err}')
-            dut_console = None
-
     except Exception as err:
-        if dut_console:
-            dut_console.disconnect()
+        if console_obj:
+            console_obj.disconnect()
             logger.info('end: collect console log')
-        if not skip_console_log:
-            try:
-                logger.error(
-                    "collecting console log thread result: {} on {}".format(console_thread_res.get(), hostname)
-                )
-            except Exception as console_err:
-                logger.warning(f'Failed to get console thread result: {console_err}')
         pool.terminate()
         raise Exception(f"dut not start: {err}")
 
@@ -494,8 +490,8 @@ def reboot(duthost, localhost, reboot_type='cold', delay=10,
 
     DUT_ACTIVE.set()
     logger.info('{} reboot finished on {}'.format(reboot_type, hostname))
-    if dut_console:
-        dut_console.disconnect()
+    if console_obj:
+        console_obj.disconnect()
         logger.info('end: collect console log')
     pool.terminate()
     dut_uptime = duthost.get_up_time(utc_timezone=True)
@@ -755,17 +751,30 @@ def try_create_dut_console(duthost, localhost, conn_graph_facts, creds, retry_ba
 
 
 def collect_console_log(duthost, localhost, retry_backoff_seconds):
+    """
+    Collect console log during reboot.
+
+    This function blocks until console connection is established or fails.
+    The caller should use pool.apply_async().get(timeout=X) to wait for the result.
+
+    Args:
+        duthost: DUT host object
+        localhost: localhost object
+        retry_backoff_seconds: backoff seconds for retry
+
+    Returns:
+        ConsoleHost object if successful, None otherwise
+    """
     creds = creds_on_dut(duthost)
     conn_graph_facts = get_graph_facts(duthost, localhost, [duthost.hostname])
     dut_console = try_create_dut_console(
         duthost, localhost, conn_graph_facts, creds, retry_backoff_seconds=retry_backoff_seconds
     )
     if dut_console:
-        logger.info("start: collect console log")
-        return dut_console
+        logger.info("Console connection established successfully")
     else:
         logger.warning("dut console is not ready, we cannot get log by console")
-        return None
+    return dut_console
 
 
 def check_ssh_connection(localhost, host_ip, port, delay, timeout, search_regex):

@@ -289,7 +289,7 @@ all:
           ansible_host: 10.250.0.150
           ansible_hostv6: fec0::ffff:afa:16
           type: kvm
-          hwsku: NH-5010-F-O32-C32-V
+          hwsku: NH-5010-F-O64-V
           switch_type: voq
           num_asics: 1
           card_type: ut2
