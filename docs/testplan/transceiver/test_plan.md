@@ -337,7 +337,7 @@ More details on the `port_attributes_dict` structure and usage are provided in t
 **Processing Algorithm**:
 
 1. **Parse Port Specifications**: Identify range, list, and individual port formats
-2. **Expand to Individual Ports**: Convert all specifications to individual port names  
+2. **Expand to Individual Ports**: Convert all specifications to individual port names
 3. **Merge Overlapping Attributes**: Collect all attributes for each port, with later port specifications overriding earlier ones
 4. **Deferred Validation**: Validate mandatory fields after all applicable port specifications have been merged
 5. **Generate Final Dictionary**: Create the standard per-port attribute dictionary
@@ -364,7 +364,7 @@ More details on the `port_attributes_dict` structure and usage are provided in t
         """
         if not config_string:
             return {}
-        
+
         parts = config_string.split('-')
         if len(parts) != 6:
             raise ValueError("Invalid transceiver configuration format: {}".format(config_string))
@@ -540,7 +540,7 @@ Example of a dictionary created by parsing the above file:
 
 > 🔄 **Process Flow**: See the [Data Flow Architecture Diagram](diagrams/data_flow.md) for a comprehensive view of how these files are processed and merged.
 
-Multiple JSON files based on test category define the metadata and test-specific attributes required for each type of transceiver.  
+Multiple JSON files based on test category define the metadata and test-specific attributes required for each type of transceiver.
 **Note:** If a test category attribute file is absent, the corresponding test case will be skipped. This allows for selective test execution and gradual framework adoption.
 
 #### File Organization
@@ -548,7 +548,7 @@ Multiple JSON files based on test category define the metadata and test-specific
 **Recommended JSON files:**
 
 - `eeprom.json` (EEPROM tests)
-- `system.json` (System tests)  
+- `system.json` (System tests)
 - `physical_oir.json` (Physical OIR)
 - `remote_reseat.json` (remote reseat)
 - `cdb_fw_upgrade.json` (CDB FW Upgrade tests)
@@ -704,7 +704,7 @@ The test framework loads and merges attributes from all relevant category files 
 **Core Components:**
 
 1. **AttributeManager**: Central class for loading, merging, and accessing transceiver attributes
-2. **Category File Loader**: Loads JSON files for each test category  
+2. **Category File Loader**: Loads JSON files for each test category
 3. **Priority Resolver**: Implements the 8-level priority hierarchy
 4. **Validator**: Ensures mandatory fields are present
 
@@ -770,7 +770,7 @@ The framework builds `port_attributes_dict` using this systematic process:
 
 #### Usage
 
-Tests access attributes using: `port_attributes_dict[port_name][category_key][attribute_name]`  
+Tests access attributes using: `port_attributes_dict[port_name][category_key][attribute_name]`
 The `port_attributes_dict` is provided directly as a session-scoped fixture and is also initialized early for logging.
 
 **Example (inside a test):**
@@ -832,7 +832,7 @@ Optional post-processing validation ensures comprehensive attribute coverage for
 #### Validation Process
 
 1. **Template Selection**: Uses `deployment` field from `BASE_ATTRIBUTES` to select appropriate template
-2. **Attribute Comparison**: Compares actual vs required attributes per category  
+2. **Attribute Comparison**: Compares actual vs required attributes per category
 3. **Gap Analysis**: Identifies missing required/optional attributes
 4. **Pytest Integration**: Reports results with standard log levels (INFO/WARNING/ERROR/DEBUG)
 

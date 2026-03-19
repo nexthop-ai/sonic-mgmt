@@ -177,4 +177,3 @@ def ignore_sai_port_phy_attribute_errors(duthosts, loganalyzer):
                     ]
                 )
     yield
-
