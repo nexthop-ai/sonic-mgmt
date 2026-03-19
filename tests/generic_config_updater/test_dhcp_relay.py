@@ -14,7 +14,7 @@ from tests.common.gu_utils import (
 )
 from tests.dhcp_relay.conftest import \
         setup_routed_dhcp_servers, dut_dhcp_relay_data, one_interface_per_type     # noqa: F401
-from tests.dhcp_relay.dhcp_relay_utils import get_dhcrelay_process_cmdline
+from tests.common.dhcp_relay_utils import get_dhcrelay_process_cmdline
 
 
 pytestmark = [

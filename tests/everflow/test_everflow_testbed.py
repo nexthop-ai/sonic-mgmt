@@ -127,7 +127,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         remote_dut.shell(remote_dut.get_vtysh_cmd_for_namespace(
             f"vtysh -c \"config\" -c \"router bgp\" -c \"address-family {ip}\" -c \"no redistribute static\"",
             setup_info[request.param]["remote_namespace"]))
-        time.sleep(15)
+        wait_until(30, 5, 0, lambda: not everflow_utils.validate_asic_route(remote_dut, session_prefixes[0]))
 
     @pytest.fixture(autouse=True)
     def add_dest_routes(self, setup_info, tbinfo, dest_port_type):      # noqa F811
@@ -322,7 +322,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
                                                    ip_version=erspan_ip_ver)
         everflow_utils.add_route(remote_dut, session_prefixes[1], peer_ip,
                                  setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[1])
 
         # Verify that mirrored traffic is still sent along the original route
         self._run_everflow_test_scenarios(
@@ -490,7 +490,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         # control on which ECMP nexthop the traffic will egress from after the packet
         # gets recycled.
         if everflow_dut.facts['switch_type'] == "voq":
-            pytest.skip("Skip test as is not supported on a VoQ chassis.")
+            pytest.skip("Skip test as is not supported on a VoQ switch.")
 
         # Create two ECMP next hops
         tx_port = setup_info[dest_port_type]["dest_port"][0]
@@ -508,7 +508,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         peer_ip_1 = everflow_utils.get_neighbor_info(remote_dut, tx_port, tbinfo, ip_version=erspan_ip_ver)
         everflow_utils.add_route(remote_dut, session_prefixes[0], peer_ip_1,
                                  setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[0])
 
         # Verify that mirrored traffic is sent to one of the next hops
         rx_port_ptf_id = setup_info[dest_port_type]["src_port_ptf_id"]
@@ -537,7 +537,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         peer_ip = everflow_utils.get_neighbor_info(remote_dut, tx_port, tbinfo, ip_version=erspan_ip_ver)
         everflow_utils.add_route(remote_dut, session_prefixes[0], peer_ip,
                                  setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[0])
 
         # Verify that mirrored traffic is not sent to this new next hop
         tx_port_ptf_id = setup_info[dest_port_type]["dest_port_ptf_id"][2]
@@ -558,7 +558,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         # Remove the extra hop
         everflow_utils.remove_route(remote_dut, session_prefixes[0], peer_ip,
                                     setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, lambda: not everflow_utils.validate_asic_route(remote_dut, session_prefixes[0]))
 
         # Verify that mirrored traffic is not sent to the deleted next hop
         self._run_everflow_test_scenarios(
@@ -643,7 +643,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         peer_ip_2 = everflow_utils.get_neighbor_info(remote_dut, tx_port, tbinfo, ip_version=erspan_ip_ver)
         everflow_utils.add_route(remote_dut, session_prefixes[0], peer_ip_2,
                                  setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[0])
 
         # Verify that traffic is still sent along the original next hop
         self._run_everflow_test_scenarios(
@@ -681,7 +681,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
         # Remove the original next hop
         everflow_utils.remove_route(remote_dut, session_prefixes[0], peer_ip_0,
                                     setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, lambda: not everflow_utils.validate_asic_route(remote_dut, session_prefixes[0]))
 
         # Verify that mirrored traffic is no longer sent along the original next hop
         self._run_everflow_test_scenarios(
@@ -771,14 +771,14 @@ class EverflowIPv4Tests(BaseEverflowTest):
         default_traffic_peer_ip = everflow_utils.get_neighbor_info(everflow_dut, default_traffic_tx_port, tbinfo)
         everflow_utils.add_route(everflow_dut, self.DEFAULT_DST_IP + "/32", default_traffic_peer_ip,
                                  setup_info[default_tarffic_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, everflow_dut, self.DEFAULT_DST_IP + "/32")
 
         # Add explicit route for the mirror session
         peer_ip = everflow_utils.get_neighbor_info(remote_dut, tx_port, tbinfo)
         session_prefixes = policer_mirror_session["session_prefixes"]
         everflow_utils.add_route(remote_dut, session_prefixes[0], peer_ip,
                                  setup_info[dest_port_type]["remote_namespace"])
-        time.sleep(15)
+        wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[0])
 
         try:
             # Add MIRROR_DSCP table for test
@@ -948,7 +948,7 @@ class EverflowIPv4Tests(BaseEverflowTest):
                                                        ip_version=erspan_ip_ver)
             everflow_utils.add_route(remote_dut, session_prefixes[1], peer_ip,
                                      setup_info[dest_port_type]["remote_namespace"])
-            time.sleep(15)
+            wait_until(30, 5, 0, everflow_utils.validate_asic_route, remote_dut, session_prefixes[1])
             background_traffic(run_count=1)
 
             # Verify that mirrored traffic is still sent along the original route

@@ -172,6 +172,12 @@ def config_dut_ports(duthost, ports, vlan):
         duthost.command('config vlan member del %s %s' % (vlan, ports[i]), module_ignore_errors=True)
         duthost.command('config interface ip add %s %s/24' %
                         (ports[i], var['dut_intf_ips'][i]))
+    # Wait for interface IPs to be applied
+    wait_until(30, 5, 0, lambda: all(
+        duthost.command(
+            'ip addr show %s' % ports[i],
+            module_ignore_errors=True)['stdout'].find(var['dut_intf_ips'][i]) >= 0
+        for i in range(len(ports))))
 
 # ----------------------------------------------------------------------------------$
 
@@ -251,6 +257,10 @@ def config_sflow(duthost, sflow_status='enable'):
         if not wait_until(180, 10, 0, is_hsflowd_ready, duthost):
             pytest.fail("hsflowd is not running")
 
+    expected = 'up' if sflow_status == 'enable' else 'down'
+    wait_until(30, 5, 0, lambda: re.search(
+        r"sFlow Admin State:\s+%s" % expected,
+        duthost.shell('show sflow')['stdout']))
 # ----------------------------------------------------------------------------------
 
 
@@ -266,6 +276,8 @@ def config_sflow_feature(request, duthosts, rand_one_dut_hostname):
     if sflow_disabled_by_default:
         logger.info("sflow feature is disabled by default, enabling it for this test run")
         duthost.shell("sudo config feature state sflow enabled")
+        wait_until(30, 5, 0, lambda: duthost.get_feature_status()[0].get(
+            'sflow') == 'enabled')
 
     yield
 
@@ -386,6 +398,7 @@ def sflowbase_config(duthosts, rand_one_dut_hostname):
     for port in var['sflow_ports']:
         config_sflow_interfaces(
             duthost, port, status='enable', sample_rate=SFLOW_RATE_DEFAULT)
+    wait_until(30, 5, 0, verify_sflow_config_apply, duthost)
     verify_show_sflow(duthost, status='up', collector=[
                       'collector0', 'collector1'])
     for intf in var['sflow_ports']:
@@ -467,6 +480,10 @@ class TestSflowCollector():
         duthost = duthosts[rand_one_dut_hostname]
         # Delete a collector and check samples are not received in collectors
         config_sflow_collector(duthost, 'collector0', 'del')
+        wait_until(30, 5, 0, lambda: "0 Collectors configured" in
+                   duthost.shell('show sflow')['stdout']
+                   or len(re.findall(r"Name:", duthost.shell(
+                       'show sflow')['stdout'])) == 0)
         verify_show_sflow(duthost, status='up', collector=[])
         assert check_sflow_traffic(duthost, partial_ptf_runner,
                                    enabled_sflow_interfaces=list(var['sflow_ports'].keys())), \
@@ -664,6 +681,7 @@ class TestAgentId():
         duthost = duthosts[rand_one_dut_hostname]
         duthost.shell(" config sflow agent-id del")
         verify_show_sflow(duthost, status='up', agent_id='default')
+        wait_until(30, 5, 0, verify_sflow_config_apply, duthost)
         agent_ip = get_default_agent(duthost)
         # Verify  whether the samples are received with previously configured agent ip
         assert check_sflow_traffic(duthost, partial_ptf_runner,
@@ -690,7 +708,7 @@ class TestAgentId():
 class TestReboot():
 
     def testRebootSflowEnable(self, sflowbase_config, config_sflow_agent,
-                              duthosts, rand_one_dut_hostname,
+                              duthosts, rand_one_dut_hostname, force_active_tor,
                               localhost, partial_ptf_runner, ptfhost):
         duthost = duthosts[rand_one_dut_hostname]
         duthost.command("config sflow polling-interval 80")
@@ -700,6 +718,7 @@ class TestReboot():
         assert wait_until(
             300, 20, 0, duthost.critical_services_fully_started), "Not all critical services are fully started"
         wait_for_system_ready(duthost)
+        force_active_tor(duthost, "all")
         assert wait_until(60, 5, 0, verify_sflow_config_apply, duthost)
         verify_show_sflow(duthost, status='up', collector=[
                           'collector0', 'collector1'], polling_int=80)
@@ -721,7 +740,7 @@ class TestReboot():
                "Missing sflow samples in either or both collectors"
 
     def testRebootSflowDisable(self, sflowbase_config, duthosts, rand_one_dut_hostname,
-                               localhost, partial_ptf_runner, ptfhost):
+                               force_active_tor, localhost, partial_ptf_runner, ptfhost):
         duthost = duthosts[rand_one_dut_hostname]
         config_sflow(duthost, sflow_status='disable')
         verify_show_sflow(duthost, status='down')
@@ -733,6 +752,7 @@ class TestReboot():
         assert wait_until(
             300, 20, 0, duthost.critical_services_fully_started), "Not all critical services are fully started"
         wait_for_system_ready(duthost)
+        force_active_tor(duthost, "all")
         verify_show_sflow(duthost, status='down')
         for intf in var['sflow_ports']:
             var['sflow_ports'][intf]['ifindex'] = get_ifindex(duthost, intf)

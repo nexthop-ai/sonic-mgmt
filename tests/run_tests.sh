@@ -333,8 +333,8 @@ function prepare_dut()
 {
     echo "=== Preparing DUT for subsequent tests ==="
     echo "prepare_dut: BEG: $(date)"
-    echo Running: ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
-    ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    echo Running: ${PYTEST_EXEC} ${SCRIPT_PATH} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
+    ${PYTEST_EXEC} ${SCRIPT_PATH} ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m pretest
     local ret_code=$?
     echo "prepare_dut: END: $(date)"
     return ${ret_code}
@@ -344,8 +344,8 @@ function cleanup_dut()
 {
     echo "=== Cleaning up DUT after tests ==="
     echo "cleanup_dut: BEG: $(date)"
-    echo Running: ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
-    ${PYTEST_EXEC} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    echo Running: ${PYTEST_EXEC} ${SCRIPT_PATH} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
+    ${PYTEST_EXEC} ${SCRIPT_PATH} ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} $(pre_post_extra_params) -m posttest
     local ret_code=$?
     echo "cleanup_dut: END: $(date)"
     return ${ret_code}
