@@ -1417,20 +1417,66 @@ class DscpMappingPB(sai_base_test.ThriftInterfaceDataPlane):
                     pkt_dst_mac, src_port_mac, src_port_ip, dst_port_ip, dst_port_id,
                     src_port_id, exp_ttl, ip_ttl)
 
-            # Read Counters - wait for counters to be polled
-            def check_counters_updated():
-                """Check if queue counters have been updated"""
+            start_time = time.time()
+            check_iteration = [0]  # Use list to allow modification in nested function
+
+            def check_all_expected_counters_updated():
+                """Check if all expected queue counters have been updated with correct packet counts"""
+                check_iteration[0] += 1
+                current_elapsed = time.time() - start_time
+
                 try:
                     _, queue_results_current = sai_thrift_read_port_counters(
                         self.dst_client, asic_type, sai_dst_port_id)
-                    # Check if any queue counter has changed from baseline
-                    return any(curr != base for curr, base in zip(queue_results_current, queue_results_base))
-                except Exception:
+
+                    # If tc_to_dscp_count_map is provided, check all expected TCs
+                    if tc_to_dscp_count_map:
+                        missing_tcs = []
+                        for tc, expected_count in tc_to_dscp_count_map.items():
+                            actual_count = queue_results_current[tc] - queue_results_base[tc]
+                            # For TC 7, allow >= due to LACP packets
+                            if tc == 7:
+                                if actual_count < expected_count:
+                                    missing_tcs.append(
+                                        "TC{}(expected>={}, got={})".format(
+                                            tc, expected_count, actual_count))
+                            else:
+                                if actual_count != expected_count:
+                                    missing_tcs.append(
+                                        "TC{}(expected={}, got={})".format(
+                                            tc, expected_count, actual_count))
+
+                        if missing_tcs:
+                            print("Check iteration {}: {:.2f}s elapsed - Missing: {}".format(
+                                check_iteration[0], current_elapsed, ", ".join(missing_tcs)), file=sys.stderr)
+                            return False
+                        else:
+                            print("Check iteration {}: {:.2f}s elapsed - All counters matched!".format(
+                                check_iteration[0], current_elapsed), file=sys.stderr)
+                            return True
+                    else:
+                        # Fallback: check if any queue counter has changed from baseline
+                        result = any(curr != base for curr, base in zip(queue_results_current, queue_results_base))
+                        print("Check iteration {}: {:.2f}s elapsed - Fallback check: {}".format(
+                            check_iteration[0], current_elapsed, "PASS" if result else "FAIL"), file=sys.stderr)
+                        return result
+                except Exception as e:
+                    print("Check iteration {}: {:.2f}s elapsed - Exception: {}".format(
+                        check_iteration[0], current_elapsed, str(e)), file=sys.stderr)
                     return False
 
-            # Wait up to 10 seconds for counters to update, checking every 1 second
-            if not wait_until(10, 1, 0, check_counters_updated):
-                print("Warning: Counters may not have been updated within timeout", file=sys.stderr)
+            # Wait up to 10 seconds for all expected counters to update, checking every 1 second
+            counters_updated = wait_until(10, 1, 0, check_all_expected_counters_updated)
+            elapsed_time = time.time() - start_time
+
+            if counters_updated:
+                print("FINAL RESULT: Queue counters updated successfully after {:.2f} seconds ({} iterations)".format(
+                    elapsed_time, check_iteration[0]), file=sys.stderr)
+            else:
+                print(
+                    "FINAL RESULT: Not all expected queue counters were "
+                    "updated within timeout ({:.2f} seconds, {} iterations)".format(
+                        elapsed_time, check_iteration[0]), file=sys.stderr)
 
             # Do a fresh read of counters
             port_results, queue_results = sai_thrift_read_port_counters(self.dst_client, asic_type, sai_dst_port_id)
@@ -2447,10 +2493,9 @@ class PFCtest(sai_base_test.ThriftInterfaceDataPlane):
                     'unexpectedly TX drop counter increase, {}'.format(test_stage))
 
             # send packets short of ingress drop
-            send_packet(self, src_port_id, pkt, (pkts_num_trig_ingr_drp -
-                                                 pkts_num_trig_pfc) // cell_occupancy - 1 - 2 * margin)
             pkt_count = ((pkts_num_trig_ingr_drp - pkts_num_trig_pfc) //
                          cell_occupancy - 1 - 2 * margin)
+            send_packet(self, src_port_id, pkt, pkt_count)
             log_message("Sending {} packets to port {} short of ingress drop".format(
                 pkt_count, src_port_id), to_stderr=True)
 
@@ -5823,6 +5868,7 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
         hwsku = self.test_params['hwsku']
         internal_hdr_size = self.test_params.get('internal_hdr_size', 0)
         platform_asic = self.test_params['platform_asic']
+        dut_asic = self.test_params.get('dut_asic', None)
         ip_type = self.test_params.get('ip_type', 'ipv4')
 
         if 'packet_size' in list(self.test_params.keys()):
@@ -5927,6 +5973,9 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
             # send packets to fill pg min but not trek into shared pool
             # so if pg min is zero, it directly treks into shared pool by 1
             # this is the case for lossy traffic
+            # Track if dynamic leakout compensation was performed
+            leakout_compensated = False
+
             if hwsku == 'DellEMC-Z9332f-O32' or hwsku == 'DellEMC-Z9332f-M-O16C64':
                 pg_min_pkts_num = pkts_num_egr_mem + \
                     pkts_num_leak_out + pkts_num_fill_min + margin
@@ -5948,6 +5997,7 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 dynamically_compensate_leakout(self.dst_client, asic_type, sai_thrift_read_port_counters,
                                                port_list['dst'][dst_port_id], TRANSMITTED_PKTS,
                                                xmit_counters_history, self, src_port_id, pkt, 40)
+                leakout_compensated = True
 
             pg_cntrs = sai_thrift_read_pg_counters(
                 self.src_client, port_list['src'][src_port_id])
@@ -5982,11 +6032,16 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 assert (pg_shared_wm_res[pg] <= margin * cell_size)
 
             # send packet batch of fixed packet numbers to fill pg shared
-            # first round sends only 1 packet
+            # For q3d, start with pkts_inc for efficiency
+            # For other platforms, first round sends only 1 packet for precision
             expected_wm = 0
             total_shared = pkts_num_fill_shared - pkts_num_fill_min
             pkts_inc = (total_shared // cell_occupancy) >> 2
-            if 'cisco-8000' in asic_type:
+            if dut_asic == "q3d":
+                # For q3d, use pkts_inc from the start for better efficiency
+                pkts_num = pkts_inc
+                print("q3d detected: using pkts_inc=%d for initial packet send" % pkts_num, file=sys.stderr)
+            elif 'cisco-8000' in asic_type:
                 # No additional packet margin needed while sending,
                 # but small margin still needed during boundary checks below
                 pkts_num = 1
@@ -6007,14 +6062,12 @@ class PGSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 send_packet(self, src_port_id, pkt, int(pkts_num))
                 time.sleep(8)
 
-                if (
-                    (pg_min_pkts_num == 0)
-                    and (pkts_num <= 1 + margin)
-                    and check_leackout_compensation_support(asic_type, hwsku)
-                ):
+                # Perform dynamic leakout compensation only once if not already done
+                if not leakout_compensated and check_leackout_compensation_support(asic_type, hwsku):
                     dynamically_compensate_leakout(self.dst_client, asic_type, sai_thrift_read_port_counters,
                                                    port_list['dst'][dst_port_id], TRANSMITTED_PKTS,
                                                    xmit_counters_history, self, src_port_id, pkt, 40)
+                    leakout_compensated = True
 
                 # these counters are clear on read, ensure counter polling
                 # is disabled before the test
@@ -6579,6 +6632,9 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
             # so if queue min is zero, it will directly trek into shared pool by 1
             # TH2 uses scheduler-based TX enable, this does not require sending packets
             # to leak out
+            # Track if dynamic leakout compensation was performed
+            leakout_compensated = False
+
             if hwsku in ('DellEMC-Z9332f-O32', 'DellEMC-Z9332f-M-O16C64') or 'Arista-7060X6' in hwsku:
                 que_min_pkts_num = pkts_num_egr_mem + pkts_num_leak_out + pkts_num_fill_min
                 send_packet(self, src_port_id, pkt, que_min_pkts_num)
@@ -6593,6 +6649,7 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 dynamically_compensate_leakout(self.dst_client, asic_type, sai_thrift_read_port_counters,
                                                port_list['dst'][dst_port_id], TRANSMITTED_PKTS,
                                                xmit_counters_history, self, src_port_id, pkt, 40)
+                leakout_compensated = True
 
             q_wm_res, pg_shared_wm_res, pg_headroom_wm_res = sai_thrift_read_port_watermarks(
                 self.dst_client, port_list['dst'][dst_port_id])
@@ -6625,11 +6682,15 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                     assert (q_wm_res[queue] <= 1 * cell_size)
 
             # send packet batch of fixed packet numbers to fill queue shared
-            # first round sends only 1 packet
+            # For q3d, start with pkts_inc for efficiency
+            # For other platforms, first round sends only 1 packet for precision
             expected_wm = 0
             total_shared = pkts_num_trig_drp - pkts_num_fill_min - 1
             pkts_inc = (total_shared // cell_occupancy) >> 2
-            if 'cisco-8000' in asic_type:
+            if dut_asic == "q3d":
+                # For q3d, use pkts_inc from the start for better efficiency
+                pkts_num = pkts_inc
+            elif 'cisco-8000' in asic_type:
                 pkts_total = 0  # track total desired queue fill level
                 pkts_num = 1
             else:
@@ -6662,14 +6723,12 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
 
                 time.sleep(8)
 
-                if (
-                    que_min_pkts_num == 0
-                    and pkts_num <= 1 + margin
-                    and check_leackout_compensation_support(asic_type, hwsku)
-                ):
+                # Perform dynamic leakout compensation only once if not already done
+                if not leakout_compensated and check_leackout_compensation_support(asic_type, hwsku):
                     dynamically_compensate_leakout(self.dst_client, asic_type, sai_thrift_read_port_counters,
                                                    port_list['dst'][dst_port_id], TRANSMITTED_PKTS,
                                                    xmit_counters_history, self, src_port_id, pkt, 40)
+                    leakout_compensated = True
 
                 # these counters are clear on read, ensure counter polling
                 # is disabled before the test
@@ -6785,6 +6844,7 @@ class BufferPoolWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
         pkts_num_margin = int(self.test_params['pkts_num_margin'])
         if pkts_num_margin == 0:
             pkts_num_margin = 2
+        dut_asic = self.test_params.get('dut_asic', None)
 
         print("buf_pool_roid: %s" %
               (self.test_params['buf_pool_roid']), file=sys.stderr)
@@ -6892,12 +6952,16 @@ class BufferPoolWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                 assert (buffer_pool_wm <= upper_bound_margin * cell_size)
 
             # send packet batch of fixed packet numbers to fill shared
-            # first round sends only 1 packet
+            # For broadcom-dnx (q3d), start with pkts_inc for efficiency
+            # For other platforms, first round sends only 1 packet for precision
             expected_wm = 0
             total_shared = (pkts_num_fill_shared -
                             pkts_num_fill_min) * cell_occupancy
             pkts_inc = (total_shared >> 2) // cell_occupancy
-            if 'cisco-8000' in asic_type:
+            if dut_asic == "q3d":
+                # For q3d, use pkts_inc from the start for better efficiency
+                pkts_num = pkts_inc
+            elif 'cisco-8000' in asic_type:
                 # No additional packet margin needed while sending,
                 # but small margin still needed during boundary checks below
                 pkts_num = 1
