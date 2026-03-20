@@ -5023,7 +5023,7 @@ sub_port_interfaces:
     reason: "Unsupported platform or asic and not supported on this DUT topology"
     conditions_logical_operator: or
     conditions:
-      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4'] and asic_type not in ['barefoot','marvell-teralynx']"
+      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4', 'th5', 'q3d'] and asic_type not in ['barefoot','marvell-teralynx']"
       - "asic_type in ['mellanox', 'nvidia']"
       - "'dualtor' in topo_name"
       - "hwsku in ['Arista-7050CX3-32S-C32', 'Arista-7060CX-32S-C32','Arista-7060CX-32S-D48C8','Arista-7260CX3-C64','Arista-7260CX3-D108C8','Arista-7260CX3-D108C10']"
@@ -5034,7 +5034,7 @@ sub_port_interfaces/test_show_subinterface.py::test_subinterface_status[port]:
     conditions_logical_operator: or
     conditions:
       - "asic_type in ['vs'] and https://github.com/sonic-net/sonic-buildimage/issues/19735"
-      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4'] and asic_type not in ['barefoot','marvell-teralynx']"
+      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4', 'th5', 'q3d'] and asic_type not in ['barefoot','marvell-teralynx']"
 
 sub_port_interfaces/test_show_subinterface.py::test_subinterface_status[port_in_lag]:
   skip:
@@ -5050,7 +5050,7 @@ sub_port_interfaces/test_sub_port_interfaces.py::TestSubPorts::test_tunneling_be
     conditions_logical_operator: or
     conditions:
       - "asic_type=='cisco-8000'"
-      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4'] and asic_type not in ['barefoot','marvell-teralynx']"
+      - "is_multi_asic==True or asic_gen not in ['td2', 'spc1', 'spc2', 'spc3', 'spc4', 'th5', 'q3d'] and asic_type not in ['barefoot','marvell-teralynx']"
 
 sub_port_interfaces/test_sub_port_interfaces.py::TestSubPorts::test_untagged_packet_not_routed[port_in_lag] :
   skip:
