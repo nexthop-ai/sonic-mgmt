@@ -1172,11 +1172,16 @@ class EverflowIPv4Tests(BaseEverflowTest):
             "(l4 src port)": self._base_tcp_packet(ptfadapter, setup, router_mac, sport=0x1235, dst_ip=default_ip),
             "(l4 dst port)": self._base_tcp_packet(ptfadapter, setup, router_mac, dport=0x1235, dst_ip=default_ip),
             "(ip protocol)": self._base_tcp_packet(ptfadapter, setup, router_mac, ip_protocol=0x7E, dst_ip=default_ip),
-            "(tcp flags)": self._base_tcp_packet(ptfadapter, setup, router_mac, flags=0x12, dst_ip=default_ip),
             "(l4 src range)": self._base_tcp_packet(ptfadapter, setup, router_mac, sport=4675, dst_ip=default_ip),
             "(l4 dst range)": self._base_tcp_packet(ptfadapter, setup, router_mac, dport=4675, dst_ip=default_ip),
             "(dscp)": self._base_tcp_packet(ptfadapter, setup, router_mac, dscp=51, dst_ip=default_ip)
         }
+
+        # XGS platforms do not support TCP_FLAGS field in MIRROR ACL table (NOS-3293)
+        if not (duthost.facts["asic_type"] == "broadcom" and
+                duthost.facts.get("platform_asic") != 'broadcom-dnx'):
+            pkt_dict["(tcp flags)"] = self._base_tcp_packet(
+                ptfadapter, setup, router_mac, flags=0x12, dst_ip=default_ip)
 
         for description, pkt in list(pkt_dict.items()):
             logging.info("Sending packet with qualifier set %s to DUT" % description)
