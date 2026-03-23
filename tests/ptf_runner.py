@@ -126,7 +126,10 @@ def ptf_runner(host, testdir, testname, platform_dir=None, params={},
     dut_type = get_dut_type(host)
     asic_type = get_asic_type(host)
     kvm_support = params.get("kvm_support", False)
-    if dut_type == "kvm" and asic_type != "vpp" and kvm_support is False:
+    sim_asic_types = ["broadcom"]
+
+    # Skip for simulated asics on kvm platforms (BCMSIM)
+    if dut_type == "kvm" and asic_type not in ("vpp", *sim_asic_types) and kvm_support is False:
         logger.info("Skip test case {} for not support on KVM DUT".format(testname))
         return True
 
