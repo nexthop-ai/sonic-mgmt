@@ -11,6 +11,9 @@ pytestmark = [
     pytest.mark.device_type('vs')
 ]
 
+SNMP_MEMORY_CHECKER_RE = r".* ERR memory_checker: \[memory_checker\] Failed to get container ID of 'snmp'.*"
+
+
 def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
     """Setup SNMPv3 user on DUT"""
     if not username:
@@ -36,9 +39,9 @@ def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
 
         return {
             "username": username,
-            "auth_protocol": "SHA",  # Changed to uppercase to match SNMP requirements
+            "auth_protocol": "SHA",
             "auth_password": auth_pass,
-            "priv_protocol": "AES",  # Changed to uppercase to match SNMP requirements
+            "priv_protocol": "AES",
             "priv_password": priv_pass
         }
 
@@ -46,13 +49,15 @@ def setup_snmpv3_user(duthost, username=None, auth_pass=None, priv_pass=None):
         logger.error(f"Failed to setup SNMPv3 user: {str(e)}")
         raise
 
+
 def cleanup_snmpv3_user(duthost, username):
     """Cleanup SNMPv3 user from DUT"""
     try:
         logger.info(f"Cleaning up SNMPv3 user: {username}")
         duthost.shell(f"sudo config snmp user del {username}", module_ignore_errors=True)
     except Exception as e:
-        logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")  # Removed extra parenthesis
+        logger.error(f"Failed to cleanup SNMPv3 user: {str(e)}")
+
 
 @pytest.mark.parametrize("test_case", [
     {
@@ -81,12 +86,14 @@ def cleanup_snmpv3_user(duthost, username):
         "error_msg": "Expected failure with invalid priv protocol"
     }
 ])
-def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, test_case):
+def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, test_case, loganalyzer):
     """
     Test SNMPv3 GET operation with invalid credentials
     Will only run on virtual switch devices, but works with any topology
     """
     duthost = duthosts[rand_one_dut_hostname]
+    if loganalyzer:
+        loganalyzer[duthost.hostname].ignore_regex.extend([SNMP_MEMORY_CHECKER_RE])
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     v3_config = None
 
@@ -98,10 +105,10 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
         # Create invalid credentials based on the test case
         invalid_config = v3_config.copy()
         invalid_config.update(test_case["modify"](v3_config))
-        
+
         logger.info(f"Testing invalid credentials case: {test_case['name']}")
         try:
-            snmp_facts = get_snmp_facts(
+            get_snmp_facts(
                 localhost,
                 host=hostip,
                 version="v3",
@@ -112,10 +119,10 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
                 privkey=invalid_config.get("privpassword", v3_config["priv_password"]),
                 level="authPriv",
                 wait=True,
-                oid=SnmpOIDs.SYS_DESCR  # Using SnmpOIDs.SYS_DESCR directly
+                oid=SnmpOIDs.SYS_DESCR
             )
             pytest.fail(f"SNMPv3 GET succeeded with invalid credentials for case: {test_case['name']}")
-            
+
         except Exception as e:
             logger.info(f"{test_case['error_msg']}: {str(e)}")
 
@@ -127,11 +134,13 @@ def test_snmpv3_invalid_credentials(duthosts, rand_one_dut_hostname, localhost, 
             cleanup_snmpv3_user(duthost, v3_config["username"])
 
 
-def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
+def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost, loganalyzer):
     """
     Verify that valid SNMPv3 credentials still work after invalid attempts
     """
     duthost = duthosts[rand_one_dut_hostname]
+    if loganalyzer:
+        loganalyzer[duthost.hostname].ignore_regex.extend([SNMP_MEMORY_CHECKER_RE])
     hostip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
     v3_config = None
 
@@ -147,7 +156,7 @@ def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
             wait=True,
             version="v3",
             host=hostip,
-            username=v3_config["username"],  # Using valid username
+            username=v3_config["username"],
             integrity=v3_config["auth_protocol"].lower(),
             authkey=v3_config["auth_password"],
             privacy=v3_config["priv_protocol"].lower(),
@@ -155,7 +164,7 @@ def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
             level="authPriv",
             oid=SnmpOIDs.SYS_DESCR
         )
-        
+
         pytest_assert(snmp_facts is not None, "Failed to get SNMP facts with valid credentials")
         pytest_assert('ansible_facts' in snmp_facts, "No ansible_facts in SNMP response with valid credentials")
         logger.info("Successfully verified SNMPv3 access with valid credentials")
@@ -166,4 +175,3 @@ def test_snmpv3_valid_after_invalid(duthosts, rand_one_dut_hostname, localhost):
     finally:
         if v3_config:
             cleanup_snmpv3_user(duthost, v3_config["username"])
-
