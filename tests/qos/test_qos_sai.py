@@ -419,8 +419,6 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
         normal_profile = ["xoff_1", "xoff_2"]
-        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
-            pytest.skip("Skip this test while buffer tuning is finalized")
         if not dutConfig["dualTor"] and xoffProfile not in normal_profile:
             pytest.skip(
                 "Additional DSCPs are not supported on non-dual ToR ports")
@@ -694,8 +692,6 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
-            pytest.skip("Skip this test while buffer tuning is finalized")
         normal_profile = ["xon_1", "xon_2"]
         if not dutConfig["dualTor"] and xonProfile not in normal_profile:
             pytest.skip(
@@ -879,9 +875,6 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-
-        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
-            pytest.skip("Skip this test while buffer tuning is finalized")
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
@@ -1420,8 +1413,6 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
-        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
-            pytest.skip("Skip this test while buffer tuning is finalized")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if "lossy_queue_1" in list(dutQosConfig["param"][portSpeedCableLength].keys()):
             qosConfig = dutQosConfig["param"][portSpeedCableLength]
@@ -2397,8 +2388,6 @@ class TestQosSai(QosSaiBase):
                 RunAnsibleModuleFail if ptf test fails
         """
 
-        if dutConfig["dutAsic"] in ('th6c', 'th6p'):
-            pytest.skip("Skip this test while buffer tuning is finalized")
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         qosConfig = dutQosConfig["param"]
         if "wrr_chg" in qosConfig[portSpeedCableLength]:
