@@ -511,6 +511,10 @@ def generate_expected_rules(duthost, tbinfo, docker_network, asic_index, expecte
     iptables_rules.append("-A INPUT -s 127.0.0.1/32 -i lo -j ACCEPT")
     ip6tables_rules.append("-A INPUT -s ::1/128 -i lo -j ACCEPT")
 
+    # Allow BFD traffic (caclmgrd always installs these rules unconditionally)
+    iptables_rules.append("-A INPUT ! -i eth0 -p udp -m multiport --dports 3784,4784 -j ACCEPT")
+    ip6tables_rules.append("-A INPUT ! -i eth0 -p udp -m multiport --dports 3784,4784 -j ACCEPT")
+
     # Allow smart switch chassis midplane IP (from https://github.com/sonic-net/sonic-host-services/pull/301)
     if duthost.dut_basic_facts()['ansible_facts']['dut_basic_facts'].get("is_smartswitch"):
         iptables_rules.append("-A INPUT -d 169.254.200.254/32 -j ACCEPT")
