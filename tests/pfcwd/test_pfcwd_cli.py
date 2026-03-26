@@ -609,18 +609,22 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             actions = ['drop']
         else:
             actions = ['drop', 'forward']
-        for action in actions:
-            logger.info("--- Pfcwd port {} set action {} ---".format(port, action))
-            try:
-                self.set_traffic_action(duthost, action)
-                logger.info("Pfcwd action {} on port {}: Tx traffic action {}, Rx traffic action {} ".
-                            format(action, port, self.tx_action, self.rx_action))
-                self.run_test(self.dut, port, action)
 
-            finally:
-                if self.storm_hndle:
-                    logger.info("--- Stop pfc storm on port {}".format(port))
-                    self.storm_hndle.stop_storm()
-                logger.info("--- Stop PFC WD ---")
-                self.dut.command("pfcwd stop")
-                self.__restore_original_config(duthost, port, vm_host, neigh_port_channel, min_links)
+        try:
+            for action in actions:
+                logger.info("--- Pfcwd port {} set action {} ---".format(port, action))
+                try:
+                    self.set_traffic_action(duthost, action)
+                    logger.info("Pfcwd action {} on port {}: Tx traffic action {}, Rx traffic action {} ".
+                                format(action, port, self.tx_action, self.rx_action))
+                    self.run_test(self.dut, port, action)
+
+                finally:
+                    if self.storm_hndle:
+                        logger.info("--- Stop pfc storm on port {}".format(port))
+                        self.storm_hndle.stop_storm()
+                    logger.info("--- Stop PFC WD ---")
+                    self.dut.command("pfcwd stop")
+        finally:
+            logger.info("--- Restore original config ---")
+            self.__restore_original_config(duthost, port, vm_host, neigh_port_channel, min_links)
