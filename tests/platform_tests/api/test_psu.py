@@ -338,7 +338,7 @@ class TestPsuApi(PlatformApiTestBase):
                     continue
                 name = psu.get_name(platform_api_conn, psu_id)
                 max_power = psu.get_maximum_supplied_power(platform_api_conn, psu_id)
-                if max_power is not None:
+                if max_power is not None and max_power > 0:
                     logger.info(f"{name} max power rating: {max_power}W")
                     psu_max_powers[name] = max_power
                 else:
@@ -371,30 +371,50 @@ class TestPsuApi(PlatformApiTestBase):
 
             return {name: total / num_samples for name, total in power_totals.items()}
 
-        def check_load_sharing(psu_max_powers):
+        def check_load_sharing(psu_max_powers, test_phase=""):
             average_power_per_psu = get_average_power_per_psu()
             average_power_all_psus = sum(average_power_per_psu.values()) / len(average_power_per_psu)
 
-            logger.info(f"Average power output of all Power Supplies: {average_power_all_psus: .2f}W")
+            logger.info(
+                f"[{test_phase}] Average power across all PSUs: {average_power_all_psus: .2f}W"
+            )
 
             for name, power in average_power_per_psu.items():
                 if name not in psu_max_powers:
-                    pytest.fail(f"No max power rating found for PSU '{name}'")
-                max_deviation = psu_max_powers[name] * LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER
-                logger.info(f"{name} Power: {power: .2f}W")
+                    pytest.fail(f"[{test_phase}] No max power rating found for PSU '{name}'")
+                rated_max = psu_max_powers[name]
+                max_deviation = rated_max * LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER
                 deviation = abs(power - average_power_all_psus)
-                logger.info(f"{name} power {power: .2f}W deviates {deviation: .2f}W from average")
-                logger.info(f"Allowable deviation from average: {max_deviation: .2f}W")
+                logger.info(
+                    f"[{test_phase}] {name}: {power: .2f}W "
+                    f"(deviation: {deviation: .2f}W, max allowed: {max_deviation: .2f}W)"
+                )
+                tolerance_pct = f"{LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER: .0%}"
                 self.expect(
                     deviation <= max_deviation,
-                    f"{name} power deviation of {deviation: .2f}W "
-                    f"exceeds allowable tolerance of {max_deviation: .2f}W",
+                    f"[{test_phase}] {name} power {power: .2f}W deviates {deviation: .2f}W "
+                    f"from average {average_power_all_psus: .2f}W "
+                    f"(max allowed: {max_deviation: .2f}W, "
+                    f"{tolerance_pct} of {rated_max: .0f}W rated)",
                 )
 
+            # Log compact summary table
+            summary_lines = [f"[{test_phase}] Load sharing summary:"]
+            for name, power in average_power_per_psu.items():
+                deviation = abs(power - average_power_all_psus)
+                max_dev = psu_max_powers[name] * LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER
+                status = "PASS" if deviation <= max_dev else "FAIL"
+                summary_lines.append(
+                    f"  {name}: {power: .2f}W (deviation: {deviation: .2f}W) [{status}]"
+                )
+            logger.info("\n".join(summary_lines))
+
         psu_max_powers = get_psu_max_power_ratings()
+        if not psu_max_powers:
+            pytest.fail("No PSUs reported a valid max power rating; cannot evaluate load sharing")
 
         logger.info("Nominal Operation Load Sharing Check")
-        check_load_sharing(psu_max_powers)
+        check_load_sharing(psu_max_powers, test_phase="Nominal Operation")
 
         if not check_pddf_device_json_exists(duthost, skip_if_missing=False):
             logger.info("Skipping increased load test - platform does not support PDDF")
@@ -417,7 +437,7 @@ class TestPsuApi(PlatformApiTestBase):
             start_cpu_stress(duthost, max_stress_duration_s)
             time.sleep(TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC)
 
-            check_load_sharing(psu_max_powers)
+            check_load_sharing(psu_max_powers, test_phase="Increased Load")
         finally:
             stop_cpu_stress(duthost)
             if not self.expect(daemon_start(duthost, "thermalctld"), "Failed to start thermalctld daemon"):
