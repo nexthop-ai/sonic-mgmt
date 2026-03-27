@@ -1,4 +1,7 @@
 import logging
+import os
+import time
+import yaml
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.multi_thread_utils import SafeThreadPoolExecutor
@@ -21,6 +24,75 @@ def get_max_to_reboot(duthost, test_name):
         max_time_to_reboot = plt_reboot_ctrl.get('timeout', 120)
 
     return max_time_to_reboot
+
+
+def get_config_from_yaml(file_path):
+    """
+    Load configuration from a YAML file.
+
+    Python 3.7+ maintains dictionary insertion order by default,
+    so no need for OrderedDict.
+
+    Args:
+        file_path (str): Path to the YAML file to load
+
+    Returns:
+        dict: The loaded configuration
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Config file not found: {file_path}")
+    with open(file_path) as stream:
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Malformed YAML in config file '{file_path}': {e}") from e
+    if config is None:
+        raise ValueError(f"Config file is empty: {file_path}")
+    return config
+
+
+def _verify_daemon_status(duthost, daemon_name, expected_status):
+    max_wait_sec = 10
+    retry_interval_sec = 0.5
+    max_retries = int(max_wait_sec / retry_interval_sec)
+    for _ in range(max_retries):
+        status_result = duthost.shell(f"docker exec pmon supervisorctl status {daemon_name}", module_ignore_errors=True)
+        if expected_status in status_result.get("stdout", ""):
+            return True
+        time.sleep(retry_interval_sec)
+    return False
+
+
+def daemon_stop(duthost, daemon_name):
+    logger.info(f"Stopping {daemon_name}")
+    try:
+        result = duthost.shell(f"docker exec pmon supervisorctl stop {daemon_name}", module_ignore_errors=True)
+        logger.info(
+            f"Stop {daemon_name} result: rc={result.get('rc', 'N/A')}, \
+                stdout='{result.get('stdout', '')}', stderr='{result.get('stderr', '')}'"
+        )
+
+        return _verify_daemon_status(duthost, daemon_name, "STOPPED")
+
+    except Exception as e:
+        logger.error(f"Exception while stopping {daemon_name}: {e}")
+        return False
+
+
+def daemon_start(duthost, daemon_name):
+    logger.info(f"Starting {daemon_name}")
+    try:
+        result = duthost.shell(f"docker exec pmon supervisorctl start {daemon_name}", module_ignore_errors=True)
+        logger.info(
+            f"Start {daemon_name} result: rc={result.get('rc', 'N/A')}, \
+                stdout='{result.get('stdout', '')}', stderr='{result.get('stderr', '')}'"
+        )
+
+        return _verify_daemon_status(duthost, daemon_name, "RUNNING")
+
+    except Exception as e:
+        logger.error(f"Exception while starting {daemon_name}: {e}")
+        return False
 
 
 def fanout_hosts_and_ports(fanouthosts, duts_and_ports):
@@ -50,6 +122,26 @@ def fanout_hosts_and_ports(fanouthosts, duts_and_ports):
             else:
                 fanout_and_ports[fanout] = {fanout_port}
     return fanout_and_ports
+
+
+def start_cpu_stress(duthost, timeout_duration_s=30):
+    """Start CPU stress on all cores"""
+    logger.info("Starting CPU stress on all cores")
+    try:
+        num_cores = int(duthost.shell("nproc")["stdout"].strip())
+        for i in range(num_cores):
+            duthost.shell(f"timeout -k 10 {timeout_duration_s} yes > /dev/null &", module_ignore_errors=True)
+        time.sleep(2)  # Allow stress to ramp up
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to start CPU stress: {e}")
+        return False
+
+
+def stop_cpu_stress(duthost):
+    """Stop CPU stress"""
+    logger.info("Stopping CPU stress")
+    duthost.shell("pkill yes", module_ignore_errors=True)
 
 
 def links_down(fanout, ports):
