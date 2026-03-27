@@ -1063,7 +1063,7 @@ class TestVrfLoopbackIntf:
         duthost.shell("vtysh -c 'config terminal' -c 'router bgp {}'".format(dut_asn))
 
         # vrf1 args, vrf2 use the same as vrf1
-        peer_range = IPNetwork(cfg_facts["BGP_PEER_RANGE"]["BGPSLBPassive"]["ip_range"][0])
+        peer_range = IPNetwork(cfg_facts["BGP_PEER_RANGE"]["Vrf1|BGPSLBPassive"]["ip_range"][0])
         ptf_speaker_ip = IPNetwork("{}/{}".format(peer_range[1], peer_range.prefixlen))
         vlan_port = get_vlan_members("Vlan1000", cfg_facts)[0]
         vlan_peer_port = cfg_facts["config_port_indices"][vlan_port]
@@ -1144,7 +1144,7 @@ class TestVrfLoopbackIntf:
     @pytest.mark.usefixtures("setup_bgp_with_loopback")
     def test_bgp_with_loopback(self, duthosts, rand_one_dut_hostname, cfg_facts):
         duthost = duthosts[rand_one_dut_hostname]
-        peer_range = IPNetwork(cfg_facts["BGP_PEER_RANGE"]["BGPSLBPassive"]["ip_range"][0])
+        peer_range = IPNetwork(cfg_facts["BGP_PEER_RANGE"]["Vrf1|BGPSLBPassive"]["ip_range"][0])
         ptf_speaker_ip = IPNetwork("{}/{}".format(peer_range[1], peer_range.prefixlen))
 
         for vrf in cfg_facts["VRF"]:
