@@ -11,9 +11,13 @@ from .platform_api_test_base import PlatformApiTestBase
 from tests.common.utilities import skip_release_for_platform, wait_until
 from tests.platform_tests.api.conftest import skip_absent_psu
 from tests.common.platform.device_utils import platform_api_conn, start_platform_api_service    # noqa: F401
-from tests.platform_tests.utils import daemon_start, daemon_stop, start_cpu_stress, stop_cpu_stress
-from tests.platform_tests.pddf.pddf_helpers import check_pddf_device_json_exists
-
+from tests.platform_tests.utils import (
+    daemon_start,
+    daemon_stop,
+    start_cpu_stress,
+    stop_cpu_stress,
+    is_pddf_supported_and_enabled,
+)
 
 ###################################################
 # TODO: Remove this after we transition to Python 3
@@ -416,7 +420,7 @@ class TestPsuApi(PlatformApiTestBase):
         logger.info("Nominal Operation Load Sharing Check")
         check_load_sharing(psu_max_powers, test_phase="Nominal Operation")
 
-        if not check_pddf_device_json_exists(duthost, skip_if_missing=False):
+        if not is_pddf_supported_and_enabled(duthost):
             logger.info("Skipping increased load test - platform does not support PDDF")
             self.assert_expectations()
             return
