@@ -176,7 +176,9 @@
         - name: Execute Q3D trap disable script
           shell: "bcmcmd 'cint q3d_disable_trap.c'"
           become: yes
-      when: fanout_hwsku == 'NH-5010-F-O64'
+      when:
+        - fanout_sonic_version.asic_gen is defined
+        - fanout_sonic_version.asic_gen == 'q3d'
   when: "'broadcom' in fanout_sonic_version.asic_type"
 
 - block:
