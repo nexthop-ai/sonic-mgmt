@@ -462,10 +462,14 @@ def test_nhop_group_member_count(duthost, tbinfo, loganalyzer):
     elif is_vs_device(duthost):
         logger.info("skip this check on VS as no real ASIC")
     else:
+        used_diff = crm_after["used_nhop_grp"] - crm_before["used_nhop_grp"]
         pytest_assert(
-            crm_after["available_nhop_grp"] == 0,
-            "Unused NHOP group resource:{}, used_nhop_grp:{}".format(
-                crm_after["available_nhop_grp"], crm_after["used_nhop_grp"]
+            used_diff == nhop_group_count,
+            "Expected used NHOP groups to increase by {}, but increased by {}. "
+            "before_used:{}, after_used:{}, available_after:{}".format(
+                nhop_group_count, used_diff,
+                crm_before["used_nhop_grp"], crm_after["used_nhop_grp"],
+                crm_after["available_nhop_grp"]
             )
         )
 
