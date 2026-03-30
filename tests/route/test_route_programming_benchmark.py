@@ -309,7 +309,7 @@ def ignore_expected_loganalyzer_exceptions(duthost, loganalyzer):
             r".* ERR swss\d*#orchagent: :- addRoutePost: Failed to create route .* with next hop\(s\) .*",
             r".* ERR swss\d*#orchagent: :- flush_creating_entries: EntityBulker.flush create entries failed, "
             r"number of entries to create: \d+, status: SAI_STATUS_ITEM_ALREADY_EXISTS",
-            r".* ERR swss\d*#orchagent: :- handleSaiFailure: Encountered failure in create operation, "
+            r".* ERR swss\d*#orchagent: :- .*: Encountered failure in create operation, "
             r"SAI API: SAI_API_ROUTE, status: SAI_STATUS_NOT_EXECUTED",
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)
