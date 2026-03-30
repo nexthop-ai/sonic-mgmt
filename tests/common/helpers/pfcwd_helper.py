@@ -462,6 +462,68 @@ def is_pfcwd_hw_recovery_enabled(duthost):
         return False
 
 
+def get_pfcwd_hw_timer_limits(duthost):
+    """
+    Get hardware PFC watchdog timer limits from STATE_DB.
+
+    When hardware-based PFC watchdog is enabled, the platform publishes the supported
+    detection and restoration time ranges to STATE_DB. This function retrieves those
+    limits, which can be used to validate or adjust test parameters.
+
+    Args:
+        duthost (AnsibleHost): DUT instance
+
+    Returns:
+        dict: Dictionary with hardware timer limits in milliseconds:
+            {
+                'detection_min': int,
+                'detection_max': int,
+                'restoration_min': int,
+                'restoration_max': int
+            }
+        None: If hardware mode is not enabled or limits are not available
+    """
+    try:
+        cmd = 'sonic-db-cli STATE_DB HGETALL "PFC_WD_STATE_TABLE|PFC_WD"'
+        result = duthost.shell(cmd, module_ignore_errors=True)
+
+        if result.get('rc', 1) != 0:
+            logger.warning("Failed to read PFC_WD_STATE_TABLE from STATE_DB")
+            return None
+
+        # Parse HGETALL output (alternating key-value pairs)
+        lines = result['stdout'].strip().split('\n')
+        state_data = {}
+        for i in range(0, len(lines), 2):
+            if i + 1 < len(lines):
+                key = lines[i].strip().strip('"')
+                value = lines[i + 1].strip().strip('"')
+                state_data[key] = value
+
+        # Only return limits if this is hardware mode
+        if state_data.get('RECOVERY_MECHANISM', '').upper() != 'HARDWARE':
+            logger.info("Hardware recovery not enabled, no timer limits available")
+            return None
+
+        # Extract and validate timer limits
+        limits = {
+            'detection_min': int(state_data.get('DETECTION_TIME_MIN', 0)),
+            'detection_max': int(state_data.get('DETECTION_TIME_MAX', 0)),
+            'restoration_min': int(state_data.get('RESTORATION_TIME_MIN', 0)),
+            'restoration_max': int(state_data.get('RESTORATION_TIME_MAX', 0)),
+        }
+
+        logger.info("Hardware PFCWD timer limits: {}".format(limits))
+        return limits
+
+    except (ValueError, KeyError) as e:
+        logger.error("Failed to parse hardware timer limits: {}".format(str(e)))
+        return None
+    except Exception as e:
+        logger.error("Exception while getting hardware timer limits: {}".format(str(e)))
+        return None
+
+
 @pytest.fixture(scope='class', autouse=False)
 def start_background_traffic(
         duthosts,
