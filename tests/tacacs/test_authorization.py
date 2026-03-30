@@ -9,7 +9,7 @@ from tests.common.helpers.tacacs.tacacs_helper import stop_tacacs_server, start_
     check_tacacs  # noqa: F401
 from tests.tacacs.utils import change_and_wait_aaa_config_update, ensure_tacacs_server_running_after_ut, \
     ssh_connect_remote_retry, ssh_run_command, TIMEOUT_LIMIT, \
-    cleanup_tacacs_log, count_authorization_request       # noqa: F401
+    cleanup_tacacs_log, count_authorization_request, wait_for_tacacs_authorization_ready       # noqa: F401
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import skip_release, wait_until, paramiko_ssh
 from .utils import check_server_received
@@ -96,17 +96,37 @@ def check_image_version(duthost):
 
 
 @pytest.fixture
-def setup_authorization_tacacs(duthosts, enum_rand_one_per_hwsku_hostname):
+def setup_authorization_tacacs(duthosts, enum_rand_one_per_hwsku_hostname, tacacs_creds):
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     change_and_wait_aaa_config_update(duthost, "sudo config aaa authorization tacacs+")
+
+    ready = wait_for_tacacs_authorization_ready(
+        duthost,
+        duthost.mgmt_ip,
+        tacacs_creds['tacacs_authorization_user'],
+        tacacs_creds['tacacs_authorization_user_passwd'],
+        timeout=30
+    )
+    pytest_assert(ready, "TACACS+ authorization not ready after AAA config change")
+
     yield
     duthost.shell("sudo config aaa authorization local")    # Default authorization method is local
 
 
 @pytest.fixture
-def setup_authorization_tacacs_local(duthosts, enum_rand_one_per_hwsku_hostname):
+def setup_authorization_tacacs_local(duthosts, enum_rand_one_per_hwsku_hostname, tacacs_creds):
     duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     change_and_wait_aaa_config_update(duthost, "sudo config aaa authorization \"tacacs+ local\"")
+
+    ready = wait_for_tacacs_authorization_ready(
+        duthost,
+        duthost.mgmt_ip,
+        tacacs_creds['tacacs_authorization_user'],
+        tacacs_creds['tacacs_authorization_user_passwd'],
+        timeout=30
+    )
+    pytest_assert(ready, "TACACS+ authorization not ready after AAA config change")
+
     yield
     duthost.shell("sudo config aaa authorization local")    # Default authorization method is local
 

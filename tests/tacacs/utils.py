@@ -114,19 +114,106 @@ def ssh_run_command(ssh_client, command, expect_exit_code=0, verify=False):
 
 
 def ssh_connect_remote_retry(remote_ip, remote_username, remote_password, duthost):
-    retry_count = 3
+    """
+    Retry SSH connection with linear backoff.
+    """
+    retry_count = 5
+    retry_delay = 2
+
     while retry_count > 0:
         try:
             return paramiko_ssh(remote_ip, remote_username, remote_password)
         except paramiko.ssh_exception.AuthenticationException as e:
             logger.info("Paramiko SSH connect failed with authentication: " + repr(e))
+        except paramiko.ssh_exception.SSHException as e:
+            error_msg = str(e)
+            if "Not allowed at this time" in error_msg or "Error reading SSH protocol banner" in error_msg:
+                if retry_count > 1:
+                    logger.info(
+                        "TACACS+ authorization not ready ({}), retrying in {}s... ({} retries left)".format(
+                            error_msg, retry_delay, retry_count - 1
+                        )
+                    )
+                    time.sleep(retry_delay)
+                    retry_count -= 1
+                    retry_delay += 1  # linear backoff
+                    continue
+                else:
+                    logger.error("TACACS+ authorization failed after all retries: {}".format(error_msg))
+                    raise
+            else:
+                # For other SSH exceptions, raise immediately
+                logger.error("SSH connection failed with exception: {}".format(error_msg))
+                raise
 
             # get syslog for debug
             recent_syslog = duthost.shell('sudo tail -100 /var/log/syslog')['stdout']
             logger.debug("Target device syslog: {}".format(recent_syslog))
 
-        time.sleep(1)
-        retry_count -= 1
+            if retry_count > 1:
+                time.sleep(retry_delay)
+                retry_count -= 1
+                retry_delay += 1  # Exponential backoff
+                continue
+            else:
+                raise
+        except Exception as e:
+            logger.error("Unexpected error during SSH connection: {}".format(repr(e)))
+            raise
+
+
+def wait_for_tacacs_authorization_ready(duthost, remote_ip, remote_username, remote_password, timeout=30):
+    """
+    Wait until TACACS+ authorization is ready to accept SSH connections.
+
+    This function polls the DUT by attempting SSH connections until successful,
+    or until the timeout is reached. This is necessary after changing AAA authorization
+    settings to ensure the SSH/PAM modules have reloaded the TACACS+ configuration.
+
+    Args:
+        duthost: The DUT host object
+        remote_ip: IP address to connect to
+        remote_username: Username for SSH connection
+        remote_password: Password for SSH connection
+        timeout: Maximum time to wait in seconds (default: 30)
+
+    Returns:
+        True if TACACS+ authorization is ready, False otherwise
+    """
+    def try_connect():
+        try:
+            # Attempt a quick SSH connection to verify TACACS+ authorization is working
+            ssh_client = paramiko_ssh(remote_ip, remote_username, remote_password)
+            ssh_client.close()
+            logger.info("TACACS+ authorization is ready - SSH connection successful")
+            return True
+        except paramiko.ssh_exception.SSHException as e:
+            error_msg = str(e)
+            # These errors indicate TACACS+ authorization is not ready yet
+            if "Not allowed at this time" in error_msg or "Error reading SSH protocol banner" in error_msg:
+                logger.debug("TACACS+ authorization not ready yet: {}".format(error_msg))
+                return False
+            else:
+                # Other SSH errors might indicate a different problem
+                logger.warning("Unexpected SSH error during readiness check: {}".format(error_msg))
+                return False
+        except paramiko.ssh_exception.AuthenticationException as e:
+            # Authentication failure means TACACS+ is responding, just wrong credentials
+            logger.warning("Authentication failed during readiness check: {}".format(repr(e)))
+            return False
+        except Exception as e:
+            logger.debug("Connection attempt failed: {}".format(repr(e)))
+            return False
+
+    logger.info("Waiting for TACACS+ authorization to be ready (timeout: {}s)...".format(timeout))
+    result = wait_until(timeout, 2, 0, try_connect)
+
+    if result:
+        logger.info("TACACS+ authorization is ready")
+    else:
+        logger.warning("TACACS+ authorization readiness check timed out after {}s".format(timeout))
+
+    return result
 
 
 def duthost_shell_with_unreachable_retry(duthost, command):
