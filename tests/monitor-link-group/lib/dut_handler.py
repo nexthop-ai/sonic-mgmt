@@ -11,6 +11,7 @@ from typing import Dict, Any, List
 
 from tests.common.gcu_utils import apply_patch, generate_tmpfile, delete_tmpfile
 from tests.common.helpers.sonic_db import SonicDbCli, SonicDbKeyNotFound
+from tests.common.platform.interface_utils import sort_ethernet_intfs
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,7 @@ class DutHandler:
                 # Skip ports without netdev_oper_status field
                 continue
 
-        return sorted(up_ports, key=lambda x: int(x.replace('Ethernet', '')))
+        return sort_ethernet_intfs(up_ports)
 
     # ============================================================
     # MONITOR LINK OPERATIONS

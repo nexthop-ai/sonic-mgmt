@@ -20,6 +20,7 @@ Usage:
 import logging
 from typing import List, Set
 
+from tests.common.platform.interface_utils import sort_ethernet_intfs
 from tests.common.utilities import wait_until
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,7 @@ class IntfMgr:
         - Skip interfaces that fail to come up (likely no link partner)
         """
         interfaces = self.duthost.get_interfaces_status()
-        ethernet_intfs = sorted(
-            [name for name in interfaces if name.startswith('Ethernet')],
-            key=lambda x: int(x.replace('Ethernet', ''))
-        )
+        ethernet_intfs = sort_ethernet_intfs(interfaces)
 
         up_interfaces = []
         for intf in ethernet_intfs:

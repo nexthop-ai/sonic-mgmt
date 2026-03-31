@@ -13,6 +13,19 @@ from natsort import natsorted
 from .transceiver_utils import all_transceivers_detected
 
 
+def sort_ethernet_intfs(names):
+    """
+    @summary: Filter out non-physical Ethernet interfaces (recirculation, inband,
+              backplane) and return the remaining sorted numerically.
+    @param names: Iterable of interface name strings.
+    @return: Sorted list of physical Ethernet interface names.
+    """
+    return sorted(
+        [n for n in names if n.startswith('Ethernet') and n.replace('Ethernet', '').isdigit()],
+        key=lambda x: int(x.replace('Ethernet', ''))
+    )
+
+
 def parse_intf_status(lines):
     """
     @summary: Parse the output of command "show interface description".
@@ -313,8 +326,8 @@ def get_lport_to_first_subport_mapping(duthost, logical_intfs=None):
     """
     physical_port_indices = get_physical_port_indices(duthost, logical_intfs)
     pport_to_lport_mapping = get_physical_to_logical_port_mapping(physical_port_indices)
-    for sub_ports_list in pport_to_lport_mapping.values():
-        sub_ports_list.sort(key=lambda x: int(x.replace("Ethernet", "")))
+    for k in pport_to_lport_mapping:
+        pport_to_lport_mapping[k] = sort_ethernet_intfs(pport_to_lport_mapping[k])
     first_subport_dict = {k: pport_to_lport_mapping[v][0] for k, v in physical_port_indices.items()}
     logging.debug("First subports mapping: {}".format(first_subport_dict))
     return first_subport_dict
