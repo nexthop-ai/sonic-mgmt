@@ -15,7 +15,8 @@ from tests.common.fixtures.route_counter import wait_for_route_count_sync  # noq
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.topology('any')
+    pytest.mark.topology('any'),
+    pytest.mark.usefixtures("setup_gnmi_ntp_client_server", "setup_gnmi_server", "check_dut_timestamp")
 ]
 
 
