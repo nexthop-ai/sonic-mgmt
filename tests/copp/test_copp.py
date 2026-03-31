@@ -120,6 +120,7 @@ class TestCOPP(object):
         if duthost.is_multi_asic:
             namespace = random.choice(duthost.asics)
 
+        has_trap = True
         # Skip the check if the protocol is "Default"
         if protocol != "Default":
             trap_ids = PROTOCOL_TO_TRAP_ID.get(protocol)
@@ -130,6 +131,7 @@ class TestCOPP(object):
             else:
                 feature_list, _ = duthost.get_feature_status()
                 trap_installed = copp_utils.is_trap_installed(duthost, trap_ids[0], namespace)
+                has_trap = trap_installed
                 if feature_name in feature_list and feature_list[feature_name] == "enabled":
                     pytest_assert(trap_installed,
                                   f"Trap {trap_ids[0]} for protocol {protocol} is not installed")
@@ -141,7 +143,8 @@ class TestCOPP(object):
                      ptfhost,
                      protocol,
                      copp_testbed,
-                     dut_type)
+                     dut_type,
+                     has_trap=has_trap)
 
     @pytest.mark.parametrize("protocol", ["IP2ME",
                                           "SNMP",
@@ -553,6 +556,54 @@ def ignore_expected_loganalyzer_exceptions(enum_rand_one_per_hwsku_frontend_host
         loganalyzer[enum_rand_one_per_hwsku_frontend_hostname].ignore_regex.extend(ignoreRegex)
 
 
+def _dump_copp_diagnostics(dut, test_params, protocol, stage=""):
+    """
+        Dumps diagnostic information when COPP test fails.
+
+        Args:
+            dut (SonicHost): The target device
+            test_params: Test parameters containing topology info
+            protocol (str): The protocol being tested
+    """
+    try:
+        if stage:
+            logging.info("COPP DIAGNOSTICS [%s] - PROTOCOL: %s", stage, protocol)
+        else:
+            logging.info("COPP DIAGNOSTICS - PROTOCOL: %s", protocol)
+
+        # Always dump show copp stats
+        logging.info("\n### COPP Statistics ###")
+        try:
+            result = dut.shell("show copp stats", module_ignore_errors=True)
+            logging.info("COPP Stats Output:\n%s", result.get('stdout', 'No output'))
+        except Exception as e:
+            logging.error("Failed to get COPP stats: %s", str(e))
+
+        # For T2 topology, dump BCM trap information
+        if test_params.topo_type == "t2":
+            logging.info("\n### BCM Trap Information (T2 Topology) ###")
+            try:
+                # Determine syncd container name based on ASIC type
+                logging.info("Executing bcmcmd 'trap last info'")
+                result = dut.shell("bcmcmd 'trap last info'", module_ignore_errors=True)
+                logging.info("BCM Trap last info Output:\n%s", result.get('stdout', 'No output'))
+
+                result = dut.shell("bcmcmd 'trap list user'", module_ignore_errors=True)
+                logging.info("BCM Trap list user Output:\n%s", result.get('stdout', 'No output'))
+
+                result = dut.shell("bcmcmd 'trap list pre'", module_ignore_errors=True)
+                logging.info("BCM Trap list pre Output:\n%s", result.get('stdout', 'No output'))
+
+                result = dut.shell("bcmcmd 'trap list app'", module_ignore_errors=True)
+                logging.info("BCM Trap list app Output:\n%s", result.get('stdout', 'No output'))
+            except Exception as e:
+                logging.error("Failed to get BCM trap info: %s", str(e))
+
+
+    except Exception as e:
+        logging.error("Error dumping COPP diagnostics: %s", str(e))
+
+
 def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
                  ip_version="4", packet_size=100):    # noqa: F811
     """
@@ -587,6 +638,9 @@ def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
     # could hang there forever.
     ptf.shell(f"ping {dut_ip} -c 5 -i 0.2")
 
+    # Dump diagnostics before test starts
+    _dump_copp_diagnostics(dut, test_params, protocol, stage="START")
+
     # NOTE: debug_level can actually slow the PTF down enough to fail the test cases
     # that are not rate limited. Until this is addressed, do not use this flag as part of
     # nightly test runs.
@@ -603,6 +657,10 @@ def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
                debug_level=None,
                device_sockets=device_sockets,
                is_python3=True)
+
+    # Dump diagnostics when test fails
+    _dump_copp_diagnostics(dut, test_params, protocol)
+
     return True
 
 
