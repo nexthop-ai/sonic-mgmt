@@ -598,8 +598,6 @@ def _dump_copp_diagnostics(dut, test_params, protocol, stage=""):
                 logging.info("BCM Trap list app Output:\n%s", result.get('stdout', 'No output'))
             except Exception as e:
                 logging.error("Failed to get BCM trap info: %s", str(e))
-
-
     except Exception as e:
         logging.error("Error dumping COPP diagnostics: %s", str(e))
 
@@ -644,22 +642,29 @@ def _copp_runner(dut, ptf, protocol, test_params, dut_type, has_trap=True,
     # NOTE: debug_level can actually slow the PTF down enough to fail the test cases
     # that are not rate limited. Until this is addressed, do not use this flag as part of
     # nightly test runs.
-    ptf_runner(host=ptf,
-               testdir="ptftests",
-               # Special Handling for DHCP if we are using T1 Topo
-               testname="copp_tests.{}Test".format((protocol+"TopoT1") if protocol in _TOR_ONLY_PROTOCOL and
-                                                   dut_type not in ["ToRRouter", "MgmtToRRouter", "BmcMgmtToRRouter"]
-                                                   else protocol),
-               platform="nn",
-               qlen=100000,
-               params=params,
-               relax=None,
-               debug_level=None,
-               device_sockets=device_sockets,
-               is_python3=True)
-
-    # Dump diagnostics when test fails
-    _dump_copp_diagnostics(dut, test_params, protocol)
+    try:
+        ptf_runner(host=ptf,
+                   testdir="ptftests",
+                   # Special Handling for DHCP if we are using T1 Topo
+                   testname="copp_tests.{}Test".format(
+                                             (protocol+"TopoT1") if protocol in _TOR_ONLY_PROTOCOL and
+                                             dut_type not in ["ToRRouter", "MgmtToRRouter", "BmcMgmtToRRouter"]
+                                             else protocol),
+                   platform="nn",
+                   qlen=100000,
+                   params=params,
+                   relax=None,
+                   debug_level=None,
+                   device_sockets=device_sockets,
+                   is_python3=True)
+    except Exception:
+        # Dump diagnostics when test fails
+        _dump_copp_diagnostics(dut, test_params, protocol, stage="FAILURE")
+        # Re-raise the exception to preserve test failure
+        raise
+    finally:
+        # Dump diagnostics after test completion (success or failure)
+        _dump_copp_diagnostics(dut, test_params, protocol, stage="END")
 
     return True
 
