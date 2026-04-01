@@ -474,3 +474,6 @@ r, ".*ERR telemetry#.*getDbInfo: Failed to find CHASSIS_STATE_DB.*"
 
 # Ignore SAI_STATUS_INVALID_PARAMETER error for SAI_API_QUEUE get stats until it's resolved
 r, ".*ERR swss#orchagent:.*SAI_API_QUEUE, status: SAI_STATUS_INVALID_PARAMETER.*"
+
+# Ignore OSPFD SNMP file descriptor errors - benign system call errors unrelated to routing functionality
+r, ".*ERR bgp#ospfd\[\d+\]: \[[A-Z0-9-]+\]\[EC \d+\] Failed to set snmp fd back to original settings: Bad file descriptor\(\d+\).*"
