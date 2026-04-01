@@ -573,3 +573,4 @@ qos_params:
             cell_size: 4096
         topo-t2_single_node_min: *topo-t2-single-node-min
         topo-t2-single-node-max-32p: *topo-t2-single-node-min
+        topo-t2-single-node-max-64p: *topo-t2-single-node-min
