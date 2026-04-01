@@ -37,9 +37,10 @@ Fixes # (issue)
 
 - [ ] PR title is free of sensitive information (customer names, product codenames, internal references)
 
-#### Which release branch to backport/forwardport
-- [ ] 202505
+#### Which release branch to port
+- [ ] master
 - [ ] 202511
+- [ ] 202505
 
 ### Approach
 #### What is the motivation for this PR?
