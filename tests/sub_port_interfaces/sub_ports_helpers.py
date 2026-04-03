@@ -651,7 +651,7 @@ def create_lag_port(duthost, config_port_indices):
 
 def create_bond_port(ptfhost, ptf_ports):
     """
-    Create bond ports on the PTF
+    Create bond ports on the PTF using teamd (LACP)
 
     Args:
         ptfhost: PTF host object
@@ -661,20 +661,27 @@ def create_bond_port(ptfhost, ptf_ports):
         Dictonary of bond ports and slave ports on the PTF
     """
     bond_port_map = OrderedDict()
-    cmds = []
 
     for port_index, port_name in list(ptf_ports.items()):
         bond_port = 'bond{}'.format(port_index)
-        cmds.append("ip link add {} type bond".format(bond_port))
-        cmds.append("ip link set {} type bond miimon 100 mode 802.3ad".format(bond_port))
+        teamd_config = (
+            '{{'
+            '"device": "{bond_port}", '
+            '"runner": {{"name": "lacp", "active": true, "fast_rate": true}}, '
+            '"link_watch": {{"name": "ethtool"}}'
+            '}}'
+        ).format(bond_port=bond_port)
+
+        cmds = []
+        cmds.append("teamd -d -t {} -c '{}'".format(bond_port, teamd_config))
         cmds.append("ip link set {} down".format(port_name))
-        cmds.append("ip link set {} master {}".format(port_name, bond_port))
+        cmds.append("teamdctl {} port add {}".format(bond_port, port_name))
         cmds.append("ip link set dev {} up".format(bond_port))
-        cmds.append("ifconfig {} mtu 9216 up".format(bond_port))
+        cmds.append("ip link set dev {} mtu 9216".format(bond_port))
+        ptfhost.shell_cmds(cmds=cmds)
 
         bond_port_map[bond_port] = port_name
 
-    ptfhost.shell_cmds(cmds=cmds)
     ptfhost.shell("supervisorctl restart ptf_nn_agent")
     time.sleep(5)
 
@@ -892,7 +899,7 @@ def remove_lag_port(duthost, cfg_facts, lag_port):
 
 def remove_bond_port(ptfhost, bond_port, port_name):
     """
-    Remove bond-port from DUT
+    Remove bond-port from PTF (teamd-based)
 
     Args:
         ptfhost: PTF host object
@@ -901,10 +908,9 @@ def remove_bond_port(ptfhost, bond_port, port_name):
     """
     cmds = []
 
-    cmds.append("ip link set {} nomaster".format(bond_port))
-    cmds.append("ip link set {} nomaster".format(port_name))
+    cmds.append("teamdctl {} port remove {}".format(bond_port, port_name))
     cmds.append("ip link set {} up".format(port_name))
-    cmds.append("ip link del {}".format(bond_port))
+    cmds.append("teamd -k -t {}".format(bond_port))
 
     ptfhost.shell_cmds(cmds=cmds)
 
