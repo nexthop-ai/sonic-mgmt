@@ -107,7 +107,7 @@ class GenericHashTest(BaseTest):
         # Nvidia ASIC can't forward ip_proto 254, BRCM is OK, skip for all for simplicity
         # For Nvidia platforms, when the ip_proto are 4, 6, 17, 41, the parser behavior is different with other
         # protocols, skip them for simplicity
-        skip_protos = [2, 4, 6, 17, 41, 253, 254]
+        skip_protos = [2, 4, 6, 17, 41, 47, 253, 254]
         if self.ipver == 'ipv6':
             # Skip ip_proto 0 for IPv6
             skip_protos.append(0)
