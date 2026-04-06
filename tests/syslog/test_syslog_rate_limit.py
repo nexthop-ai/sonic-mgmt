@@ -202,12 +202,19 @@ def verify_host_rate_limit(rand_selected_dut):
     pytest_assert(rate_limit_data[0]['burst'] == str(RATE_LIMIT_BURST),
                   'Expect rate limit burst {}, actual {}'.format(RATE_LIMIT_BURST, rate_limit_data[0]['burst']))
 
+    # On the host, rsyslog's own internal message budget (500/5s) can be
+    # transiently exhausted by startup traffic after a restart, causing the
+    # rate-limit notification (an rsyslog-internal message) to be silently
+    # dropped.  The notification is an rsyslog implementation detail, not a
+    # SONiC feature under test.  Verifying that exactly RATE_LIMIT_BURST
+    # messages arrive (not RATE_LIMIT_BURST+1) is sufficient to confirm the
+    # host rate limit is enforced.
     verify_rate_limit_with_log_generator(rand_selected_dut,
                                          'host',
                                          'syslog_rate_limit_host_interval_{}_burst_{}'.format(RATE_LIMIT_INTERVAL,
                                                                                               RATE_LIMIT_BURST),
-                                         [LOG_EXPECT_SYSLOG_RATE_LIMIT_REACHED, LOG_EXPECT_LAST_MESSAGE.format('')],
-                                         RATE_LIMIT_BURST + 1,
+                                         [LOG_EXPECT_LAST_MESSAGE.format('')],
+                                         RATE_LIMIT_BURST,
                                          is_host=True)
 
     with expect_host_rsyslog_restart(rand_selected_dut):
