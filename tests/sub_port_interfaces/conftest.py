@@ -46,6 +46,13 @@ from sub_ports_helpers import update_dut_arp_table
 
 logger = logging.getLogger(__name__)
 
+
+def _check_ip_reachable(duthost, ip):
+    """Check if an IP is reachable from the DUT via ping."""
+    return duthost.command("ping -c 1 -W 1 {}".format(ip),
+                           module_ignore_errors=True)['rc'] == 0
+
+
 if sys.version_info[0] >= 3:
     unicode = str
 
@@ -361,6 +368,12 @@ def apply_route_config_for_port(request, tbinfo, duthost, ptfhost, port_type, de
             add_ip_to_dut_port(duthost, 'Vlan{}'.format(vlan_id), dut_port_ip)
             # Configure additional sub-port for connection between SVI port of the DUT and PTF
             create_sub_port_on_ptf(ptfhost, ptf_port, ptf_port_ip)
+            # Wait for SVI RIF to be programmed in hardware before sending traffic.
+            # Without this, packets may be lost if orchagent hasn't finished programming
+            # the VLAN RIF and the return path doesn't work yet.
+            py_assert(wait_until(30, 1, 0, _check_ip_reachable, duthost,
+                                 ptf_port_ip.split('/')[0]),
+                      "DUT could not reach PTF SVI port {} within 30s".format(ptf_port_ip))
         else:
             # should remove port from Vlan1000 first to configure L3 RIF
             remove_member_from_vlan(duthost, '1000', dut_port)
@@ -638,6 +651,12 @@ def ignore_expected_loganalyzer_exception(duthost, loganalyzer):
     if loganalyzer and loganalyzer[duthost.hostname]:
         ignore_regex_list = [
           ".*ERR teamd[0-9]*#tlm_teamd.*process_add_queue: Can't connect to teamd after.*attempts. LAG 'PortChannel.*'",
-          ".*ERR swss[0-9]*#orchagent.*update: Failed to get port by bridge port ID.*"
+          ".*ERR swss[0-9]*#orchagent.*update: Failed to get port by bridge port ID.*",
+          # Teardown removes sub-port interfaces via direct Redis deletion (no SONiC CLI
+          # exists for this), which creates a brief window where routes reference deleted
+          # interfaces before orchagent finishes cleanup. routeCheck may scan during this
+          # window and report missed_INTF_TABLE_entries. This is a transient teardown
+          # artifact, not a real routing failure. Same approach used in test_lag_2.py.
+          r".*ERR monit\[\d+\]: 'routeCheck' status failed \(255\) -- Failure results:.*",
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignore_regex_list)
