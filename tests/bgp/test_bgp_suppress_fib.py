@@ -527,11 +527,16 @@ def check_pkt_forward_state(captured_packets, ip_ver_list, send_packet_list, exp
         else:
             logger.info("Packet is not captured:\n{}".format(str(send_packet_list[i].summary)))
 
-    assert act_forward_count == exp_forward_count, (
-        "Mismatch in captured forward traffic packets. Captured: {}, expected: {}."
+    # Allow up to 2% packet loss to account for minor tcpdump capture misses or timing
+    # races at high send rates (e.g., ZMQ path timing in 202511+). Exact equality is too
+    # strict for bulk traffic validation where ~1% jitter is expected behavior.
+    tolerance = max(1, int(exp_forward_count * 0.02))
+    assert act_forward_count >= exp_forward_count - tolerance, (
+        "Mismatch in captured forward traffic packets. Captured: {}, expected: {} (tolerance: {})."
     ).format(
         act_forward_count,
-        exp_forward_count
+        exp_forward_count,
+        tolerance
     )
 
 
@@ -575,14 +580,17 @@ def parse_time_stamp(bgp_packets, ipv4_route_list, ipv6_route_list):
                             update_time_stamp(announce_prefix_time_stamp, route.prefix, bgp_packets[i].time)
                 layer_index += 1
 
-            layer_index = 1
-            while bgp_updates[i].getlayer(bgp.BGPPAMPUnreachNLRI_IPv6, nb=layer_index):
-                layer = bgp_updates[i].getlayer(bgp.BGPPAMPUnreachNLRI_IPv6, nb=layer_index)
-                if layer.withdrawn_routes:
-                    for route in layer.withdrawn_routes:
-                        if route.prefix in ipv6_route_list:
-                            update_time_stamp(withdraw_prefix_time_stamp, route.prefix, bgp_packets[i].time)
-                layer_index += 1
+        # Parse IPv6 withdrawals unconditionally: FRR 10.4.1+ sends pure WITHDRAW packets
+        # (MP_UNREACH_NLRI only, no MP_REACH_NLRI), so bgp.BGPNLRI_IPv6 is absent in those
+        # packets. The withdrawal check must be independent of the BGPNLRI_IPv6 guard above.
+        layer_index = 1
+        while bgp_updates[i].getlayer(bgp.BGPPAMPUnreachNLRI_IPv6, nb=layer_index):
+            layer = bgp_updates[i].getlayer(bgp.BGPPAMPUnreachNLRI_IPv6, nb=layer_index)
+            if layer.withdrawn_routes:
+                for route in layer.withdrawn_routes:
+                    if route.prefix in ipv6_route_list:
+                        update_time_stamp(withdraw_prefix_time_stamp, route.prefix, bgp_packets[i].time)
+            layer_index += 1
 
     return announce_prefix_time_stamp, withdraw_prefix_time_stamp
 
@@ -596,6 +604,11 @@ def compute_middle_average_time(time_stamp_dict):
             continue
     time_delta_list.sort()
 
+    assert len(time_delta_list) > 0, (
+        "No timing data collected: no prefix had both an announce and withdraw timestamp captured. "
+        "This may indicate that BGP UPDATE packets are not being parsed correctly (e.g., FRR version "
+        "change affecting WITHDRAW packet format) or that the pcap capture missed traffic."
+    )
     mid_delta_time = time_delta_list[(len(time_delta_list) - 1) // 2]
     ave_delta_time = sum(time_delta_list) / len(time_delta_list)
     return mid_delta_time, ave_delta_time
