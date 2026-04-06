@@ -73,6 +73,7 @@ all:
           - dpu
           - dpu-1
           - t0-sim
+          - t0-large-sim
           - ciscovs-7nodes
           - ciscovs-5nodes
           - force10-7nodes

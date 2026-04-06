@@ -83,7 +83,7 @@
     </serial>
     <interface type='ethernet'>
         <target dev='{{ dut_name }}-0' />
-    {% if asic_type == 'vpp' %}
+    {% if asic_type == 'vpp' or topo is defined and topo.endswith('-sim') %}
         <model type='virtio-net-pci' />
     {% else %}
         <model type='e1000' />
@@ -92,7 +92,7 @@
 {% for i in range(port_alias|length) %}
     <interface type='ethernet' >
         <target dev='{{ dut_name }}-{{ i + 1 }}' />
-    {% if asic_type == 'vpp' %}
+    {% if asic_type == 'vpp' or topo is defined and topo.endswith('-sim') %}
         <model type='virtio-net-pci' />
     {% else %}
         <model type='e1000' />
