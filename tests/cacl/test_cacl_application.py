@@ -473,7 +473,7 @@ def generate_and_append_block_ip2me_traffic_rules(duthost, iptables_rules, ip6ta
                     # For VLAN interfaces, the IP address we want to block is the default gateway (i.e.,
                     # the first available host IP address of the VLAN subnet)
                     ip_addr = next(ip_ntwrk.hosts()) if iface_table_name == "VLAN_INTERFACE" \
-                        else ip_ntwrk.network_address
+                        else ipaddress.ip_address(iface_cidr.split("/")[0])
 
                     if isinstance(ip_ntwrk, ipaddress.IPv4Network):
                         iptables_rules.append("-A INPUT -d {}/{} -j DROP".format(ip_addr, ip_ntwrk.max_prefixlen))
