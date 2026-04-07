@@ -595,7 +595,10 @@ def test_nhop_group_member_order_capability(duthost, tbinfo, ptfadapter, gather_
             pytest_assert(wait_until(60, 5, 0, duthost.check_bgp_session_state, bgp_neighbors),
                           "bgp did not come up in expected time")
             nhop.delete_routes()
-            pytest_assert(wait_until(60, 5, 0, validate_asic_route, duthost, ip_prefix, False),
+            # BGP warm_restart is enabled by default with bgp_timer=120s.
+            # fpmsyncd waits for that timer to expire before reconciling stale routes.
+            # 180s = 120s (default bgp_timer) + 60s margin.
+            pytest_assert(wait_until(180, 5, 0, validate_asic_route, duthost, ip_prefix, False),
                           f"Static route: {ip_prefix} is failed to be removed!")
             arplist.clean_up()
 
