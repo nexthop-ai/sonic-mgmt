@@ -338,9 +338,11 @@ bgp/test_bgp_4-byte_as_trans.py:
 
 bgp/test_bgp_aggregate_address.py:
   skip:
-    reason: "Skip for multi-ASIC testbed"
+    reason: "Skip for multi-ASIC testbed and unified mode"
+    conditions_logical_operator: or
     conditions:
       - "is_multi_asic==True"
+      - "frr_mgmt_config == 'true'"
 
 bgp/test_bgp_allow_list.py:
   skip:
