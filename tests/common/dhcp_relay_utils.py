@@ -569,7 +569,12 @@ def sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, socket_check=True, int
         for dhcp_relay in dut_dhcp_relay_data.get(interface_type, []):
             iface = str(dhcp_relay['downlink_iface']['name'])
             dhcp_servers = ",".join(dhcp_relay['downlink_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers} {iface}')
+            # For sonic-relay-agent, use interface_ip as circuit-id format
+            # First, try to delete any existing configuration to avoid "already exists" errors
+            duthost.shell(f'config dhcpv4_relay del {iface}', module_ignore_errors=True)
+            # Then add the configuration
+            duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers} '
+                          f'--circuit-id-format interface_ip {iface}')
 
         if socket_check:
             pytest_assert(wait_until(40, 5, 0, check_dhcpv4_socket_status, duthost, dut_dhcp_relay_data,

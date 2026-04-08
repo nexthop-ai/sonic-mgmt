@@ -89,7 +89,9 @@ def configure_dhcp_servers_on_interface(duthost, interface_name, dhcp_servers):
     dhcp_servers_str = ' '.join(dhcp_servers)
 
     if interface_name.startswith('Vlan'):
-        cmd = "config vlan dhcp_relay add {} {}".format(interface_name, dhcp_servers_str)
+        # Extract VLAN ID from interface name (e.g., 'Vlan1000' -> '1000')
+        vlan_id = interface_name.replace('Vlan', '')
+        cmd = "config vlan dhcp_relay add {} {}".format(vlan_id, dhcp_servers_str)
     else:
         cmd = "config interface dhcp_relay add {} {}".format(interface_name, dhcp_servers_str)
 
@@ -116,7 +118,9 @@ def remove_dhcp_servers_from_interface(duthost, interface_name, dhcp_servers):
     dhcp_servers_str = ' '.join(dhcp_servers)
 
     if interface_name.startswith('Vlan'):
-        cmd = "config vlan dhcp_relay del {} {}".format(interface_name, dhcp_servers_str)
+        # Extract VLAN ID from interface name (e.g., 'Vlan1000' -> '1000')
+        vlan_id = interface_name.replace('Vlan', '')
+        cmd = "config vlan dhcp_relay del {} {}".format(vlan_id, dhcp_servers_str)
     else:
         cmd = "config interface dhcp_relay del {} {}".format(interface_name, dhcp_servers_str)
 
@@ -351,6 +355,9 @@ def build_dhcp_relay_data_dict(duthost, tbinfo, mg_facts, config_facts, standby_
     downlink_iface['mask'] = downlink_mask
     downlink_iface['dhcp_server_addrs'] = dhcp_server_addrs
 
+    subnet = ipaddress.IPv4Interface("{}/{}".format(downlink_addr, downlink_mask)).network
+    downlink_iface['link_selection_ip'] = str(subnet.network_address)
+
     # Get MAC address for the interface
     res = duthost.shell('cat /sys/class/net/{}/address'.format(downlink_iface_name), module_ignore_errors=True)
     if res['rc'] == 0 and res['stdout'].strip():
@@ -521,18 +528,16 @@ def check_dhcp_feature_status(request, duthost):
 
 
 @pytest.fixture(scope="module")
-def setup_routed_dhcp_servers(duthosts, rand_one_dut_hostname, tbinfo):
+def setup_routed_ports(duthosts, rand_one_dut_hostname, tbinfo):
     """
-    Setup fixture that ensures at least some routed interfaces have dhcp_servers configured.
-    This enables testing of DHCP relay on routed interfaces.
+    Setup fixture that extracts a VLAN member to create a routed interface for DHCP relay testing.
 
     This fixture will:
     1. Take a config checkpoint (for guaranteed rollback)
     2. Extract a VLAN member to create a routed interface
-    3. Configure dhcp_servers on the routed interface
-    4. Save config (so tests can do 'config reload' and get our changes)
-    5. Yield for tests to run
-    6. Restore original configuration via checkpoint rollback
+    3. Save config (so tests can do 'config reload' and get our changes)
+    4. Yield a dict with extracted interface info, or None if extraction was not possible
+    5. Restore original configuration via checkpoint rollback
     """
     duthost = duthosts[rand_one_dut_hostname]
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
@@ -551,7 +556,7 @@ def setup_routed_dhcp_servers(duthosts, rand_one_dut_hostname, tbinfo):
 
         if not vlan_member_info:
             logger.info("No suitable VLAN member found for extraction - routed interface tests will be skipped")
-            yield
+            yield None
             return
 
         candidate_interface = vlan_member_info['interface']
@@ -565,32 +570,20 @@ def setup_routed_dhcp_servers(duthosts, rand_one_dut_hostname, tbinfo):
                                            extracted_from_vlan, test_ip_address):
             logger.error("Failed to extract {} from {}".format(
                 candidate_interface, extracted_from_vlan))
-            yield
+            yield None
             return
 
-        logger.info("Configuring dhcp_servers on routed interface: {}".format(candidate_interface))
-        if not configure_dhcp_servers_on_interface(duthost, candidate_interface, dhcp_servers):
-            logger.error("Failed to configure dhcp_servers on {} - skipping routed interface tests".format(
-                candidate_interface))
-            yield
-            return
-
-        if not wait_for_dhcp_relay_ready_on_interface(duthost, candidate_interface, timeout=60):
-            logger.error("dhcp_relay failed to start on {} - skipping routed interface tests".format(
-                candidate_interface))
-            yield
-            return
-
-        # Save config so that 'config reload' during tests will pick up our changes
-        logger.info("Saving config with routed interface configuration")
+        # Save config so that 'config reload' during tests will pick up the extracted interface
+        logger.info("Saving config with extracted routed interface")
         duthost.shell("sudo config save -y")
 
-        yield
-
-        logger.info("Attempting manual cleanup before rollback")
-        cleanup_success = remove_dhcp_servers_from_interface(duthost, candidate_interface, dhcp_servers)
-        if not cleanup_success:
-            logger.warning("Failed to remove dhcp_servers from {} - will rely on rollback".format(candidate_interface))
+        yield {
+            'candidate_interface': candidate_interface,
+            'extracted_from_vlan': extracted_from_vlan,
+            'original_tagging_mode': original_tagging_mode,
+            'test_ip_address': test_ip_address,
+            'dhcp_servers': dhcp_servers,
+        }
 
         if extracted_from_vlan is not None:
             logger.info("Restoring {} to {}".format(candidate_interface, extracted_from_vlan))
@@ -615,6 +608,47 @@ def setup_routed_dhcp_servers(duthosts, rand_one_dut_hostname, tbinfo):
 
         logger.info("Deleting checkpoint: {}".format(checkpoint_name))
         duthost.shell("sudo config checkpoint delete {}".format(checkpoint_name), module_ignore_errors=True)
+
+
+@pytest.fixture(scope="module")
+def setup_routed_dhcp_servers(setup_routed_ports, duthosts, rand_one_dut_hostname):
+    """
+    Setup fixture that ensures at least some routed interfaces have dhcp_servers configured.
+    This enables testing of DHCP relay on routed interfaces.
+
+    Builds on setup_routed_ports to add DHCP server configuration on the extracted interface.
+    """
+    if setup_routed_ports is None:
+        yield
+        return
+
+    duthost = duthosts[rand_one_dut_hostname]
+    candidate_interface = setup_routed_ports['candidate_interface']
+    dhcp_servers = setup_routed_ports['dhcp_servers']
+
+    logger.info("Configuring dhcp_servers on routed interface: {}".format(candidate_interface))
+    if not configure_dhcp_servers_on_interface(duthost, candidate_interface, dhcp_servers):
+        logger.error("Failed to configure dhcp_servers on {} - skipping routed interface tests".format(
+            candidate_interface))
+        yield
+        return
+
+    if not wait_for_dhcp_relay_ready_on_interface(duthost, candidate_interface, timeout=60):
+        logger.error("dhcp_relay failed to start on {} - skipping routed interface tests".format(
+            candidate_interface))
+        yield
+        return
+
+    # Save config so that 'config reload' during tests will pick up our changes
+    logger.info("Saving config with routed interface configuration")
+    duthost.shell("sudo config save -y")
+
+    yield
+
+    logger.info("Attempting manual cleanup before rollback")
+    cleanup_success = remove_dhcp_servers_from_interface(duthost, candidate_interface, dhcp_servers)
+    if not cleanup_success:
+        logger.warning("Failed to remove dhcp_servers from {} - will rely on rollback".format(candidate_interface))
 
 
 @pytest.fixture(scope="module")

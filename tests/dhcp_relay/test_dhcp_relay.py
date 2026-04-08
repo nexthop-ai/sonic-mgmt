@@ -4,7 +4,7 @@ import time
 import logging
 import re
 
-from tests.common.dhcp_relay_utils import init_dhcpmon_counters, validate_dhcpmon_counters
+from tests.common.dhcp_relay_utils import init_dhcpmon_counters, validate_dhcpmon_counters, check_dhcpv4_socket_status
 from tests.common.fixtures.ptfhost_utils import copy_ptftests_directory   # noqa F401
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses      # noqa F401
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor_m    # noqa F401
@@ -18,12 +18,14 @@ from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyze
 from tests.common.dhcp_relay_utils import check_routes_to_dhcp_server
 from tests.common.dhcp_relay_utils import restart_dhcp_service
 from tests.common.dhcp_relay_utils import enable_sonic_dhcpv4_relay_agent  # noqa: F401
+from tests.common.dhcp_relay_utils import sonic_dhcp_relay_config, sonic_dhcp_relay_unconfig  # noqa: F401
+from tests.dhcp_relay.conftest import configure_dhcp_servers_on_interface  # noqa: F401
+from tests.dhcp_relay.conftest import remove_dhcp_servers_from_interface  # noqa: F401
 
 pytestmark = [
     pytest.mark.topology('t0', 'm0'),
     pytest.mark.device_type('vs'),
-    # RESTORE ME: pytest.mark.parametrize("relay_agent", ["isc-relay-agent", "sonic-relay-agent"]),
-    pytest.mark.parametrize("relay_agent", ["isc-relay-agent"]),
+    pytest.mark.parametrize("relay_agent", ["isc-relay-agent", "sonic-relay-agent"]),
 ]
 
 SUPPORTED_DHCPV4_TYPE = [
@@ -846,3 +848,129 @@ def test_dhcp_relay_monitor_checksum_validation(ptfhost, dut_dhcp_relay_data, in
     except LogAnalyzerError as err:
         logger.error("Unable to find expected log in syslog")
         raise err
+
+
+@pytest.mark.parametrize("interface_type", ["vlan", "routed"])
+def test_dhcp_relay_isolated(ptfhost, dut_dhcp_relay_data, interface_type, validate_dut_routes_exist, testing_config,
+                             setup_standby_ports_on_rand_unselected_tor,    # noqa F811
+                             rand_unselected_dut, toggle_all_simulator_ports_to_rand_selected_tor_m,    # noqa F811
+                             verify_acl_drop_on_standby_tor, relay_agent):     # noqa F811
+    """Test DHCP relay functionality in isolation for each interface type.
+
+    This test ensures that when testing VLAN interfaces, no DHCP relay configuration
+    exists for routed ports, and vice versa. This validates that each interface type
+    works independently without interference from the other type.
+
+    The test works with both isc-dhcp-relay and sonic-relay-agent.
+    """
+    interfaces_to_test = dut_dhcp_relay_data.get(interface_type, [])
+    if not interfaces_to_test:
+        pytest.skip("No {} dhcp_relay interfaces available for testing".format(interface_type))
+
+    testing_mode, duthost = testing_config
+
+    # Determine the opposite interface type
+    opposite_type = "routed" if interface_type == "vlan" else "vlan"
+    opposite_interfaces = dut_dhcp_relay_data.get(opposite_type, [])
+
+    logger.info("Testing {} interface type in isolation (relay_agent: {})".format(interface_type, relay_agent))
+
+    try:
+        # Step 1: Remove DHCP relay configuration from the opposite interface type
+        if opposite_interfaces:
+            logger.info("Removing DHCP relay configuration from {} interfaces".format(opposite_type))
+            if relay_agent == "sonic-relay-agent":
+                # For sonic-relay-agent, use sonic_dhcp_relay_unconfig
+                sonic_dhcp_relay_unconfig(duthost, dut_dhcp_relay_data, opposite_type)
+            else:
+                # For isc-dhcp-relay, remove dhcp_servers from interfaces
+                for dhcp_relay in opposite_interfaces:
+                    iface_name = str(dhcp_relay['downlink_iface']['name'])
+                    dhcp_servers = dhcp_relay['downlink_iface']['dhcp_server_addrs']
+                    logger.info("Removing dhcp_servers from {}".format(iface_name))
+                    remove_dhcp_servers_from_interface(duthost, iface_name, dhcp_servers)
+
+            # Restart DHCP relay service to apply changes
+            restart_dhcp_service(duthost)
+            time.sleep(5)
+
+        # Step 2: Ensure DHCP relay is configured for the interface type being tested
+        if relay_agent == "sonic-relay-agent":
+            # For sonic-relay-agent, configuration should already exist from fixtures
+            # Just verify sockets are ready
+            logger.info("Verifying DHCP relay sockets for {} interfaces".format(interface_type))
+            pytest_assert(wait_until(40, 5, 0, check_dhcpv4_socket_status, duthost, dut_dhcp_relay_data,
+                          "sonic_dhcpv4_socket_check", interface_type),
+                          "DHCP relay sockets not ready for {} interfaces".format(interface_type))
+        else:
+            # For isc-dhcp-relay, configuration should already exist from fixtures
+            # Just restart the service to ensure clean state
+            logger.info("Restarting DHCP relay service for {} interfaces".format(interface_type))
+            restart_dhcp_service(duthost)
+            time.sleep(5)
+
+        # Verify that the relay agent is running
+        pytest_assert(
+            wait_until(60, 5, 0, check_interface_status, duthost, relay_agent),
+            "DHCP relay agent is not running properly"
+        )
+
+        # Step 3: Run DHCP relay tests for the configured interface type
+        for dhcp_relay in interfaces_to_test:
+            logger.info("Testing DHCP relay on {} interface: {}".format(
+                interface_type, dhcp_relay['downlink_iface']['name']))
+
+            # Build PTF test parameters
+            ptf_params = {
+                "hostname": duthost.hostname,
+                "client_port_index": dhcp_relay['client_iface']['port_idx'],
+                "other_client_port": repr(dhcp_relay['other_client_ports']),
+                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
+                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
+                "num_dhcp_servers": len(dhcp_relay['downlink_iface']['dhcp_server_addrs']),
+                "server_ip": dhcp_relay['downlink_iface']['dhcp_server_addrs'],
+                "relay_iface_ip": str(dhcp_relay['downlink_iface']['addr']),
+                "relay_iface_mac": str(dhcp_relay['downlink_iface']['mac']),
+                "relay_iface_netmask": str(dhcp_relay['downlink_iface']['mask']),
+                "dest_mac_address": BROADCAST_MAC,
+                "client_udp_src_port": DEFAULT_DHCP_CLIENT_PORT,
+                "switch_loopback_ip": dhcp_relay['switch_loopback_ip'],
+                "uplink_mac": str(dhcp_relay['uplink_mac']),
+                "testing_mode": testing_mode,
+                "kvm_support": True,
+                "relay_agent": relay_agent,
+                "downlink_iface_name": str(dhcp_relay['downlink_iface']['name'])
+            }
+
+            # Run the DHCP relay test on the PTF host
+            ptf_runner(
+                ptfhost,
+                "ptftests",
+                "dhcp_relay_test.DHCPTest",
+                platform_dir="ptftests",
+                params=ptf_params,
+                log_file=("/tmp/dhcp_relay_test.DHCPTest.isolated.{}.{}.log"
+                          .format(interface_type, dhcp_relay["downlink_iface"]["name"])),
+                is_python3=True)
+
+            logger.info("DHCP relay test passed for {} interface: {}".format(
+                interface_type, dhcp_relay['downlink_iface']['name']))
+
+    finally:
+        # Step 4: Restore DHCP relay configuration for the opposite interface type
+        if opposite_interfaces:
+            logger.info("Restoring DHCP relay configuration for {} interfaces".format(opposite_type))
+            if relay_agent == "sonic-relay-agent":
+                # For sonic-relay-agent, restore configuration
+                sonic_dhcp_relay_config(duthost, dut_dhcp_relay_data, socket_check=False, interface_type=opposite_type)
+            else:
+                # For isc-dhcp-relay, restore dhcp_servers
+                for dhcp_relay in opposite_interfaces:
+                    iface_name = str(dhcp_relay['downlink_iface']['name'])
+                    dhcp_servers = dhcp_relay['downlink_iface']['dhcp_server_addrs']
+                    logger.info("Restoring dhcp_servers on {}".format(iface_name))
+                    configure_dhcp_servers_on_interface(duthost, iface_name, dhcp_servers)
+
+            # Restart DHCP relay service to apply restored configuration
+            restart_dhcp_service(duthost)
+            logger.info("DHCP relay configuration restored for {} interfaces".format(opposite_type))

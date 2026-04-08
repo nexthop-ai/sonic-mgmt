@@ -178,9 +178,9 @@ class DHCPTest(DataplaneBaseTest):
         self.max_hop_count = self.test_params.get('max_hop_count', None)
         self.client_vrf = self.test_params.get('client_vrf', None)
         self.dhcpv4_disable_flag = self.test_params.get('dhcpv4_disable_flag', None)
-        if self.relay_agent == "sonic-relay-agent":
-            if (self.link_selection and self.source_interface) or self.server_vrf:
-                self.link_selection_ip = self.test_params['link_selection_ip']
+        # link_selection_ip is always the downlink interface IP (VLAN or routed port)
+        # It's used for Option 82 link selection sub-option
+        self.link_selection_ip = self.test_params.get('link_selection_ip', None)
 
         self.uplink_mac = self.test_params['uplink_mac']
 
@@ -216,7 +216,7 @@ class DHCPTest(DataplaneBaseTest):
             #  Byte 0: Suboption number, always set to 5
             #  Byte 1: Length of suboption data (4 bytes for IPv4)
             #  Bytes 2–5: The link selection IP address (in byte format)
-            if (self.link_selection and self.source_interface) or self.server_vrf:
+            if ((self.link_selection and self.source_interface) or self.server_vrf) and self.link_selection_ip:
                 link_selection_ip = bytes(list(map(int, self.link_selection_ip.split('.'))))
                 self.option82 += struct.pack('BB', self.LINK_SELECTION_SUBOPTION, 4)
                 self.option82 += link_selection_ip
