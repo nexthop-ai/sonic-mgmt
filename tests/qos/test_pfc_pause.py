@@ -613,9 +613,10 @@ def test_pfc_pause_lossless(pfc_test_setup, fanouthosts, duthosts, enum_rand_one
                 pass_count, total_count = pair
                 if total_count == 0:
                     continue
-                # For pause test, success means suppressed traffic (low pass ratio).
-                # Flag error only if suppression failed (ratio >= threshold).
-                if pass_count >= total_count * PTF_PASS_RATIO_THRESH:
+                # For pause test, success means the queue was paused (only background packet
+                # arrived). pass_count counts iterations where PFC suppression was observed.
+                # Flag error only if suppression failed (too few iterations showed paused behavior).
+                if pass_count < total_count * PTF_PASS_RATIO_THRESH:
                     errors[intf] = pair
             if errors:
                 test_errors += "Dscp: {}, Background Dscp: {}, errors occurred: {}\n".format(
@@ -893,8 +894,8 @@ def test_pfc_pause(pfc_test_setup, fanouthosts, duthosts, enum_rand_one_per_hwsk
             f"Baseline below threshold: {base_ratio} < {PTF_PASS_RATIO_THRESH}",
         )
         pytest_assert(
-            pfc_ratio < PTF_PASS_RATIO_THRESH,
-            f"PFC pause did not suppress: {pfc_ratio} >= {PTF_PASS_RATIO_THRESH}",
+            pfc_ratio >= PTF_PASS_RATIO_THRESH,
+            f"PFC pause did not suppress: {pfc_ratio} < {PTF_PASS_RATIO_THRESH}",
         )
     else:
         # Routed/L3 combined
