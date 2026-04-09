@@ -645,7 +645,6 @@ def disable_swss_warm_boot_flag(duthosts, rand_one_dut_hostname):
 
 # tests
 
-
 class TestVrfCreateAndBind:
     def test_vrf_in_kernel(self, duthosts, rand_one_dut_hostname, cfg_facts):
         duthost = duthosts[rand_one_dut_hostname]
@@ -1106,8 +1105,8 @@ class TestVrfLoopbackIntf:
         # deploy start script
         ptfhost.template(src="vrf/bgp_speaker/start.j2", dest="%s/%s" % (exabgp_dir, "start.sh"), mode="u+rwx")
 
-        # kill exabgp if any
-        ptfhost.shell("pkill exabgp || true")
+        # kill bgp speaker exabgp if any (avoid killing VM exabgp instances)
+        ptfhost.shell("pkill -f '/root/exabgp/config.ini' || true", module_ignore_errors=True)
 
         # start exabgp instance
         ptfhost.shell("bash %s/start.sh" % exabgp_dir)
@@ -1130,8 +1129,8 @@ class TestVrfLoopbackIntf:
                 "vtysh -c 'configure terminal' -c 'no ip route {} {} vrf {}'".format(peer_range, ips["ipv4"][0], vrf)
             )
 
-        # kill exabgp
-        ptfhost.shell("pkill exabgp || true")
+        # kill bgp speaker exabgp only (avoid killing VM exabgp instances)
+        ptfhost.shell("pkill -f '/root/exabgp/config.ini' || true", module_ignore_errors=True)
 
         # del speaker ips from ptf ports
         for vrf, vlan_peer_port in g_vars["vlan_peer_ips"]:
@@ -1617,7 +1616,6 @@ class TestVrfUnbindIntf:
         gen_vrf_fib_file(
             "Vrf1", tbinfo, ptfhost, dst_intfs=[PORTCHANNEL_TEMP_2], render_file="/tmp/unbindvrf_fib_2.txt"
         )
-
         partial_ptf_runner(
             testname="vrf_test.FibTest",
             fib_info_files=["/tmp/unbindvrf_fib_2.txt"],

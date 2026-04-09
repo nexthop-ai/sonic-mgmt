@@ -22,31 +22,36 @@
 {%         endfor %}
     },
 {%     elif k == 'BGP_PEER_RANGE' %}
+{%         set loopback_ip = cfg_t0['LOOPBACK_INTERFACE'] | select('match', 'Loopback0\\|.*\\..*') | first | regex_replace('Loopback0\\|(.+)/\\d+', '\\1') %}
     "BGP_PEER_RANGE": {
         "Vrf1|BGPSLBPassive": {
             "ip_range": [
                 "10.255.0.0/25"
             ],
-            "name": "BGPSLBPassive"
+            "name": "BGPSLBPassive",
+            "src_address": "{{ loopback_ip }}"
         },
         "Vrf1|BGPVac": {
             "vrf_name": "Vrf1",
             "ip_range": [
                 "192.168.0.0/21"
             ],
-            "name": "BGPVac"
+            "name": "BGPVac",
+            "src_address": "{{ loopback_ip }}"
         },
         "Vrf2|BGPSLBPassive2": {
             "ip_range": [
                 "10.255.0.0/25"
             ],
-            "name": "BGPSLBPassive2"
+            "name": "BGPSLBPassive2",
+            "src_address": "{{ loopback_ip }}"
         },
         "Vrf2|BGPVac2": {
             "ip_range": [
                 "192.168.0.0/21"
             ],
-            "name": "BGPVac2"
+            "name": "BGPVac2",
+            "src_address": "{{ loopback_ip }}"
         }
     },
 {%     elif k == 'LOOPBACK_INTERFACE' %}
