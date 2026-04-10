@@ -176,7 +176,7 @@ def prepare_test_port(rand_selected_dut, tbinfo):
 
     ports = list(mg_facts['minigraph_portchannels'])
     if not ports:
-        ports = mg_facts["minigraph_acls"]["DataAcl"]
+        ports = mg_facts["minigraph_acls"].get("DataAcl", [])
 
     dut_port = ports[0] if ports else None
 
