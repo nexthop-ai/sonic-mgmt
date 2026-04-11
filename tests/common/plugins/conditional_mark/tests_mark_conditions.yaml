@@ -4438,7 +4438,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiPgMinThreshold:
   skip:
     reason: "testQosSaiPgMinThreshold is only supported on x86_64-nexthop_4010* platforms."
     conditions:
-      - "not platform.startswith('x86_64-nexthop_4010')"
+      - "not platform.startswith('x86_64-nexthop_4010') and not platform.startswith('x86_64-nexthop_4220')"
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiPgSharedWatermark:
   skip:

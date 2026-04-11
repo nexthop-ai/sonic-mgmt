@@ -1773,6 +1773,11 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+<<<<<<< HEAD
+=======
+        if dutConfig["dutAsic"] in ('th6', 'th5'):
+            pytest.skip("Skip this test while buffer tuning is finalized")
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
 
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if pgProfile == "wm_pg_shared_lossless":
@@ -1881,6 +1886,12 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+<<<<<<< HEAD
+=======
+        if dutConfig["dutAsic"] in ('th6', 'th5'):
+            pytest.skip("Skip this test while buffer tuning is finalized")
+
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         if dutTestParams['hwsku'] in self.BREAKOUT_SKUS and 'backend' not in dutTestParams['topo']:
@@ -2074,6 +2085,12 @@ class TestQosSai(QosSaiBase):
             Raises:
                 RunAnsibleModuleFail if ptf test fails
         """
+<<<<<<< HEAD
+=======
+        if dutConfig["dutAsic"] in ('th6', 'th5'):
+            pytest.skip("Skip this test while buffer tuning is finalized")
+
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         if queueProfile == "wm_q_shared_lossless":
             skip_test_on_no_lossless_pg(portSpeedCableLength)
@@ -2163,6 +2180,10 @@ class TestQosSai(QosSaiBase):
         portSpeedCableLength = dutQosConfig["portSpeedCableLength"]
         skip_test_on_no_lossless_pg(portSpeedCableLength)
         if dutTestParams["basicParams"]["sonic_asic_type"] == 'cisco-8000' or \
+<<<<<<< HEAD
+=======
+                (dutConfig["dutAsic"] in ('th5', 'th6')) or \
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
                 ('platform_asic' in dutTestParams["basicParams"] and
                  dutTestParams["basicParams"]["platform_asic"] in ["broadcom-dnx", "mellanox", "marvell-teralynx"]):
             disableTest = False

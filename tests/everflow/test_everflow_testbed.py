@@ -95,7 +95,11 @@ class EverflowIPv4Tests(BaseEverflowTest):
 
     DEFAULT_SRC_IP = "20.0.0.1"
     DEFAULT_DST_IP = "30.0.0.1"
+<<<<<<< HEAD
     MIRROR_POLICER_UNSUPPORTED_ASIC_LIST = ["th5", "th4", "th3", "j2c+", "jr2"]
+=======
+    MIRROR_POLICER_UNSUPPORTED_ASIC_LIST = ["th6", "th5", "th4", "th3", "j2c+", "jr2"]
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
 
     @pytest.fixture(params=[DOWN_STREAM, UP_STREAM])
     def dest_port_type(self, setup_info, setup_mirror_session, tbinfo, request, erspan_ip_ver):        # noqa F811

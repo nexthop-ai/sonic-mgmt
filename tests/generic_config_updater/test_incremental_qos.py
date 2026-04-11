@@ -183,7 +183,31 @@ def calculate_field_value(duthost, tbinfo, field):
         return headroom_pool
     else:
         operational_headroom = headroom_pool + private_headroom
+<<<<<<< HEAD
         ingress_lossless_egress_lossy = MMU_SIZE - operational_headroom - user_reserved - system_reserved
+=======
+        """
+            Adjust the MMU size based on the platform.
+            Today it is handled for BRCM TH5 only. If needed for other asics, adjust the
+            MMU size accordingly.
+        """
+        hostvars = get_host_visible_vars(duthost.host.options['inventory'], duthost.hostname)
+        hwsku = duthost.facts['hwsku']
+        supported_platforms = ['broadcom_th5_hwskus', 'broadcom_th6_hwskus']
+        asic_name = None
+        for platform in supported_platforms:
+            supported_skus = hostvars.get(platform, [])
+            if hwsku in supported_skus:
+                asic_name = platform.split('_')[1]
+            else:
+                continue
+        if asic_name in ("th5", "th6"):
+            # TODO determine TH6 MMU size from broadcom
+            mmu_size = MMU_SIZE_BRCM_TH5
+        else:
+            mmu_size = MMU_SIZE
+        ingress_lossless_egress_lossy = mmu_size - operational_headroom - user_reserved - system_reserved
+>>>>>>> c1803797a (NOS-6790 - Replaced th6c with th6 so that it is applicable for th6p as well. SKU… (#1414))
         return ingress_lossless_egress_lossy
 
 
