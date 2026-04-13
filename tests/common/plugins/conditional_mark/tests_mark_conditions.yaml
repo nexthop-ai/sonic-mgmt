@@ -4229,7 +4229,7 @@ qos/test_qos_sai.py::TestQosSai:
         topo_name not in (
           constants['QOS_SAI_TOPO'] +
           ['t2-single-node-max-32p', 't2-single-node-max-64p', 't2_single_node_max', 't2_single_node_min'] +
-          ['t1-8', 't0-16']
+          ['t1-8', 't0-16', 't0-8']
         ) and asic_type not in ['mellanox','marvell-teralynx']
 
 qos/test_qos_sai.py::TestQosSai::testIPIPQosSaiDscpToPgMapping:
@@ -4291,7 +4291,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiDscpQueueMapping:
         topo_name not in (
           constants['QOS_SAI_TOPO'] +
           ['t2-single-node-max-32p', 't2-single-node-max-64p', 't2_single_node_max', 't2_single_node_min'] +
-          ['t1-8', 't0-16']
+          ['t1-8', 't0-16', 't0-8']
         ) and asic_type not in ['mellanox']
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiDscpToPgMapping:
@@ -4305,7 +4305,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiDscpToPgMapping:
         topo_name not in (
           constants['QOS_SAI_TOPO'] +
           ['t2-single-node-max-32p', 't2-single-node-max-64p', 't2_single_node_max', 't2_single_node_min'] +
-          ['t1-8', 't0-16']
+          ['t1-8', 't0-16', 't0-8']
         ) and asic_type not in ['mellanox']
 
 qos/test_qos_sai.py::TestQosSai::testQosSaiDwrrWeightChange:
@@ -4344,7 +4344,7 @@ qos/test_qos_sai.py::TestQosSai::testQosSaiHeadroomPoolSize:
         topo_name not in (
           constants['QOS_SAI_TOPO'] +
           ['t2-single-node-max-32p', 't2-single-node-max-64p', 't2_single_node_max', 't2_single_node_min'] +
-          ['t1-8', 't0-16']
+          ['t1-8', 't0-16', 't0-8']
         ) and asic_type not in ['mellanox','marvell-teralynx']
       - "asic_type in ['vs']"
 
