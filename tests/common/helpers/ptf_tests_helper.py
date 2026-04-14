@@ -104,6 +104,10 @@ def detect_portchannel_egress_member(duthost, tbinfo, ptf_adapter, portchannel_n
     """
     Detect which PortChannel member interface is actually used for egress traffic.
 
+    Pings the packet destination IP from the DUT before sending detection traffic
+    so that the ASIC neighbor entry is populated (stopServices ages out ARP entries
+    and the kernel-to-ASIC path via neighsyncd needs a fresh entry to forward).
+
     Args:
         duthost: DUT host object
         tbinfo: Testbed info
@@ -115,8 +119,19 @@ def detect_portchannel_egress_member(duthost, tbinfo, ptf_adapter, portchannel_n
         tuple: (member_interface, ptf_port) or (None, None)
     """
     import ptf.testutils as testutils
+    from scapy.all import Ether, IP
 
     logger.info("Detecting egress member for {}".format(portchannel_name))
+
+    # Populate ARP entry for the packet destination so the ASIC neighbor table
+    # is up to date before sending detection traffic.
+    try:
+        dst_ip = Ether(bytes(test_packet))[IP].dst
+        logger.info("Pinging {} from DUT to populate ASIC neighbor entry".format(dst_ip))
+        duthost.shell("ping -c 4 -W 1 -q {}".format(dst_ip), module_ignore_errors=True)
+        ptf_adapter.dataplane.flush()
+    except Exception as e:
+        logger.warning("Could not ping dst_ip for ARP population: {}".format(e))
 
     # Get PortChannel members
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
