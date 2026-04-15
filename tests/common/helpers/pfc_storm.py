@@ -174,10 +174,11 @@ class PFCStorm(object):
 
     def deploy_pfc_gen(self):
         """
-        Deploy the pfc generation file on the fanout
+        Deploy the pfc generation file and pfc_common.py to the fanout.
         """
         if self.asic_type == 'vs':
             return
+
         if self.peer_device.os in ('eos', 'sonic'):
             chip_name = None
             if self.peer_device.os == 'eos':
@@ -192,12 +193,25 @@ class PFCStorm(object):
             self._create_pfc_gen()
             if self.fanout_asic_type == 'mellanox':
                 src_pfc_gen_file = f"../ansible/roles/test/files/mlnx/docker-tests-pfcgen-asic/{self.pfc_gen_file}"
+
+            # Copy pfc_gen file to fanout
             self.peer_device.copy(
                 src=src_pfc_gen_file,
                 dest=self._PFC_GEN_DIR[self.peer_device.os]
                 )
+
+            # Copy pfc_common.py to fanout
+            src_pfc_common = "common/helpers/pfc_common.py"
+            self.peer_device.copy(
+                src=src_pfc_common,
+                dest=self._PFC_GEN_DIR[self.peer_device.os]
+                )
+
             if self.fanout_asic_type == 'mellanox':
-                cmd = f"docker cp {self._PFC_GEN_DIR[self.peer_device.os]}/{self.pfc_gen_file} syncd:/root/"
+                pfc_gen_dir = self._PFC_GEN_DIR[self.peer_device.os]
+                cmd = f"docker cp {pfc_gen_dir}/{self.pfc_gen_file} syncd:/root/"  # noqa: E231
+                self.peer_device.shell(cmd)
+                cmd = f"docker cp {pfc_gen_dir}/pfc_common.py syncd:/root/"  # noqa: E231
                 self.peer_device.shell(cmd)
 
     def update_queue_index(self, q_idx):
