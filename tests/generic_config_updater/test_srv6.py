@@ -29,7 +29,8 @@ def setup_and_cleanup(duthosts, rand_one_dut_hostname, enum_frontend_asic_index)
     else:
         sonic_db_cli = "sonic-db-cli"
     # add a locator configuration entry
-    duthost.command(sonic_db_cli + " CONFIG_DB HSET SRV6_MY_LOCATORS\\|loc1 prefix fcbb:bbbb:1:: func_len 0")
+    duthost.command(sonic_db_cli +
+                    " CONFIG_DB HSET SRV6_MY_LOCATORS\\|loc1 prefix fcbb:bbbb:1::/48 func_len 0 micro-segment true")
     # add a uN sid configuration entry
     duthost.command(sonic_db_cli +
                     " CONFIG_DB HSET SRV6_MY_SIDS\\|loc1\\|fcbb:bbbb:1::/48 action uN decap_dscp_mode pipe")
@@ -54,7 +55,8 @@ def test_srv6_config_update(duthosts, rand_one_dut_hostname, enum_frontend_asic_
             "op": "add",
             "path": create_path(["SRV6_MY_LOCATORS", "loc1"]),
             "value": {
-                "prefix": "fcbb:bbbb:1::"
+                "prefix": "fcbb:bbbb:1::/48",
+                "micro-segment": "true"
             }
         },
         {
