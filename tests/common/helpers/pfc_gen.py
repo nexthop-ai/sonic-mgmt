@@ -4,7 +4,6 @@
 Script to generate PFC packets.
 
 """
-import binascii
 import sys
 import optparse
 import logging
@@ -14,11 +13,15 @@ import multiprocessing
 
 from socket import socket, AF_PACKET, SOCK_RAW
 
+# Import common PFC utilities (will be bundled at deployment time)
+from pfc_common import (
+    build_pfc_packet,
+    distribute_interfaces,
+    validate_options
+)
+
 logger = logging.getLogger('MyLogger')
 logger.setLevel(logging.DEBUG)
-
-# Maximum number of processes to be created
-MAX_PROCESS_NUM = 8
 
 
 class PacketSender():
@@ -88,20 +91,11 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    if options.time > 65535 or options.time < 0:
-        print("Quanta is not valid. Need to be in range 0-65535.")
-        parser.print_help()
-        sys.exit(1)
-
-    if options.global_pf:
-        # Send global pause frames
-        # -p option should not be set
-        if options.priority != -1:
-            print("'-p' option is not valid when sending global pause frames ('--global' / '-g')")
-            parser.print_help()
-            sys.exit(1)
-    elif options.priority > 255 or options.priority < 0:
-        print("Enable class bitmap is not valid. Need to be in range 0-255.")
+    # Validate options using common validation function
+    try:
+        validate_options(options)
+    except ValueError as e:
+        print(str(e))
         parser.print_help()
         sys.exit(1)
 
@@ -112,67 +106,8 @@ def main():
     handler.ident = 'pfc_gen: '
     logger.addHandler(handler)
 
-    """
-    Set PFC defined fields and generate the packet
-
-    The Ethernet Frame format for PFC packets is the following:
-
-    Destination MAC |   01:80:C2:00:00:01   |
-                    -------------------------
-    Source MAC      |      Station MAC      |
-                    -------------------------
-    Ethertype       |         0x8808        |
-                    -------------------------
-    OpCode          |         0x0101        |
-                    -------------------------
-    Class Enable V  | 0x00 E7...E0          |
-                    -------------------------
-    Time Class 0    |       0x0000          |
-                    -------------------------
-    Time Class 1    |       0x0000          |
-                    -------------------------
-    ...
-                    -------------------------
-    Time Class 7    |       0x0000          |
-                    -------------------------
-    """
-    """
-    Set pause frame defined fields and generate the packet
-
-    The Ethernet Frame format for pause frames is the following:
-
-    Destination MAC |   01:80:C2:00:00:01   |
-                    -------------------------
-    Source MAC      |      Station MAC      |
-                    -------------------------
-    Ethertype       |        0x8808         |
-                    -------------------------
-    OpCode          |        0x0001         |
-                    -------------------------
-    pause time      |        0x0000         |
-                    -------------------------
-    """
-    src_addr = b"\x00\x01\x02\x03\x04\x05"
-    dst_addr = b"\x01\x80\xc2\x00\x00\x01"
-    if options.global_pf:
-        opcode = b"\x00\x01"
-    else:
-        opcode = b"\x01\x01"
-    ethertype = b"\x88\x08"
-
-    packet = dst_addr + src_addr + ethertype + opcode
-    if options.global_pf:
-        packet = packet + binascii.unhexlify(format(options.time, '04x'))
-    else:
-        class_enable = options.priority
-        class_enable_field = binascii.unhexlify(format(class_enable, '04x'))
-
-        packet = packet + class_enable_field
-        for p in range(0, 8):
-            if (class_enable & (1 << p)):
-                packet = packet + binascii.unhexlify(format(options.time, '04x'))
-            else:
-                packet = packet + b"\x00\x00"
+    # Build PFC packet using common function
+    packet = build_pfc_packet(options.priority, options.time, options.global_pf)
 
     pre_str = 'GLOBAL_PF' if options.global_pf else 'PFC'
     logger.debug(pre_str + '_STORM_DEBUG')
@@ -180,15 +115,17 @@ def main():
     # Start sending PFC pause frames
     if options.multiprocess:
         senders = []
-        interface_slices = [[] for i in range(MAX_PROCESS_NUM)]
-        for i in range(0, len(interfaces)):
-            interface_slices[i % MAX_PROCESS_NUM].append(interfaces[i])
+        # Distribute interfaces across optimal number of processes
+        interface_slices, num_processes = distribute_interfaces(interfaces)
+        num_interfaces = len(interfaces)
+
+        logger.debug("Multiprocess mode: {} interfaces across {} processes (~{} interfaces/process)".format(
+            num_interfaces, num_processes, (num_interfaces + num_processes - 1) // num_processes))
 
         for interface_slice in interface_slices:
-            if interface_slice:
-                s = PacketSender(interface_slice, packet, options.num, options.send_pfc_frame_interval)
-                s.start()
-                senders.append(s)
+            s = PacketSender(interface_slice, packet, options.num, options.send_pfc_frame_interval)
+            s.start()
+            senders.append(s)
 
         logger.debug(pre_str + '_STORM_START')
         # Wait PFC packets to be sent
