@@ -1,5 +1,6 @@
 import datetime
 import ipaddress
+import json
 import sys
 import random
 import pytest
@@ -392,20 +393,17 @@ def start_wd_on_ports(duthost, port, restore_time, detect_time, action="drop"):
 
 
 def verify_pfcwd_status(duthost, port, restore_time, detect_time, action="drop"):
-    """Verify PFC watchdog configuration in Redis"""
-    if duthost.shell(f'redis-cli -n 4 EXISTS "PFC_WD|{port}"')['stdout'].strip() == '0':
+    """Verify PFC watchdog configuration via CLI"""
+    pfcwd_config = duthost.show_and_parse('show pfcwd config')
+    port_config = next((e for e in pfcwd_config if e['port'] == port), None)
+    if port_config is None:
         logger.error(f"PFC_WD entry not found for port {port}")
         return False
 
-    values = duthost.shell(
-        f'redis-cli -n 4 HMGET "PFC_WD|{port}" action restoration_time detection_time'
-    )['stdout'].strip().split('\n')
-    actual_action, actual_restore_time, actual_detect_time = (values + [None] * 3)[:3]
-
     checks = [
-        (actual_action, action, "Action"),
-        (actual_restore_time, str(restore_time), "Restore time"),
-        (actual_detect_time, str(detect_time), "Detect time")
+        (port_config.get('action'), action, "Action"),
+        (port_config.get('restoration time'), str(restore_time), "Restore time"),
+        (port_config.get('detection time'), str(detect_time), "Detect time"),
     ]
 
     for actual, expected, name in checks:
@@ -437,26 +435,25 @@ def is_pfcwd_hw_recovery_enabled(duthost):
     controls egress/TX traffic by ignoring PFC XOFF. It does not have the capability
     to control ingress/RX traffic.
 
-    This function queries the STATE_DB to check the RECOVERY_MECHANISM attribute
-    in the PFC_WD_STATE_TABLE|PFC_WD entry.
+    This function uses 'show pfcwd status --json' CLI output to check the recovery mode.
 
     Args:
         duthost(AnsibleHost): DUT instance
 
     Returns:
-        bool: True if RECOVERY_MECHANISM is "hardware", False otherwise (software recovery)
+        bool: True if mode is "hardware", False otherwise (software recovery)
     """
     try:
-        cmd = 'sonic-db-cli STATE_DB HGET "PFC_WD_STATE_TABLE|PFC_WD" "RECOVERY_MECHANISM"'
-        result = duthost.shell(cmd, module_ignore_errors=True)
+        result = duthost.shell('show pfcwd status --json', module_ignore_errors=True)
+        output = result.get('stdout', '').strip()
+        if not output:
+            logger.info("PFC watchdog status: no output (software mode)")
+            return False
 
-        # Get output and clean it up
-        output = result.get('stdout', '').strip().strip('"').strip("'").lower()
-
-        # Return True only if output is "hardware"
-        is_hardware = (output == "hardware")
+        data = json.loads(output)
+        is_hardware = data.get('mode', '').lower() == 'hardware'
         logger.info("PFC watchdog recovery mechanism: {} (hardware={})".format(
-            output or "not set", is_hardware))
+            data.get('mode', 'not set'), is_hardware))
         return is_hardware
 
     except Exception as e:
@@ -466,11 +463,11 @@ def is_pfcwd_hw_recovery_enabled(duthost):
 
 def get_pfcwd_hw_timer_limits(duthost):
     """
-    Get hardware PFC watchdog timer limits from STATE_DB.
+    Get hardware PFC watchdog timer limits via 'show pfcwd status --json'.
 
     When hardware-based PFC watchdog is enabled, the platform publishes the supported
-    detection and restoration time ranges to STATE_DB. This function retrieves those
-    limits, which can be used to validate or adjust test parameters.
+    detection and restoration time ranges. This function parses those ranges from the
+    CLI JSON output.
 
     Args:
         duthost (AnsibleHost): DUT instance
@@ -486,39 +483,35 @@ def get_pfcwd_hw_timer_limits(duthost):
         None: If hardware mode is not enabled or limits are not available
     """
     try:
-        cmd = 'sonic-db-cli STATE_DB HGETALL "PFC_WD_STATE_TABLE|PFC_WD"'
-        result = duthost.shell(cmd, module_ignore_errors=True)
-
-        if result.get('rc', 1) != 0:
-            logger.warning("Failed to read PFC_WD_STATE_TABLE from STATE_DB")
+        result = duthost.shell('show pfcwd status --json', module_ignore_errors=True)
+        output = result.get('stdout', '').strip()
+        if not output:
             return None
 
-        # Parse HGETALL output (alternating key-value pairs)
-        lines = result['stdout'].strip().split('\n')
-        state_data = {}
-        for i in range(0, len(lines), 2):
-            if i + 1 < len(lines):
-                key = lines[i].strip().strip('"')
-                value = lines[i + 1].strip().strip('"')
-                state_data[key] = value
-
-        # Only return limits if this is hardware mode
-        if state_data.get('RECOVERY_MECHANISM', '').upper() != 'HARDWARE':
+        data = json.loads(output)
+        if data.get('mode', '').lower() != 'hardware':
             logger.info("Hardware recovery not enabled, no timer limits available")
             return None
 
-        # Extract and validate timer limits
+        detection_range = data.get('detection_range') or ''
+        restoration_range = data.get('restoration_range') or ''
+        if not detection_range or not restoration_range:
+            logger.warning("Timer ranges not available in 'show pfcwd status' output")
+            return None
+
+        det_min, det_max = detection_range.split('-')
+        res_min, res_max = restoration_range.split('-')
         limits = {
-            'detection_min': int(state_data.get('DETECTION_TIME_MIN', 0)),
-            'detection_max': int(state_data.get('DETECTION_TIME_MAX', 0)),
-            'restoration_min': int(state_data.get('RESTORATION_TIME_MIN', 0)),
-            'restoration_max': int(state_data.get('RESTORATION_TIME_MAX', 0)),
+            'detection_min': int(det_min),
+            'detection_max': int(det_max),
+            'restoration_min': int(res_min),
+            'restoration_max': int(res_max),
         }
 
         logger.info("Hardware PFCWD timer limits: {}".format(limits))
         return limits
 
-    except (ValueError, KeyError) as e:
+    except (ValueError, IndexError) as e:
         logger.error("Failed to parse hardware timer limits: {}".format(str(e)))
         return None
     except Exception as e:

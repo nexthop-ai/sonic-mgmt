@@ -967,15 +967,13 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             pfc_wd_restore_time_large = request.config.getoption("--restore-time")
             # wait time before we check the logs for the 'restore' signature. 'pfc_wd_restore_time_large' is in ms.
             self.timers['pfc_wd_wait_for_restore_time'] = int(pfc_wd_restore_time_large / 1000 * 2)
-            # actions = ['dontcare', 'drop', 'forward']
-            # Temporarily disable forward action until NOS-463 is fixed
-            actions = ['dontcare', 'drop']
-            # A temporary workaround for TH5 platform as forward action is not working
+            actions = ['dontcare', 'drop', 'forward']
+            # Cisco and TH5 platforms do not support forward action in software recovery mode
             if duthost.sonichost._facts['asic_type'] == "cisco-8000" or "7060X6" in duthost.facts['hwsku'].upper():
                 actions = ['dontcare', 'drop']
-            # Hardware recovery doesn't support dontcare action
+            # Hardware recovery only supports forward action and does not support fake storm
             if self.is_hw_recovery:
-                actions.remove('dontcare')
+                actions = ['forward']
                 self.fake_storm = False
 
             for action in actions:
@@ -1064,7 +1062,16 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         if self.is_hw_recovery:
             self.fake_storm = False
 
-        self.set_traffic_action(duthost, "drop")
+        # Hardware recovery only supports forward action; Cisco and TH5 do not support
+        # forward in software mode, so fall back to drop for those platforms.
+        if self.is_hw_recovery:
+            multi_port_action = "forward"
+        elif duthost.sonichost._facts['asic_type'] == "cisco-8000" or \
+                "7060X6" in duthost.facts['hwsku'].upper():
+            multi_port_action = "drop"
+        else:
+            multi_port_action = "forward"
+        self.set_traffic_action(duthost, multi_port_action)
         self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
 
         # skip the pytest when the device does not have neighbors
@@ -1088,13 +1095,13 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                                                           self.is_dualtor,
                                                           self.is_hw_recovery,
                                                           ip_version)
-                    self.run_test(self.dut, port, "drop", restore=False)
+                    self.run_test(self.dut, port, multi_port_action, restore=False)
                 for idx, port in enumerate(selected_ports):
                     logger.info("")
                     logger.info("--- Testing on {} ---".format(port))
                     self.setup_test_params(port, setup_info['vlan'], init=not idx, detect=False, toggle=idx and count,
                                            ip_version=ip_version)
-                    self.run_test(self.dut, port, "drop", detect=False)
+                    self.run_test(self.dut, port, multi_port_action, detect=False)
 
             finally:
                 logger.info("--- Stop PFC WD ---")
@@ -1171,7 +1178,16 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                                ip_version=ip_version)
         self.rx_action = None
         self.tx_action = None
-        self.set_traffic_action(duthost, "drop")
+        # Hardware recovery only supports forward action; Cisco and TH5 do not support
+        # forward in software mode, so fall back to drop for those platforms.
+        if self.is_hw_recovery:
+            mmu_test_action = "forward"
+        elif duthost.sonichost._facts['asic_type'] == "cisco-8000" or \
+                "7060X6" in duthost.facts['hwsku'].upper():
+            mmu_test_action = "drop"
+        else:
+            mmu_test_action = "forward"
+        self.set_traffic_action(duthost, mmu_test_action)
         self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
 
         # skip the pytest when the device does not have neighbors
@@ -1204,7 +1220,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
                     self.is_dualtor,
                     self.is_hw_recovery,
                     ip_version)
-                self.run_test(self.dut, port, "drop", mmu_action=mmu_action)
+                self.run_test(self.dut, port, mmu_test_action, mmu_action=mmu_action)
                 self.dut.command("pfcwd stop")
 
         finally:
@@ -1273,10 +1289,10 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         logger.info("PFC watchdog recovery mode: {}".format(
             "Hardware-based (TX/egress only)" if self.is_hw_recovery else "Software-based (TX and RX)"))
 
-        # Hardware recovery doesn't support fake storm or dontcare action
+        # Hardware recovery only supports forward action and does not support fake storm
         if self.is_hw_recovery:
             self.fake_storm = False
-            action = "drop"
+            action = "forward"
         else:
             action = "dontcare"
 
