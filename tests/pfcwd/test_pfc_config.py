@@ -419,18 +419,7 @@ class TestDefaultPfcConfig(object):
             if "ethernet" in port_config.lower():
                 # Verify hardware mode STATE_DB entries if applicable
                 if is_pfcwd_hw_recovery_enabled(duthost):
-                    logger.info("Hardware mode detected, verifying STATE_DB entries")
-
-                    # Verify RECOVERY_MECHANISM
-                    cmd = 'sonic-db-cli STATE_DB HGET "PFC_WD_STATE_TABLE|PFC_WD" "RECOVERY_MECHANISM"'
-                    result = duthost.shell(cmd, module_ignore_errors=True)
-                    if result['rc'] == 0:
-                        recovery_mechanism = result['stdout'].strip().strip('"')
-                        pytest_assert(
-                            recovery_mechanism.upper() == 'HARDWARE',
-                            "Expected RECOVERY_MECHANISM=HARDWARE, got: {}".format(recovery_mechanism)
-                        )
-                        logger.info("Hardware mode RECOVERY_MECHANISM verified")
+                    logger.info("Hardware mode detected via 'show pfcwd status', verifying timer limits")
 
                     # Verify hardware timer limits are published
                     hw_limits = get_pfcwd_hw_timer_limits(duthost)

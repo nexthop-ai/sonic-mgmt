@@ -224,16 +224,21 @@ class PfcCmd(object):
 
 class PfcPktCntrs(object):
     """ PFCwd counter retrieval and verifications  """
-    def __init__(self, dut, rx_action, tx_action):
+    def __init__(self, dut, rx_action, tx_action, is_hw_recovery=False):
         """
         Args:
             dut(AnsibleHost) : dut instance
             action(string): PFCwd action for traffic test
+            is_hw_recovery(bool): True if hardware-based PFC recovery is enabled
         """
         self.dut = dut
         self.asic_type = dut.facts['asic_type']
         self.rx_action = rx_action
         self.tx_action = tx_action
+        # In hardware recovery mode, PFC_WD_QUEUE_STATS_TX_DROPPED_PACKETS is not
+        # populated on XGS platforms for drop action. Use 'show interfaces counters'
+        # TX_DRP column as an alternative.
+        self.use_intf_tx_drp = is_hw_recovery and tx_action != "forward"
         if self.tx_action != "forward":
             self.pkt_cntrs_tx = ['PFC_WD_QUEUE_STATS_TX_DROPPED_PACKETS', 'PFC_WD_QUEUE_STATS_TX_DROPPED_PACKETS_LAST']
             self.err_msg_tx = [("Tx drop cnt check failed: Tx drop before: {}  Tx drop after: {} "
@@ -260,13 +265,33 @@ class PfcPktCntrs(object):
                                ]
         self.cntr_val = dict()
 
-    def get_pkt_cnts(self, queue_oid, begin=True):
+    def _get_intf_tx_drp(self, port):
+        """
+        Get the TX drop counter for a port from 'show interfaces counters'.
+        Used in hardware recovery mode where queue-level TX drop counters may
+        not be populated on XGS platforms.
+
+        Args:
+            port(string): DUT port name
+
+        Returns:
+            int: TX drop count
+        """
+        counters = self.dut.show_and_parse('show interfaces counters -i {}'.format(port))
+        for entry in counters:
+            if entry.get('iface') == port:
+                return int(entry.get('tx_drp', '0').replace(',', ''))
+        logger.warning("TX_DRP counter not found for port {}".format(port))
+        return 0
+
+    def get_pkt_cnts(self, queue_oid, begin=True, port=None):
         """
         Retrieves the PFCwd counter values before and after the test
 
         Args:
             queue_oid(string) : queue oid
             begin(bool) : if the counter collection is before or after the test
+            port(string) : DUT port name, required when use_intf_tx_drp is True
 
         """
         if self.asic_type == 'vs':
@@ -274,11 +299,16 @@ class PfcPktCntrs(object):
             return
         test_state = ['end', 'begin']
         state = test_state[begin]
-        self.cntr_val["tx_{}".format(state)] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[0]))
+        if self.use_intf_tx_drp and port:
+            self.cntr_val["tx_{}".format(state)] = self._get_intf_tx_drp(port)
+        else:
+            self.cntr_val["tx_{}".format(state)] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[0]))
         self.cntr_val["rx_{}".format(state)] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[0]))
 
         if not begin:
-            self.cntr_val["tx_last"] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[1]))
+            # No per-storm 'last' counter available from interface stats; set to 0 to skip that check
+            self.cntr_val["tx_last"] = 0 if self.use_intf_tx_drp \
+                else int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[1]))
             self.cntr_val["rx_last"] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[1]))
 
     def verify_pkt_cnts(self, port_type, pkt_cnt):
@@ -298,10 +328,12 @@ class PfcPktCntrs(object):
             err_msg = self.err_msg_tx[0].format(self.cntr_val["tx_begin"], self.cntr_val["tx_end"], pkt_cnt, tx_diff)
             pytest_assert(err_msg)
 
-        if (port_type in ['vlan', 'interface'] and self.cntr_val["tx_last"] != pkt_cnt) \
-                or self.cntr_val["tx_last"] <= 0:
-            err_msg = self.err_msg_tx[1].format(pkt_cnt, self.cntr_val["tx_last"])
-            pytest_assert(err_msg)
+        # 'last' counter is not available when using interface TX_DRP stats (hw recovery + drop)
+        if not self.use_intf_tx_drp:
+            if (port_type in ['vlan', 'interface'] and self.cntr_val["tx_last"] != pkt_cnt) \
+                    or self.cntr_val["tx_last"] <= 0:
+                err_msg = self.err_msg_tx[1].format(pkt_cnt, self.cntr_val["tx_last"])
+                pytest_assert(err_msg)
 
         logger.info("--- Checking Rx {} cntrs ---".format(self.rx_action))
         rx_diff = self.cntr_val["rx_end"] - self.cntr_val["rx_begin"]
@@ -788,7 +820,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         if dut.facts['asic_type'] != 'vs':
             loganalyzer.analyze(marker)
 
-        self.stats.get_pkt_cnts(self.queue_oid, begin=True)
+        self.stats.get_pkt_cnts(self.queue_oid, begin=True, port=self.pfc_wd['test_port'])
         # test pfcwd functionality on a storm
         self.traffic_inst.verify_wd_func(action, self.rx_action, self.tx_action)
         return loganalyzer
@@ -819,7 +851,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         logger.info("Verify if PFC storm is restored on port {}".format(port))
         if dut.facts['asic_type'] != 'vs':
             loganalyzer.analyze(marker)
-        self.stats.get_pkt_cnts(self.queue_oid, begin=False)
+        self.stats.get_pkt_cnts(self.queue_oid, begin=False, port=self.pfc_wd['test_port'])
 
     def run_test(self, dut, port, action, mmu_action=None, detect=True, restore=True):
         """
@@ -971,15 +1003,16 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             # Cisco and TH5 platforms do not support forward action in software recovery mode
             if duthost.sonichost._facts['asic_type'] == "cisco-8000" or "7060X6" in duthost.facts['hwsku'].upper():
                 actions = ['dontcare', 'drop']
-            # Hardware recovery only supports forward action and does not support fake storm
+            # Hardware recovery does not support fake storm or dontcare action
             if self.is_hw_recovery:
-                actions = ['forward']
+                actions = ['drop', 'forward']
                 self.fake_storm = False
 
             for action in actions:
                 try:
                     self.set_traffic_action(duthost, action)
-                    self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+                    self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action,
+                                             is_hw_recovery=self.is_hw_recovery)
                     logger.info("{} on port {}: Tx traffic action {}, Rx traffic action {} ".
                                 format(WD_ACTION_MSG_PFX[action], port, self.tx_action, self.rx_action))
                     self.run_test(self.dut, port, action)
@@ -1072,7 +1105,8 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         else:
             multi_port_action = "forward"
         self.set_traffic_action(duthost, multi_port_action)
-        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action,
+                                 is_hw_recovery=self.is_hw_recovery)
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
@@ -1188,7 +1222,8 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         else:
             mmu_test_action = "forward"
         self.set_traffic_action(duthost, mmu_test_action)
-        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action,
+                                 is_hw_recovery=self.is_hw_recovery)
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
@@ -1322,7 +1357,8 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             try:
                 self.set_traffic_action(duthost, action)
                 # Verify that PFC storm is detected and restored
-                self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+                self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action,
+                                         is_hw_recovery=self.is_hw_recovery)
                 logger.info("{} on port {}. Tx traffic action {}, Rx traffic action {}"
                             .format(WD_ACTION_MSG_PFX[action], port, self.tx_action, self.rx_action))
                 self.run_test(self.dut, port, action)
