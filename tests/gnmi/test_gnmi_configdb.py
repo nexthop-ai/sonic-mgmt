@@ -5,13 +5,23 @@ import pytest
 import re
 import time
 
+<<<<<<< HEAD:tests/gnmi/test_gnmi_configdb.py
 from .helper import gnmi_set, gnmi_get
 from .helper import gnmi_subscribe_polling
 from .helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
+=======
+from tests.gnmi.helper import gnmi_set, gnmi_get, apply_cert_config
+from tests.gnmi.helper import gnmi_subscribe_polling
+from tests.gnmi.helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
+>>>>>>> 300a00791 (NOS-5746: Implement ConfigReload on full config SET update - add test case (#1272)):tests/gnmi/vrf_aware_tests/test_gnmi_configdb.py
 from tests.common.helpers.gnmi_utils import add_gnmi_client_common_name
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.config_reload import config_system_checks_passed
 from tests.common.utilities import wait_until
+from tests.common.platform.processes_utils import wait_critical_processes
+from tests.common.platform.interface_utils import check_interface_status_of_up_ports
 from tests.common.plugins.allure_wrapper import allure_step_wrapper as allure
+from tempfile import NamedTemporaryFile
 
 logger = logging.getLogger(__name__)
 allure.logger = logger
@@ -190,6 +200,10 @@ def test_gnmi_configdb_streaming_onchange_01(duthosts, rand_one_dut_hostname, pt
     duthost = duthosts[rand_one_dut_hostname]
     run_flag = multiprocessing.Value('I', True)
 
+    def sonic_cli_cmd(op):
+        return f"sonic-db-cli CONFIG_DB {op} \"DEVICE_METADATA|localhost\" bgp_asn "
+    old_bgp_asn = duthost.shell(sonic_cli_cmd("hget"))['stdout']
+
     # Update DEVICE_METADATA table to trigger onchange event
     def worker(duthost, run_flag):
         for i in range(100):
@@ -211,6 +225,10 @@ def test_gnmi_configdb_streaming_onchange_01(duthosts, rand_one_dut_hostname, pt
     client_task.join()
     assert msg.count("bgp_asn") >= exp_cnt, test_data["name"] + ": " + msg
 
+    # cleanup
+    ret = duthost.shell(sonic_cli_cmd("hset") + old_bgp_asn)
+    assert (ret['rc'] == 0), "failed to restore original CONFIG_DB state"
+
 
 def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, ptfhost):
     '''
@@ -219,6 +237,10 @@ def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, pt
     '''
     duthost = duthosts[rand_one_dut_hostname]
     run_flag = multiprocessing.Value('I', True)
+
+    def sonic_cli_cmd(op):
+        return f"sonic-db-cli CONFIG_DB {op} \"DEVICE_METADATA|localhost\" bgp_asn "
+    old_bgp_asn = duthost.shell(sonic_cli_cmd("hget"))['stdout']
 
     # Update DEVICE_METADATA table to trigger onchange event
     def worker(duthost, run_flag):
@@ -245,6 +267,76 @@ def test_gnmi_configdb_streaming_onchange_02(duthosts, rand_one_dut_hostname, pt
         assert "localhost" in result, "Invalid result: " + match
         # Verify table field
         assert "bgp_asn" in result["localhost"], "Invalid result: " + match
+    # cleanup
+    ret = duthost.shell(sonic_cli_cmd("hset") + old_bgp_asn)
+    assert (ret['rc'] == 0), "failed to restore original CONFIG_DB state"
+
+
+def test_gnmi_configdb_full_01(duthosts, rand_one_dut_hostname, ptfhost, vrf_config):
+    '''
+    Verify GNMI native write, full config for configDB
+    Toggle interface admin status
+    '''
+    duthost = duthosts[rand_one_dut_hostname]
+    if duthost.is_supervisor_node():
+        pytest.skip("gnmi test relies on port data not present on supervisor card '%s'" % rand_one_dut_hostname)
+    interface = get_first_interface(duthost, excluded_interfaces=[vrf_config['dut_intf']])
+    assert interface is not None, "Invalid interface"
+
+    dic = get_sonic_cfggen_output(duthost)
+    # Get ASIC namespace and check interface
+    if duthost.sonichost.is_multi_asic:
+        for asic in duthost.frontend_asics:
+            dic = get_sonic_cfggen_output(duthost, asic.namespace)
+            if interface in dic["PORT"]:
+                break
+
+    assert "PORT" in dic, "Failed to read running config"
+    assert interface in dic["PORT"], "Failed to get interface %s" % interface
+    assert "admin_status" in dic["PORT"][interface], "Failed to get interface %s" % interface
+
+    # Update full config with GNMI
+    dic["PORT"][interface]["admin_status"] = "down"
+    with NamedTemporaryFile(mode='w', suffix='.txt') as file:
+        json.dump(dic, file)
+        file.flush()
+        test_filename = "test_gnmi_configdb_full_01.txt"
+        ptfhost.copy(src=file.name, dest=f'/root/{test_filename}')
+        delete_list = ["/sonic-db:CONFIG_DB/localhost/"]
+        update_list = ["/sonic-db:CONFIG_DB/localhost/:@/root/%s" % test_filename]
+
+        status = get_interface_status(duthost, "admin_status", interface)
+        assert status == "up", "Port status is changed"
+
+        gnmi_set(duthost, ptfhost, delete_list, update_list, [])
+
+    pytest_assert(
+        wait_until(300, 10, 0, duthost.critical_services_fully_started),
+        "All critical services should be fully started!")
+
+    wait_critical_processes(duthost, timeout=600)
+    # config reload causes a TLS cert mismatch, so we re-apply it afterwards
+    apply_cert_config(duthost, vrf_config.get("vrf"))
+    pytest_assert(
+        wait_until(300, 5, 0, check_interface_status_of_up_ports, duthost),
+        "Not all ports that are admin up on are operationally up")
+
+    # this test is ran multiple times in a row
+    # after swss.service restarts, we must wait at least >120s
+    # before we can issue another `config reload` operation
+    # this will also check whether other critical services have restarted
+    pytest_assert(
+        wait_until(300, 5, 0, config_system_checks_passed, duthost),
+        "system checks did not pass within the allotted time")
+
+    # Check interface status
+    status = get_interface_status(duthost, "admin_status", interface)
+    assert status == "down", "Full config failed to toggle interface %s status" % interface
+
+    # Startup interface
+    duthost.shell("config interface startup %s" % interface)
+    # Wait for BGP neighbor to be up
+    wait_bgp_neighbor(duthost)
 
 
 def test_gnmi_configdb_full_replace_01(duthosts, rand_one_dut_hostname, ptfhost):

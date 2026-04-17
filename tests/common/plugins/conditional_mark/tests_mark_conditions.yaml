@@ -2965,6 +2965,7 @@ golden_config_infra/test_config_reload_with_rendered_golden_config.py::test_rend
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/23198 and topo_name == 't0-f2-d40u8'"
 
+<<<<<<< HEAD
 #######################################
 #####           ha              #####
 #######################################
@@ -3040,6 +3041,8 @@ ha/test_ha_steady_state_pl.py:
        - "hwsku not in ['Cisco-8102-28FH-DPU-O-T1', 'Mellanox-SN4280-O8C40', 'Mellanox-SN4280-O28', 'Cisco-8102-28FH-DPU-O']"
        - "topo_name not in 't1-smartswitch-ha'"
 
+=======
+>>>>>>> 300a00791 (NOS-5746: Implement ConfigReload on full config SET update - add test case (#1272))
 #######################################
 #####           hash              #####
 #######################################

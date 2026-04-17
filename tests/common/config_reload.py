@@ -27,13 +27,14 @@ DEFAULT_GOLDEN_CONFIG_PATH = '/etc/sonic/golden_config_db.json'
 
 
 def config_system_checks_passed(duthost, delayed_services=[]):
-    logging.info("Checking if system is running")
-    out = duthost.shell("systemctl is-system-running", module_ignore_errors=True)
-    if "running" not in out['stdout_lines']:
-        logging.info("Checking failure reason")
-        fail_reason = duthost.shell("systemctl list-units --state=failed", module_ignore_errors=True)
-        logging.info(fail_reason['stdout_lines'])
-        return False
+    if duthost.facts['asic_type'] != "vs":
+        logging.info("Checking if system is running")
+        out = duthost.shell("systemctl is-system-running", module_ignore_errors=True)
+        if "running" not in out['stdout_lines']:
+            logging.info("Checking failure reason")
+            fail_reason = duthost.shell("systemctl list-units --state=failed", module_ignore_errors=True)
+            logging.info(fail_reason['stdout_lines'])
+            return False
 
     logging.info("Checking if Orchagent up for at least 2 min")
     if duthost.is_multi_asic:
