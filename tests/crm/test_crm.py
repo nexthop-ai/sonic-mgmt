@@ -304,10 +304,23 @@ def verify_thresholds(duthost, asichost, **kwargs):
         kwargs['crm_used'], kwargs['crm_avail'] = get_crm_stats(kwargs['crm_cmd'], duthost)
         cmd = template.render(**kwargs)
 
+<<<<<<< HEAD
         with loganalyzer:
             asichost.command(cmd)
             # Make sure CRM counters updated
             wait_until(CRM_UPDATE_TIME, CRM_POLLING_INTERVAL, 0, lambda: True)
+=======
+            kwargs['crm_used'], kwargs['crm_avail'] = get_crm_stats(kwargs['crm_cmd'], duthost)
+            cmd = template.render(**kwargs)
+
+            with loganalyzer:
+                asichost.command(cmd)
+                # Give the CRM daemon time to run its polling cycle and emit the threshold syslog.
+                time.sleep(CRM_UPDATE_TIME)
+    finally:
+        # Always restore rsyslog config
+        restore_swss_rsyslog_rate_limit(duthost, edited_containers)
+>>>>>>> 0360c02e1 (NOS-3719: Fixed test_crm to wait for CRM stats/threshold correctly (#1523))
 
 
 def get_crm_stats(cmd, duthost):
@@ -728,7 +741,9 @@ def test_crm_route(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
 
     # Make sure CRM counters updated - use polling to wait for route counter to update
     logger.info(f"Waiting for route counters to update after adding {total_routes} routes...")
-    expected_min_used = crm_stats_route_used + total_routes - CRM_COUNTER_TOLERANCE
+    # Ensure we always wait for at least 1 increment; CRM_COUNTER_TOLERANCE must not push
+    # the threshold below the baseline (which would make wait_until pass immediately).
+    expected_min_used = crm_stats_route_used + max(total_routes - CRM_COUNTER_TOLERANCE, 1)
 
     def check_route_added():
         return get_route_used() >= expected_min_used
@@ -771,7 +786,10 @@ def test_crm_route(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
 
     # Make sure CRM counters updated - use polling to wait for route counter to update
     logger.info(f"Waiting for route counters to update after deleting {total_routes} routes...")
-    expected_max_used = crm_stats_route_used + CRM_COUNTER_TOLERANCE
+    # Base the threshold on the confirmed post-add value, not the original baseline, to
+    # ensure we actually wait for the deletion to propagate rather than passing immediately.
+    # Symmetric to the add case: always require at least 1 decrement from post-add level.
+    expected_max_used = new_crm_stats_route_used - max(total_routes - CRM_COUNTER_TOLERANCE, 1)
 
     def check_route_deleted():
         return get_route_used() <= expected_max_used
