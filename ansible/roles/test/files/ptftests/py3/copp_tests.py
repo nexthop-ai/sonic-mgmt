@@ -276,6 +276,7 @@ class PolicyTest(ControlPlaneBaseTest):
                 "Actual PPS: {} Expected PPS range: {} - {}".format(rx_pps, self.PPS_LIMIT_MIN, self.PPS_LIMIT_MAX)
         else:
             self.log("Checking constraints (NoPolicyApplied):")
+<<<<<<< HEAD
             self.log(
                 "rx_pps (%d) <= PPS_LIMIT_MIN (%d): %s" %
                 (int(rx_pps),
@@ -284,6 +285,15 @@ class PolicyTest(ControlPlaneBaseTest):
             )
             assert rx_pps <= self.PPS_LIMIT_MIN, "Copp policer constraint check failed, Actual PPS: {} " \
                 "Expected PPS range: 0 - {}".format(rx_pps, self.PPS_LIMIT_MIN)
+=======
+            # for no traps case, check on the recevied packets instead of port level counters
+            packets_rcvd = recv_count != 0
+
+            if packets_rcvd:
+                self._dump_received_packets(getattr(self, 'received_packets', []))
+            assert not packets_rcvd, "Copp policer constraint check failed, Actual Received Packets: {} " \
+                "Expected Received Packets: {}".format(recv_count, 0)
+>>>>>>> 398a6c4da (NOS-6378: check for received packet count instead of pps when traps are not installed (#1600))
 
 
 # SONIC config contains policer CIR=600 for ARP
