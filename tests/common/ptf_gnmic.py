@@ -6,7 +6,8 @@ via ptfhost.shell(), hiding the CLI complexity behind clean, Pythonic interfaces
 """
 import json
 import logging
-from typing import Dict
+import shlex
+from typing import Dict, Iterable, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,13 @@ _CONNECTION_KEYWORDS = (
     "handshake",
 )
 
+# Timeout-related keywords surfaced by gnmic/grpc when --timeout fires.
+_TIMEOUT_KEYWORDS = (
+    "context deadline exceeded",
+    "operation timeout",
+    "i/o timeout",
+)
+
 
 class PtfGnmicError(Exception):
     """Base exception for PtfGnmic operations."""
@@ -28,6 +36,11 @@ class PtfGnmicError(Exception):
 
 class GnmicConnectionError(PtfGnmicError):
     """Connection-related gnmic errors (target unreachable, TLS handshake failures)."""
+    pass
+
+
+class GnmicTimeoutError(PtfGnmicError):
+    """gnmic operation timeout errors (--timeout exceeded)."""
     pass
 
 
@@ -47,7 +60,7 @@ class PtfGnmic:
     Usage follows the two-step initialization pattern established by PtfGrpc:
       1. Construct with target and mode: ``PtfGnmic(ptfhost, target)``
       2. Configure TLS certs: ``client.configure_tls_certificates(ca, cert, key)``
-      3. Call methods: ``result = client.capabilities()``
+      3. Call methods: ``client.capabilities()``, ``client.get(paths)``
     """
 
     def __init__(self, ptfhost, target, plaintext=False):
@@ -65,8 +78,19 @@ class PtfGnmic:
         self.ca_cert = None
         self.client_cert = None
         self.client_key = None
+        self.timeout = 10  # seconds; matches gnmic's own --timeout default
         self._gnmic_path = "/usr/local/bin/gnmic"
         logger.info(f"Initialized PtfGnmic: target={self.target}, plaintext={self.plaintext}")
+
+    def configure_timeout(self, timeout_seconds: int) -> None:
+        """
+        Configure the gnmic per-operation timeout.
+
+        Args:
+            timeout_seconds: Timeout in seconds (passed to gnmic as ``--timeout Ns``).
+        """
+        self.timeout = int(timeout_seconds)
+        logger.debug(f"Configured gnmic timeout: {self.timeout}s")
 
     def configure_tls_certificates(self, ca_cert: str, client_cert: str, client_key: str) -> None:
         """
@@ -82,6 +106,43 @@ class PtfGnmic:
         self.client_key = client_key
         self.plaintext = False
         logger.info(f"Configured TLS certificates: ca={ca_cert}, cert={client_cert}, key={client_key}")
+
+    def _build_base_cmd(self) -> str:
+        """Build the gnmic invocation prefix with target, timeout, and TLS/insecure flags."""
+        cmd = f"{self._gnmic_path} -a {self.target} --timeout {self.timeout}s"
+        if self.plaintext:
+            cmd += " --insecure"
+        elif self.ca_cert and self.client_cert and self.client_key:
+            cmd += (
+                f" --tls-ca {self.ca_cert}"
+                f" --tls-cert {self.client_cert}"
+                f" --tls-key {self.client_key}"
+            )
+        return cmd
+
+    def _run(self, cmd: str, op_name: str) -> str:
+        """Execute a gnmic command on the PTF host and return stdout, or raise."""
+        logger.debug(f"Executing gnmic command: {cmd}")
+        result = self.ptfhost.shell(cmd, module_ignore_errors=True)
+
+        rc = result["rc"]
+        stdout = result.get("stdout", "").strip()
+        stderr = result.get("stderr", "").strip()
+
+        if rc != 0:
+            stderr_lower = stderr.lower()
+            if any(kw in stderr_lower for kw in _TIMEOUT_KEYWORDS):
+                raise GnmicTimeoutError(
+                    f"gnmic {op_name} timed out after {self.timeout}s: {stderr}"
+                )
+            if any(kw in stderr_lower for kw in _CONNECTION_KEYWORDS):
+                raise GnmicConnectionError(
+                    f"gnmic connection failed to {self.target}: {stderr}"
+                )
+            raise GnmicCallError(
+                f"gnmic {op_name} failed (rc={rc}): {stderr}"
+            )
+        return stdout
 
     def capabilities(self) -> Dict:
         """
@@ -100,34 +161,71 @@ class PtfGnmic:
             GnmicConnectionError: If connection to target fails (refused, TLS errors)
             GnmicCallError: If gnmic exits with non-zero code or returns invalid JSON
         """
-        cmd = f"{self._gnmic_path} -a {self.target}"
-
-        if self.plaintext:
-            cmd += " --insecure"
-        elif self.ca_cert and self.client_cert and self.client_key:
-            cmd += f" --tls-ca {self.ca_cert} --tls-cert {self.client_cert} --tls-key {self.client_key}"
-
-        cmd += " capabilities --format json"
-
-        logger.debug(f"Executing gnmic command: {cmd}")
-        result = self.ptfhost.shell(cmd, module_ignore_errors=True)
-
-        rc = result["rc"]
-        stdout = result.get("stdout", "").strip()
-        stderr = result.get("stderr", "").strip()
-
-        if rc != 0:
-            # Check for connection-related error keywords
-            stderr_lower = stderr.lower()
-            if any(kw in stderr_lower for kw in _CONNECTION_KEYWORDS):
-                raise GnmicConnectionError(
-                    f"gnmic connection failed to {self.target}: {stderr}"
-                )
+        cmd = f"{self._build_base_cmd()} capabilities --format json"
+        stdout = self._run(cmd, "capabilities")
+        try:
+            return json.loads(stdout)
+        except (json.JSONDecodeError, ValueError) as e:
             raise GnmicCallError(
-                f"gnmic capabilities failed (rc={rc}): {stderr}"
+                f"gnmic returned invalid JSON: {e}\nOutput: {stdout}"
             )
 
-        # Parse JSON output
+    def get(
+        self,
+        paths: Union[str, Iterable[str]],
+        *,
+        datatype: str = "ALL",
+        encoding: str = "json_ietf",
+        prefix: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Issue a gNMI Get RPC against the target device.
+
+        Executes ``gnmic get --path <p> [--path <p> ...] --format json`` on
+        the PTF container and returns the parsed JSON output.
+
+        Args:
+            paths: A single gNMI path string or an iterable of path strings,
+                e.g. "/openconfig-interfaces:interfaces/interface[name=Ethernet0]/state".
+            datatype: gNMI data type filter. One of
+                "ALL", "CONFIG", "STATE", "OPERATIONAL". Defaults to "ALL".
+            encoding: Encoding to request (e.g. "json_ietf", "proto").
+                Defaults to "json_ietf".
+            prefix: Optional gNMI prefix applied to all paths.
+
+        Returns:
+            List of per-source response dicts as emitted by gnmic. Each entry
+            contains "source", "timestamp", and an "updates" list of
+            {"Path": ..., "values": ...} items.
+
+        Raises:
+            GnmicCallError: If no path is provided, datatype is invalid,
+                gnmic returns non-zero, or stdout is not valid JSON.
+            GnmicConnectionError: If the target is unreachable or TLS fails.
+        """
+        if isinstance(paths, str):
+            path_list: List[str] = [paths]
+        else:
+            path_list = list(paths)
+        if not path_list:
+            raise GnmicCallError("gnmic get requires at least one path")
+
+        valid_types = {"ALL", "CONFIG", "STATE", "OPERATIONAL"}
+        if datatype.upper() not in valid_types:
+            raise GnmicCallError(
+                f"invalid datatype {datatype!r}, expected one of {sorted(valid_types)}"
+            )
+
+        cmd = f"{self._build_base_cmd()} get"
+        if prefix is not None:
+            cmd += f" --prefix {shlex.quote(prefix)}"
+        for p in path_list:
+            cmd += f" --path {shlex.quote(p)}"
+        cmd += f" --type {datatype.upper()}"
+        cmd += f" --encoding {shlex.quote(encoding)}"
+        cmd += " --format json"
+
+        stdout = self._run(cmd, "get")
         try:
             return json.loads(stdout)
         except (json.JSONDecodeError, ValueError) as e:
