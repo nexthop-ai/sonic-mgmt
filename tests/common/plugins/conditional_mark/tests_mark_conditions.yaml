@@ -691,6 +691,21 @@ bmp/:
 #######################################
 #####            cacl             #####
 #######################################
+<<<<<<< HEAD
+=======
+cacl/test_cacl_application.py:
+  skip:
+    reason: "skip test_cacl_application in PR test temporarily"
+    conditions:
+      - "asic_type in ['vs']"
+
+cacl/test_cacl_application.py::test_cacl_acl_loader:
+  skip:
+    reason: "test_cacl_acl_loader requires ACL_TABLE, not available on BMC"
+    conditions:
+      - "'bmc' in topo_type"
+
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
 cacl/test_cacl_application.py::test_cacl_acl_loader_commands_internal:
   skip:
     reason: "test_cacl_acl_loader_commands_internal is only supported on t0/t1 testbed"
@@ -716,6 +731,12 @@ cacl/test_cacl_application.py::test_multiasic_cacl_application:
     reason: "test_multiasic_cacl_application is only supported on multi-ASIC platform"
     conditions:
       - "not is_multi_asic"
+
+cacl/test_cacl_function.py::test_cacl_function:
+  skip:
+    reason: "test_cacl_function requires ACL_TABLE, not available on BMC"
+    conditions:
+      - "'bmc' in topo_type"
 
 cacl/test_ebtables_application.py:
   skip:
@@ -2826,7 +2847,11 @@ gnmi/test_gnmi.py:
 
 gnmi/test_gnmi.py::test_gnmi_subscribe_sample:
   skip:
+<<<<<<< HEAD
     reason: "Test relies on Ethernet0 frontpanel port and COUNTERS_DB; not applicable on BMC"
+=======
+    reason: "Requires COUNTERS_DB, not available on BMC"
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
     conditions:
       - "'bmc' in topo_type"
 
@@ -2916,6 +2941,10 @@ gnmi/test_gnmi_countersdb.py:
     reason: "This test does not supported multi-asic. Skipping test for multi-asic DUTs."
     conditions:
       - "is_multi_asic==True"
+  skip:
+    reason: "Requires COUNTERS_DB, not available on BMC"
+    conditions:
+      - "'bmc' in topo_type"
 
 gnmi/test_gnmi_countersdb.py::test_gnmi_counterdb_polling_01:
   skip:
@@ -2960,12 +2989,19 @@ gnmi/test_gnmi_countersdb.py::test_gnmi_queue_buffer_cnt:
       - "is_mgmt_ipv6_only==True"
       - "https://github.com/sonic-net/sonic-mgmt/issues/20395"
 
+gnmi/test_gnmi_route_counter.py:
+  skip:
+    reason: "Requires routing, not available on BMC"
+    conditions:
+      - "'bmc' in topo_type"
+
 gnmi/test_gnmi_smartswitch.py:
   skip:
     reason: 'SmartSwitch gNMI tests require SmartSwitch platform, not applicable to BMC'
     conditions:
       - "'bmc' in topo_type"
 
+<<<<<<< HEAD
 gnmi/test_gnmi_stress.py::test_gnmi_latency_01:
   skip:
     reason: "Test relies on PORT table in CONFIG_DB; not configured on BMC"
@@ -2978,6 +3014,14 @@ gnmi/test_gnmic.py:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/24328"
 
+=======
+gnmi/test_gnmi_stress.py:
+  skip:
+    reason: "Requires front panel ports, not available on BMC"
+    conditions:
+      - "'bmc' in topo_type"
+
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
 gnmi/test_gnoi_killprocess.py:
   skip:
     reason: "Test noisy due to restart issue not relevant to GNOI. Disabling them to rewrite."
@@ -2999,6 +3043,24 @@ gnmi/test_gnoi_system_reboot.py::test_gnoi_system_reboot_warm:
       - "release in ['202412']"
       - "'f2' in topo_name"
 
+<<<<<<< HEAD
+=======
+gnmi/vrf_aware_tests/test_gnmi_configdb.py:
+  skip:
+    reason: "This feature is not supported for multi asic, T2, or BMC (no front panel ports/BGP neighbors)"
+    conditions_logical_operator: or
+    conditions:
+      - "'t2' in topo_name"
+      - "is_multi_asic==True"
+      - "'bmc' in topo_type"
+
+gnmi/vrf_aware_tests/test_gnmi_configdb.py::test_gnmi_configdb_full_01:
+  skip:
+    reason: "The test refers to a stale implementation of GNOI.System.Reboot."
+    conditions:
+      - "https://github.com/sonic-net/sonic-mgmt/issues/17436"
+
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
 ###############################################
 #####       golden_config_infra           #####
 ###############################################
@@ -5329,7 +5391,11 @@ sub_port_interfaces/test_sub_port_l2_forwarding.py::test_sub_port_l2_forwarding[
 #######################################
 syslog/test_logrotate.py::test_orchagent_logrotate:
   skip:
+<<<<<<< HEAD
     reason: "BMC has no orchagent service; not applicable"
+=======
+    reason: "Requires front panel ports, not available on BMC"
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
     conditions:
       - "'bmc' in topo_type"
   xfail:
@@ -5416,9 +5482,11 @@ tacacs/test_ro_disk.py:
 #######################################
 telemetry/test_events.py:
   skip:
-    reason: "Skip telemetry test events for 202211 and older branches"
+    reason: "Skip telemetry test events for 202211 and older branches / No eventd service on BMC"
+    conditions_logical_operator: or
     conditions:
       - "release in ['201811', '201911', '202012', '202205', '202211']"
+      - "'bmc' in topo_type"
   xfail:
     reason: "Test events is flaky in PR test, xfail until issue resolved"
     conditions:
@@ -5445,7 +5513,11 @@ telemetry/test_telemetry.py:
 
 telemetry/test_telemetry.py::test_on_change_updates:
   skip:
+<<<<<<< HEAD
     reason: "Test relies on BGP neighbors; none configured on BMC"
+=======
+    reason: "Requires BGP, not available on BMC"
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
     conditions:
       - "'bmc' in topo_type"
 
@@ -5465,8 +5537,13 @@ telemetry/test_telemetry.py::test_sysuptime:
 
 telemetry/test_telemetry.py::test_telemetry_ouput:
   skip:
+<<<<<<< HEAD
     reason: "dut ipv6 mgmt ip not supported / not applicable on BMC (no Ethernet0/COUNTERS_DB)"
     conditions_logical_operator: or
+=======
+    conditions_logical_operator: or
+    reason: "dut ipv6 mgmt ip not supported / No data-plane port on BMC"
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
     conditions:
       - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
       - "'bmc' in topo_type"
@@ -5474,19 +5551,21 @@ telemetry/test_telemetry.py::test_telemetry_ouput:
 telemetry/test_telemetry.py::test_telemetry_queue_buffer_cnt:
   skip:
     conditions_logical_operator: or
-    reason: "Testcase ignored due to switch type is voq / Unsupported in M* topos / multi-asic issue 15393"
+    reason: "Testcase ignored due to switch type is voq / Unsupported in M* topos / multi-asic issue 15393 / No buffer queues on BMC"
     conditions:
       - "(switch_type=='voq')"
       - "topo_type in ['m0', 'mx', 'm1']"
       - "(is_multi_asic==True) and https://github.com/sonic-net/sonic-mgmt/issues/15393"
       - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
+      - "'bmc' in topo_type"
 
 telemetry/test_telemetry.py::test_virtualdb_table_streaming:
   skip:
-    reason: "dut ipv6 mgmt ip not supported"
+    conditions_logical_operator: or
+    reason: "dut ipv6 mgmt ip not supported / No data-plane port on BMC"
     conditions:
-      - "is_mgmt_ipv6_only==True"
-      - "https://github.com/sonic-net/sonic-mgmt/issues/20395"
+      - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
+      - "'bmc' in topo_type"
 
 telemetry/test_telemetry_cert_rotation.py::test_telemetry_cert_rotate:
   skip:
@@ -5511,8 +5590,13 @@ telemetry/test_telemetry_cert_rotation.py::test_telemetry_post_cert_del:
 
 telemetry/test_telemetry_poll.py::test_poll_mode_default_route:
   skip:
+<<<<<<< HEAD
     conditions_logical_operator: or
     reason: "dut ipv6 mgmt ip not supported or not applicable on BMC because requires upstream BGP neighbor and default route"
+=======
+    reason: "dut ipv6 mgmt ip not supported / no BGP on BMC"
+    conditions_logical_operator: or
+>>>>>>> 2cf2d6da8 (NOS-8553: Add conditional mark exclusions for test cases not applicable to BMC (#1729))
     conditions:
       - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
       - "'bmc' in topo_type"
