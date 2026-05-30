@@ -1,16 +1,13 @@
-"""Integration test for gnmic capabilities via gnmi_tls fixture."""
-import pytest
+"""Integration tests for gnmic operations via gnmi_tls fixture."""
 import logging
+import pytest
 
 from tests.common.fixtures.grpc_fixtures import gnmi_tls  # noqa: F401
-<<<<<<< HEAD
-=======
 from tests.common.ptf_gnmic import (
     GnmicCallError,
     StreamMode,
     SubscribeMode,
 )
->>>>>>> 633f09cab (NOS-8420: Add Subscribe (STREAM/SAMPLE) wrapper to PtfGnmic (#1773))
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +35,6 @@ def test_gnmic_capabilities(gnmi_tls):  # noqa: F811
     logger.info("version: %s", result["version"])
     logger.info("encodings: %s", encodings)
     logger.info("supported-models count: %d", len(result["supported-models"]))
-<<<<<<< HEAD
-=======
 
 
 def _first_update(result):
@@ -275,4 +270,3 @@ def test_gnmic_subscribe_extra_args_string_rejected(gnmi_tls):  # noqa: F811
             sample_interval="1s",
             extra_args="--qos 32",
         )
->>>>>>> 633f09cab (NOS-8420: Add Subscribe (STREAM/SAMPLE) wrapper to PtfGnmic (#1773))

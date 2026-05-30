@@ -6,13 +6,9 @@ via ptfhost.shell(), hiding the CLI complexity behind clean, Pythonic interfaces
 """
 import json
 import logging
-<<<<<<< HEAD
-from typing import Dict
-=======
 import shlex
 from enum import StrEnum
 from typing import Iterable
->>>>>>> 633f09cab (NOS-8420: Add Subscribe (STREAM/SAMPLE) wrapper to PtfGnmic (#1773))
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +20,13 @@ _CONNECTION_KEYWORDS = (
     "tls: ",
     "certificate",
     "handshake",
+)
+
+# Timeout-related keywords surfaced by gnmic/grpc when --timeout fires.
+_TIMEOUT_KEYWORDS = (
+    "context deadline exceeded",
+    "operation timeout",
+    "i/o timeout",
 )
 
 
@@ -55,6 +58,11 @@ class GnmicConnectionError(PtfGnmicError):
     pass
 
 
+class GnmicTimeoutError(PtfGnmicError):
+    """gnmic operation timeout errors (--timeout exceeded)."""
+    pass
+
+
 class GnmicCallError(PtfGnmicError):
     """gnmic command execution errors (non-zero exit, malformed output)."""
     pass
@@ -71,7 +79,7 @@ class PtfGnmic:
     Usage follows the two-step initialization pattern established by PtfGrpc:
       1. Construct with target and mode: ``PtfGnmic(ptfhost, target)``
       2. Configure TLS certs: ``client.configure_tls_certificates(ca, cert, key)``
-      3. Call methods: ``result = client.capabilities()``
+      3. Call methods: ``client.capabilities()``, ``client.get(paths)``
     """
 
     def __init__(self, ptfhost, target, plaintext=False):
@@ -89,8 +97,19 @@ class PtfGnmic:
         self.ca_cert = None
         self.client_cert = None
         self.client_key = None
+        self.timeout = 10  # seconds; matches gnmic's own --timeout default
         self._gnmic_path = "/usr/local/bin/gnmic"
         logger.info(f"Initialized PtfGnmic: target={self.target}, plaintext={self.plaintext}")
+
+    def configure_timeout(self, timeout_seconds: int) -> None:
+        """
+        Configure the gnmic per-operation timeout.
+
+        Args:
+            timeout_seconds: Timeout in seconds (passed to gnmic as ``--timeout Ns``).
+        """
+        self.timeout = int(timeout_seconds)
+        logger.debug(f"Configured gnmic timeout: {self.timeout}s")
 
     def configure_tls_certificates(self, ca_cert: str, client_cert: str, client_key: str) -> None:
         """
@@ -107,9 +126,6 @@ class PtfGnmic:
         self.plaintext = False
         logger.info(f"Configured TLS certificates: ca={ca_cert}, cert={client_cert}, key={client_key}")
 
-<<<<<<< HEAD
-    def capabilities(self) -> Dict:
-=======
     def _build_base_cmd(self) -> str:
         """Build the gnmic invocation prefix with target, timeout, and TLS/insecure flags."""
         cmd = f"{self._gnmic_path} -a {self.target} --timeout {self.timeout}s"
@@ -223,7 +239,6 @@ class PtfGnmic:
         return objects
 
     def capabilities(self) -> dict:
->>>>>>> 633f09cab (NOS-8420: Add Subscribe (STREAM/SAMPLE) wrapper to PtfGnmic (#1773))
         """
         Query gNMI capabilities from the target device.
 
@@ -240,36 +255,15 @@ class PtfGnmic:
             GnmicConnectionError: If connection to target fails (refused, TLS errors)
             GnmicCallError: If gnmic exits with non-zero code or returns invalid JSON
         """
-        cmd = f"{self._gnmic_path} -a {self.target}"
-
-        if self.plaintext:
-            cmd += " --insecure"
-        elif self.ca_cert and self.client_cert and self.client_key:
-            cmd += f" --tls-ca {self.ca_cert} --tls-cert {self.client_cert} --tls-key {self.client_key}"
-
-        cmd += " capabilities --format json"
-
-        logger.debug(f"Executing gnmic command: {cmd}")
-        result = self.ptfhost.shell(cmd, module_ignore_errors=True)
-
-        rc = result["rc"]
-        stdout = result.get("stdout", "").strip()
-        stderr = result.get("stderr", "").strip()
-
-        if rc != 0:
-            # Check for connection-related error keywords
-            stderr_lower = stderr.lower()
-            if any(kw in stderr_lower for kw in _CONNECTION_KEYWORDS):
-                raise GnmicConnectionError(
-                    f"gnmic connection failed to {self.target}: {stderr}"
-                )
+        cmd = f"{self._build_base_cmd()} capabilities --format json"
+        stdout = self._run(cmd, "capabilities")
+        try:
+            return json.loads(stdout)
+        except (json.JSONDecodeError, ValueError) as e:
             raise GnmicCallError(
-                f"gnmic capabilities failed (rc={rc}): {stderr}"
+                f"gnmic returned invalid JSON: {e}\nOutput: {stdout}"
             )
 
-<<<<<<< HEAD
-        # Parse JSON output
-=======
     def get(
         self,
         paths: str | Iterable[str],
@@ -323,7 +317,6 @@ class PtfGnmic:
         cmd += " --format json"
 
         stdout = self._run(cmd, "get")
->>>>>>> 633f09cab (NOS-8420: Add Subscribe (STREAM/SAMPLE) wrapper to PtfGnmic (#1773))
         try:
             return json.loads(stdout)
         except (json.JSONDecodeError, ValueError) as e:
