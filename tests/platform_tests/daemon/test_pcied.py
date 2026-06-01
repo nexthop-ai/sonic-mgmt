@@ -210,7 +210,11 @@ def test_pmon_pcied_term_and_start_status(check_daemon_status, duthosts,
                   "{} status for SIG_TERM should not be {} with pid:{}!"
                   .format(daemon_name, daemon_status, daemon_pid))
 
+<<<<<<< HEAD
     wait_until(120, 10, 0, check_expected_daemon_status, duthost, expected_running_status)
+=======
+    wait_until(50, 10, 0, check_expected_daemon_status, duthost, expected_running_status)
+>>>>>>> 134f35738 (NOS-8909: Fixing PMON status test failures (#1791))
 
     post_daemon_status, post_daemon_pid = duthost.get_pmon_daemon_status(daemon_name)
     pytest_assert(post_daemon_status == expected_running_status,
@@ -245,7 +249,11 @@ def test_pmon_pcied_kill_and_start_status(check_daemon_status, duthosts, rand_on
     pytest_assert(daemon_status != expected_running_status,
                   "{} unexpected killed status is not {}".format(daemon_name, daemon_status))
 
+<<<<<<< HEAD
     wait_until(120, 10, 0, check_expected_daemon_status, duthost, expected_running_status)
+=======
+    wait_until(50, 10, 0, check_expected_daemon_status, duthost, expected_running_status)
+>>>>>>> 134f35738 (NOS-8909: Fixing PMON status test failures (#1791))
 
     post_daemon_status, post_daemon_pid = duthost.get_pmon_daemon_status(daemon_name)
     pytest_assert(post_daemon_status == expected_running_status,
