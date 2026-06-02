@@ -600,6 +600,10 @@
           state: restarted
           daemon_reload: yes
           name: docker
+        register: docker_restart_result
+        until: docker_restart_result is success
+        retries: 4
+        delay: 30
 
       - name: Wait 60s for docker containers to restart
         pause:
