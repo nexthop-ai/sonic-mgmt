@@ -977,7 +977,11 @@ class GenerateGoldenConfigDBModule(object):
         """
         Generate golden_config for FT2 to enable FEC and set BGP confed.
         """
+<<<<<<< HEAD
         SUPPORTED_TOPO = ["ft2-64", "lt2-p32o64", "lt2-o128", "ft2-o128"]
+=======
+        SUPPORTED_TOPO = ["lt2-min", "ft2-64", "lt2-p32o64", "lt2-o128"]
+>>>>>>> b279ded94 (NOS-8674:Added support for LT2 min topo with 2 UT2 and 6 T1 neighbors (#1802))
         if self.topo_name not in SUPPORTED_TOPO:
             return "{}"
         SUPPORTED_PORT_SPEED = ["200000", "400000", "800000"]
