@@ -347,7 +347,10 @@ def parse_dpg(dpg, hname):
             elif intfalias in port_alias_asic_map:
                 intfname = port_alias_asic_map[intfalias]
             else:
+                # member is already an interface name (e.g. Ethernet72);
+                # recover its alias from the reverse map.
                 intfname = intfalias
+                intfalias = port_name_to_alias_map.get(intfname, intfname)
             ipprefix = ipintf.find(str(QName(ns, "Prefix"))).text
             intfs.append(_parse_intf(intfname, ipprefix))
             ports[intfname] = {'name': intfname, 'alias': intfalias}
@@ -416,6 +419,11 @@ def parse_dpg(dpg, hname):
                     ports[port_alias_asic_map[member]] = {
                         'name': port_alias_asic_map[member],
                         'alias': port_name_to_alias_map[port_alias_asic_map[member]]}
+                elif member in port_name_to_alias_map:
+                    # member is already an interface name (e.g. Ethernet72);
+                    # recover its alias from the reverse map.
+                    ports[member] = {
+                        'name': member, 'alias': port_name_to_alias_map[member]}
 
             pcs[pcintfname] = {'name': pcintfname, 'members': pcmbr_list}
             pcs[pcintfname] = {'name': pcintfname,
@@ -451,9 +459,15 @@ def parse_dpg(dpg, hname):
                 # Skip PortChannel inside Vlan
                 if member in pcs:
                     continue
-                vmbr_list[i] = port_alias_to_name_map[member]
-                ports[port_alias_to_name_map[member]] = {
-                    'name': port_alias_to_name_map[member], 'alias': member}
+                if member in port_alias_to_name_map:
+                    vmbr_list[i] = port_alias_to_name_map[member]
+                    ports[port_alias_to_name_map[member]] = {
+                        'name': port_alias_to_name_map[member], 'alias': member}
+                elif member in port_name_to_alias_map:
+                    # member is already an interface name (e.g. Ethernet72);
+                    # keep it as-is and recover its alias from the reverse map.
+                    ports[member] = {
+                        'name': member, 'alias': port_name_to_alias_map[member]}
             vlan_attributes = {'name': vintfname,
                                'members': vmbr_list, 'vlanid': vlanid}
             if vintftype is not None:
@@ -478,6 +492,8 @@ def parse_dpg(dpg, hname):
                           " is attached to a Vlan interface, which is currently not supported", file=sys.stderr)
                 elif member in port_alias_to_name_map:
                     acl_intfs.append(port_alias_to_name_map[member])
+                elif member in port_name_to_alias_map:
+                    acl_intfs.append(member)
             if acl_intfs:
                 acls[aclname] = acl_intfs
 

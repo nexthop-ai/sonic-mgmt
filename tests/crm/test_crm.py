@@ -1234,7 +1234,11 @@ def verify_acl_crm_stats(duthost, asichost, enum_rand_one_per_hwsku_frontend_hos
 
     # Get new "crm_stats_acl_entry" used and available counter value
     new_crm_stats_acl_entry_used, new_crm_stats_acl_entry_available = get_crm_stats(get_acl_entry_stats, duthost)
+<<<<<<< HEAD
     # Verify "crm_stats_acl_entry_used" counter was incremented
+=======
+
+>>>>>>> eeb3158b6 (NOS-8060: fix minigraph_facts parsing when AttachTo holds interface names (#1829))
     pytest_assert(new_crm_stats_acl_entry_used - crm_stats_acl_entry_used == 4,
                   "\"crm_stats_acl_entry_used\" counter was not incremented")
 
