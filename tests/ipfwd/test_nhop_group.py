@@ -400,10 +400,19 @@ def test_nhop_group_member_count(duthost, tbinfo, loganalyzer):
     ip_indices = combinations(indices, default_max_nhop_paths)
     ip_prefix = ipaddr.IPAddress("192.168.0.0")
 
-    crm_before = get_crm_info(duthost, asic)
-
-    # increase CRM polling time
+<<<<<<< HEAD
+=======
+    # Set fast CRM polling before taking the baseline snapshot so COUNTERS_DB
+    # reflects any NHOP groups already programmed by the topo (e.g. BGP routes
+    # via dynamic neighbors). Without this, crm_before reads stale data from
+    # the default poll cycle and misses pre-existing groups, inflating the
+    # measured delta.
+    original_polling = get_crm_info(duthost, asic)["polling"]
     asic.command("crm config polling interval {}".format(polling_interval))
+    # Wait for crm status to be updated
+    time.sleep(polling_interval * 2)
+>>>>>>> 331c51cff (NOS-8192: fix test_nhop_group_member_count CRM baseline polling (#1844))
+    crm_before = get_crm_info(duthost, asic)
 
     if is_cisco_device(duthost):
         # Waiting for ARP routes to be synced and programmed
@@ -443,7 +452,7 @@ def test_nhop_group_member_count(duthost, tbinfo, loganalyzer):
         nhop.delete_routes()
         arplist.clean_up()
         asic.command(
-            "crm config polling interval {}".format(crm_before["polling"])
+            "crm config polling interval {}".format(original_polling)
         )
 
     # verify the test used up all the NHOP group resources
