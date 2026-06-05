@@ -537,6 +537,20 @@ def setup(duthosts, ptfhost, rand_selected_dut, rand_selected_front_end_dut, ran
         "uplink->downlink": upstream_port_id_to_router_mac_map
     }
 
+    # Gate on default route being present so convergence race cannot produce a flaky
+    # ACL failure. Topologies without a default route (e.g. t1-isolated) are exempted.
+    needs_upstream_default_route = (
+        topo in ["t0", "t1", "t2", "m0_l3", "m1", "ft2"]
+        and 't1-isolated' not in tbinfo["topo"]["name"]
+    )
+    if needs_upstream_default_route:
+        for duthost in duthosts:
+            pytest_require(
+                wait_until(120, 10, 0, duthost.check_default_route),
+                "Default route not converged on {} before ACL forwarded tests"
+                .format(duthost.hostname)
+            )
+
     setup_information = {
         "destination_mac": dest_mac_mapping,
         "downstream_port_ids": downstream_port_ids,
@@ -1733,6 +1747,14 @@ class TestAclWithReboot(TestBasicAcl):
         # Delay for route convergence
         time.sleep(route_convergence_delay)
 
+        # Gate on default route being present so convergence race cannot produce a flaky
+        # ACL failure.
+        pytest_assert(
+            wait_until(120, 10, 0, dut.check_default_route),
+            "Default route not re-installed on {} after reboot; downlink->uplink forwarded "
+            "ACL traffic would have no FIB entry.".format(dut.hostname)
+        )
+
         populate_vlan_arp_entries()
 
 
@@ -1790,6 +1812,15 @@ class TestAclWithPortToggle(TestBasicAcl):
             route_convergence_delay = 180
 
         port_toggle(dut, tbinfo, wait_after_ports_up=route_convergence_delay)
+
+        # Gate on default route being present so convergence race cannot produce a flaky
+        # ACL failure.
+        pytest_assert(
+            wait_until(120, 10, 0, dut.check_default_route),
+            "Default route not re-installed on {} after port toggle; downlink->uplink forwarded "
+            "ACL traffic would have no FIB entry.".format(dut.hostname)
+        )
+
         populate_vlan_arp_entries()
 
 
