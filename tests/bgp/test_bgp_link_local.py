@@ -323,9 +323,13 @@ def configure_unnumbered_bgp(setup_info):
         'router bgp {}'.format(dut_asn),
         'neighbor {} interface v6only remote-as {}'.format(portchannel, neigh_asn),
         'address-family ipv4 unicast',
+        'neighbor {} route-map FROM_BGP_PEER_V4 in'.format(portchannel),
+        'neighbor {} route-map TO_BGP_PEER_V4 out'.format(portchannel),
         'neighbor {} activate'.format(portchannel),
         'exit-address-family',
         'address-family ipv6 unicast',
+        'neighbor {} route-map FROM_BGP_PEER_V6 in'.format(portchannel),
+        'neighbor {} route-map TO_BGP_PEER_V6 out'.format(portchannel),
         'neighbor {} activate'.format(portchannel),
         'exit-address-family',
     ]
