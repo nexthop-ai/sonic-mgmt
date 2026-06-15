@@ -338,6 +338,22 @@ def apply_route_config_for_port(request, tbinfo, duthost, ptfhost, port_type, de
         interface_num = 1
     else:
         interface_num = 2
+
+    # Snapshot the running config before get_port: for port_in_lag, get_port
+    # (via create_lag_port) strips the IPs and the VLAN membership of the
+    # ports it borrows, so their original state must be captured here in
+    # order to be restorable on teardown.
+    orig_cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+    orig_intf_cfg = orig_cfg_facts.get('INTERFACE', {})
+    orig_vlan_member_cfg = orig_cfg_facts.get('VLAN_MEMBER', {})
+    # Physical ports borrowed by this fixture whose original config must be
+    # restored on teardown.  Without the restore, the borrowed ports stay
+    # unconfigured (no IP / no VLAN membership) until the class-scoped
+    # reload_dut_config teardown, and any later test in the class (e.g.
+    # test_balancing_sub_ports) that picks one of them as a traffic source
+    # black-holes at ingress.
+    borrowed_phy_ports = set()
+
     dut_ports, ptf_ports = get_port(duthost, ptfhost, interface_num, port_type, list(dut_ports.values()),
                                     exclude_sub_interface_ports=True)
 
@@ -430,8 +446,14 @@ def apply_route_config_for_port(request, tbinfo, duthost, ptfhost, port_type, de
             if 'port_in_lag' in port_type:
                 bond_port = src_port.split('.')[0]
                 cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+                # dut_port is a temporary PortChannel: remember its member
+                # port(s) before the LAG is deleted so they can be restored.
+                borrowed_phy_ports.update(
+                    cfg_facts.get('PORTCHANNEL_MEMBER', {}).get(next_hop_sub_ports['dut_port'], {}))
                 remove_lag_port(duthost, cfg_facts, next_hop_sub_ports['dut_port'])
                 remove_bond_port(ptfhost, bond_port, ptf_ports[bond_port])
+            else:
+                borrowed_phy_ports.add(next_hop_sub_ports['dut_port'])
         else:
             # Remove L3 RIF from the DUT
             remove_ip_from_port(duthost, next_hop_sub_ports['dut_port'], ip=next_hop_sub_ports['neighbor_ip'])
@@ -441,11 +463,34 @@ def apply_route_config_for_port(request, tbinfo, duthost, ptfhost, port_type, de
             if 'port_in_lag' in port_type:
                 bond_port = src_port
                 cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+                # dut_port is a temporary PortChannel: remember its member
+                # port(s) before the LAG is deleted so they can be restored.
+                borrowed_phy_ports.update(
+                    cfg_facts.get('PORTCHANNEL_MEMBER', {}).get(next_hop_sub_ports['dut_port'], {}))
                 remove_lag_port(duthost, cfg_facts, next_hop_sub_ports['dut_port'])
                 remove_bond_port(ptfhost, bond_port, ptf_ports[bond_port])
+            else:
+                borrowed_phy_ports.add(next_hop_sub_ports['dut_port'])
 
     if 'svi' in request.param:
         remove_vlan(duthost, vlan_id)
+
+    # Restore the original L3/VLAN configuration of the borrowed ports, which
+    # was stripped by get_port/create_lag_port and the setup above.  Only
+    # missing pieces are re-added so the restore is idempotent.
+    if borrowed_phy_ports:
+        cur_cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+        cur_intf_cfg = cur_cfg_facts.get('INTERFACE', {})
+        cur_vlan_member_cfg = cur_cfg_facts.get('VLAN_MEMBER', {})
+        for phy_port in borrowed_phy_ports:
+            for vlan, member_cfg in list(orig_vlan_member_cfg.items()):
+                if phy_port in member_cfg and phy_port not in cur_vlan_member_cfg.get(vlan, {}):
+                    untagged_flag = '-u ' if member_cfg[phy_port].get('tagging_mode') == 'untagged' else ''
+                    duthost.shell('config vlan member add {}{} {}'.format(
+                        untagged_flag, vlan.replace('Vlan', ''), phy_port))
+            for ip in orig_intf_cfg.get(phy_port, {}):
+                if ip not in cur_intf_cfg.get(phy_port, {}):
+                    add_ip_to_dut_port(duthost, phy_port, ip)
 
 
 @pytest.fixture()
@@ -531,7 +576,24 @@ def apply_balancing_config(duthost, ptfhost, ptfadapter, define_sub_ports_config
         else:
             ports_to_exclude = set(ptf_ports)
 
+        # Also exclude ports that currently cannot carry ingress traffic: no
+        # L3 interface, no VLAN membership and not a port-channel member.
+        # Earlier tests in the class (apply_route_config_for_port) borrow
+        # ports and de-configure them, so a port that looks usable in the
+        # minigraph may be dead at this point in the run; picking it as the
+        # src port would black-hole the balancing traffic at ingress.
+        cfg_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+        ingress_capable_ports = set(cfg_facts.get('INTERFACE', {}).keys())
+        for vlan_members in list(cfg_facts.get('VLAN_MEMBER', {}).values()):
+            ingress_capable_ports.update(vlan_members)
+        for lag_members in list(cfg_facts.get('PORTCHANNEL_MEMBER', {}).values()):
+            ingress_capable_ports.update(lag_members)
+        for port in list(mg_facts['minigraph_ports'].keys()):
+            if port not in ingress_capable_ports:
+                ports_to_exclude.add("eth" + str(mg_facts['minigraph_ptf_indices'][port]))
+
         src_ports = tuple(all_up_ports.difference(ports_to_exclude))
+        py_assert(len(src_ports) > 0, "No ingress-capable src ports available for the balancing test")
 
     network = '1.1.1.0/24'
     network = ipaddress.ip_network(network)
