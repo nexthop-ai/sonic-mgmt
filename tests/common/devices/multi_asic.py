@@ -11,6 +11,7 @@ from tests.common.devices.sonic_asic import SonicAsic
 from tests.common.devices.sonic_docker import SonicDockerManager
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.constants import DEFAULT_ASIC_ID, DEFAULT_NAMESPACE, ASICS_PRESENT
+from tests.common.helpers.sonic_db import SonicDbCli, SonicDbKeyNotFound
 from tests.common.platform.interface_utils import get_dut_interfaces_status
 
 logger = logging.getLogger(__name__)
@@ -573,12 +574,14 @@ class MultiAsicSonicHost(object):
                 if service_name in self.sonichost.critical_services:
                     services.append(service_name)
 
+        config_db = SonicDbCli(self.sonichost, 'CONFIG_DB')
         for docker in services:
             # This is to avoid gbsyncd check fo VS test_disable_rsyslog_rate_limit
             # we are still getting whatever enabled feature in test_disable_rsyslog_rate_limit
             # and gbsyncd feature will be added to services
             if self.get_facts()['asic_type'] == 'vs' and "gbsyncd" in docker:
                 continue
+<<<<<<< HEAD
             cmd_disable_rate_limit = (
                 r"docker exec -i {} sed -i "
                 r"'s/^\$SystemLogRateLimit/#\$SystemLogRateLimit/g' "
@@ -591,12 +594,30 @@ class MultiAsicSonicHost(object):
             )
             cmd_reload = r"docker exec -i {} supervisorctl restart rsyslogd"
             cmds = []
+=======
+            try:
+                support_syslog_rate_limit = config_db.hget_key_value(
+                    'FEATURE|{}'.format(docker), 'support_syslog_rate_limit')
+            except SonicDbKeyNotFound:
+                support_syslog_rate_limit = ''
+            if support_syslog_rate_limit.lower() != 'true':
+                continue
+>>>>>>> eef8fd911 (NOS-9772: skip syslog rate-limit for containers without support_syslog_rate_limit (otel) (#1952))
 
             if rl_option == 'disable':
                 cmds.append(cmd_disable_rate_limit.format(docker))
             else:
+<<<<<<< HEAD
                 cmds.append(cmd_enable_rate_limit.format(docker))
             cmds.append(cmd_reload.format(docker))
+=======
+                interval = rate_limit_data[0]['interval']
+                burst = rate_limit_data[0]['burst']
+
+            cmds = [
+                'config syslog rate-limit-container {} -i {} -b {}'.format(feature, interval, burst),
+            ]
+>>>>>>> eef8fd911 (NOS-9772: skip syslog rate-limit for containers without support_syslog_rate_limit (otel) (#1952))
             self.sonichost.shell_cmds(cmds=cmds)
 
     def get_bgp_neighbors(self, namespace=None):
