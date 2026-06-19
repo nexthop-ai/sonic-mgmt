@@ -3,6 +3,8 @@
 import logging
 import time
 
+import pytest
+
 from run_events_test import run_test
 
 logger = logging.getLogger(__name__)
@@ -10,6 +12,8 @@ tag = "sonic-events-bgp"
 
 
 def test_event(duthost, gnxi_path, ptfhost, ptfadapter, data_dir, validate_yang):
+    if len(duthost.get_bgp_neighbors()) == 0:
+        pytest.skip("Skipping BGP telemetry events: no BGP neighbors configured")
     run_test(duthost, gnxi_path, ptfhost, data_dir, validate_yang, drop_tcp_packets,
              "bgp_notification.json", "sonic-events-bgp:notification", tag)
     run_test(duthost, gnxi_path, ptfhost, data_dir, validate_yang, shutdown_bgp_neighbors,
