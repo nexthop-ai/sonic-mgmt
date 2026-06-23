@@ -125,6 +125,13 @@ def start_pmon_sensord_task(duthost):
     if not sensord_running_status:
         duthost.command("docker exec pmon supervisorctl restart lm-sensors")
         time.sleep(3)
+
+        # Missing PSUs cause sensord startup to be slower as i2c transactions
+        # time out on the PSU sensors. Add additional wait time.
+        missing_psus = get_skip_mod_list(duthost, ['psus'])
+        if missing_psus:
+            time.sleep(40)
+
         sensord_running_status, sensord_pid = check_sensord_status(duthost)
         if sensord_running_status:
             logging.info("sensord task started, pid = {}".format(sensord_pid))
