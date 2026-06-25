@@ -33,6 +33,7 @@ CONFIG_UPDATE_TIME = 5
 FDB_CLEAR_TIMEOUT = 20
 ROUTE_COUNTER_POLL_TIMEOUT = 15
 CRM_COUNTER_TOLERANCE = 2
+CRM_STATS_POLL_TIMEOUT = 30
 ACL_TABLE_NAME = "DATAACL"
 
 RESTORE_CMDS = {"test_crm_route": [],
@@ -311,11 +312,24 @@ def verify_thresholds(duthost, asichost, **kwargs):
 
 
 def get_crm_stats(cmd, duthost):
-    """ Return used and available CRM statistics from command result """
-    out = duthost.command(cmd)
-    crm_stats_used = int(out["stdout_lines"][0])
-    crm_stats_available = int(out["stdout_lines"][1])
-    return crm_stats_used, crm_stats_available
+    stats = {}
+
+    def _stats_ready():
+        out = duthost.command(cmd)
+        if len(out["stdout_lines"]) < 2:
+            return False
+        try:
+            stats["used"] = int(out["stdout_lines"][0])
+            stats["available"] = int(out["stdout_lines"][1])
+        except ValueError:
+            return False
+        return True
+
+    pytest_assert(
+        wait_until(CRM_STATS_POLL_TIMEOUT, CRM_POLLING_INTERVAL, 0, _stats_ready),
+        "CRM stats command returned no parseable output after polling: {}".format(cmd),
+    )
+    return stats["used"], stats["available"]
 
 
 def check_crm_stats(cmd, duthost, origin_crm_stats_used, origin_crm_stats_available,
