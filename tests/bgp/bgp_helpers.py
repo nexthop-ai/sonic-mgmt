@@ -749,7 +749,7 @@ def get_upstream_ptf_intfs(mg_facts, tbinfo):
     upstream_type = UPSTREAM_NEIGHBOR_MAP[tbinfo["topo"]["type"]].upper()
     upstream_ethernets = []
     for k, v in mg_facts["minigraph_neighbors"].items():
-        if v['name'][-2:] == upstream_type:
+        if v['name'][-len(upstream_type):] == upstream_type:
             upstream_ethernets.append(k)
 
     ptf_interfaces = []
