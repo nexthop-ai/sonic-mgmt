@@ -61,10 +61,9 @@ def get_user_expire_time_global(duthost, age_type):
     return days_num
 
 
-def modify_last_password_change_user(duthost, normal_account):
-    "Modify the passw change day of a user (subtract 100 days)."
+def modify_last_password_change_user(duthost, normal_account, days_to_subtract=100):
+    "Modify the passw change day of a user (subtract days_to_subtract days)."
 
-    days_to_subtract = 100
     old_date = datetime.date.today() - datetime.timedelta(days=days_to_subtract)
     command = 'chage {} -i --lastday {}'.format(normal_account, str(old_date.isoformat()))
 
@@ -183,8 +182,15 @@ def verify_age_flow(duthost, passw_hardening_ob, expected_login_error):
                   "Fail creating user: username='{}' with strong password='{}'"
                   .format(passw_hardening_utils.USERNAME_AGE, passw_test))
 
-    # (mimic passw is old by rest 100 days)
-    modify_last_password_change_user(duthost, passw_hardening_utils.USERNAME_AGE)
+    expiration = int(passw_hardening_ob.policies['expiration'])
+    if 'Warning' in expected_login_error:
+        # land inside the warning window but before expiry
+        warning = int(passw_hardening_ob.policies['expiration-warning'])
+        days_to_subtract = max(1, expiration - max(1, warning // 2))
+    else:
+        # ensure the password is definitively expired
+        days_to_subtract = expiration + 5
+    modify_last_password_change_user(duthost, passw_hardening_utils.USERNAME_AGE, days_to_subtract)
 
     # verify Age configuration in Linux files
     compare_passw_age_in_pam_dir(duthost, passw_hardening_ob, passw_hardening_utils.USERNAME_AGE)
