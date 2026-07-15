@@ -760,6 +760,12 @@ def test_nhop_group_member_order_capability(duthost, tbinfo, ptfadapter, gather_
                          46: 'c0:ff:ee:00:00:10', 47: 'c0:ff:ee:00:00:0d',
                          48: 'c0:ff:ee:00:00:0d', 49: 'c0:ff:ee:00:00:10'}
 
+<<<<<<< HEAD
+=======
+    # TH6 flow map is identical to TH5
+    th6_asic_flow_map = th5_asic_flow_map
+
+>>>>>>> 5250f945c (NOS-11411: Fix TH6 (blkt) flow map (#2217))
     gr_asic_flow_map = {0: 'c0:ff:ee:00:00:0b', 1: 'c0:ff:ee:00:00:0c',
                         2: 'c0:ff:ee:00:00:0d',
                         3: 'c0:ff:ee:00:00:0b', 4: 'c0:ff:ee:00:00:12',
