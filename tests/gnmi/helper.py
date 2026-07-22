@@ -415,7 +415,9 @@ def gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target, polling_inter
     cmd += '-pkey /root/gnmiclient.key '
     cmd += '-cchain /root/gnmiclient.crt '
     cmd += '-m subscribe '
-    cmd += '-x %s ' % " ".join(path_list)
+    # Quote each xpath so an escaped slash in a route prefix (e.g. 0.0.0.0\/0)
+    # survives the shell and reaches py_gnmicli as a single path element.
+    cmd += '-x %s ' % " ".join('"{}"'.format(p) for p in path_list)
     cmd += '-xt %s%s ' % (target, ns)
     cmd += '--subscribe_mode 2 '  # POLL
     cmd += '--polling_interval %u ' % polling_interval
