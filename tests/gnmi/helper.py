@@ -410,14 +410,13 @@ def gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target, polling_inter
     port = env.gnmi_port
     ns = "/{}".format(namespace) if namespace else ""
     cmd = '/root/env-python3/bin/python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
-    cmd += '-g -t %s -p %u ' % (ip, port)
+    cmd += '-t %s -p %u ' % (ip, port)
     cmd += '-rcert /root/gnmiCA.pem '
     cmd += '-pkey /root/gnmiclient.key '
     cmd += '-cchain /root/gnmiclient.crt '
     cmd += '-m subscribe '
     cmd += '-x %s ' % " ".join(path_list)
     cmd += '-xt %s%s ' % (target, ns)
-    cmd += '-o ndastreamingservertest '
     cmd += '--subscribe_mode 2 '  # POLL
     cmd += '--polling_interval %u ' % polling_interval
     cmd += '--update_count %d ' % update_count
