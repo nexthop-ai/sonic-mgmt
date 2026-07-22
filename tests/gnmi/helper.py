@@ -389,8 +389,8 @@ def gnmi_subscribe_polling(duthost, ptfhost, path_list, interval_ms, count, ip=N
     return output['stdout'], output['stderr']
 
 
-def gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval, update_count,
-                              max_sync_count, timeout, ip=None):
+def gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target, polling_interval, update_count,
+                              max_sync_count, timeout, namespace=None, ip=None):
     """
     Send a POLL-mode GNMI subscribe request via py_gnmicli.
 
@@ -399,27 +399,30 @@ def gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval, upd
     stream (sync_response, json_ietf_val, delete markers). Used by the ported
     telemetry POLL edge-case tests.
 
+    Mirrors the telemetry client's POLL request shape: the DB is given via the
+    target (-xt <target>[/<namespace>]) with table-relative xpaths, not via a
+    sonic-db origin with the DB in the path.
+
     Returns the ptfhost.shell result dict (rc / stdout / stderr).
     """
     env = GNMIEnvironment(duthost, GNMIEnvironment.GNMI_MODE)
     ip = ip or duthost.mgmt_ip
     port = env.gnmi_port
+    ns = "/{}".format(namespace) if namespace else ""
     cmd = '/root/env-python3/bin/python /root/gnxi/gnmi_cli_py/py_gnmicli.py '
-    cmd += '-t %s -p %u ' % (ip, port)
-    cmd += '-xo sonic-db '
+    cmd += '-g -t %s -p %u ' % (ip, port)
     cmd += '-rcert /root/gnmiCA.pem '
     cmd += '-pkey /root/gnmiclient.key '
     cmd += '-cchain /root/gnmiclient.crt '
-    cmd += '--encoding 4 '
     cmd += '-m subscribe '
+    cmd += '-x %s ' % " ".join(path_list)
+    cmd += '-xt %s%s ' % (target, ns)
+    cmd += '-o ndastreamingservertest '
     cmd += '--subscribe_mode 2 '  # POLL
     cmd += '--polling_interval %u ' % polling_interval
-    cmd += '--update_count %u ' % update_count
-    cmd += '--max_sync_count %u ' % max_sync_count
-    cmd += '--timeout %u ' % timeout
-    cmd += '--xpath '
-    for path in path_list:
-        cmd += " " + path.replace('sonic-db:', '')
+    cmd += '--update_count %d ' % update_count
+    cmd += '--max_sync_count %d ' % max_sync_count
+    cmd += '--timeout %u' % timeout
     return ptfhost.shell(cmd, module_ignore_errors=True)
 
 

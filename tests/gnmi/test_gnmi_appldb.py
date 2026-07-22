@@ -3,7 +3,7 @@ import pytest
 import re
 import threading
 
-from .helper import gnmi_set, gnmi_get, gnmi_subscribe_polling_py, get_namespace
+from .helper import gnmi_set, gnmi_get, gnmi_subscribe_polling_py
 from tests.common.helpers.gnmi_utils import GNMIEnvironment
 from tests.common.utilities import wait_until, is_ipv6_only_topology
 
@@ -100,17 +100,17 @@ def test_gnmi_appldb_01(duthosts, rand_one_dut_hostname, ptfhost):
         pytest.fail("Remove DASH_VNET_TABLE failed: " + msg_list2[0])
 
 
-def test_poll_mode_no_table_or_key(duthosts, rand_one_dut_hostname, ptfhost):
+def test_poll_mode_no_table_or_key(duthosts, rand_one_dut_hostname, ptfhost, enum_rand_one_asic_index):
     '''
     POLL mode from APPL_DB querying a non-existent table and key returns sync
     responses and no error. Ported from tests/telemetry test_poll_mode_no_table_or_key.
     '''
     duthost = duthosts[rand_one_dut_hostname]
-    namespace_name = get_namespace(duthost)
-    path_list = ["/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_0".format(namespace_name),
-                 "/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_1/fake_key1".format(namespace_name)]
-    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=5,
-                                       update_count=0, max_sync_count=5, timeout=30)
+    namespace = duthost.get_namespace_from_asic_id(enum_rand_one_asic_index)
+    path_list = ["FAKE_APPL_DB_TABLE_0", "FAKE_APPL_DB_TABLE_1/fake_key1"]
+    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                       polling_interval=5, update_count=0, max_sync_count=5,
+                                       timeout=30, namespace=namespace)
     assert result['rc'] == 0, "ptf poll command failed: {}".format(result)
     out = str(result['stdout'])
     sync_responses = re.findall("sync_response: true", out)
@@ -126,13 +126,12 @@ def test_poll_mode_present_table_delayed_key(duthosts, rand_one_dut_hostname, pt
     '''
     duthost = duthosts[rand_one_dut_hostname]
     namespace = duthost.get_namespace_from_asic_id(enum_rand_one_asic_index)
-    path_ns = namespace if namespace else "localhost"
-    path_list = ["/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_0".format(path_ns),
-                 "/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_1/fake_key1".format(path_ns)]
+    path_list = ["FAKE_APPL_DB_TABLE_0", "FAKE_APPL_DB_TABLE_1/fake_key1"]
 
     _modify_fake_appdb_table(duthost, namespace)  # add first table data
-    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=2,
-                                       update_count=5, max_sync_count=-1, timeout=30)
+    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                       polling_interval=2, update_count=5, max_sync_count=-1,
+                                       timeout=30, namespace=namespace)
     assert result['rc'] == 0, "ptf poll command failed: {}".format(result)
     updates = re.findall("json_ietf_val", str(result['stdout']))
     assert len(updates) == 5, "Expected 5 update responses, got {}".format(len(updates))
@@ -140,8 +139,9 @@ def test_poll_mode_present_table_delayed_key(duthosts, rand_one_dut_hostname, pt
     holder = {}
 
     def poll_worker():
-        holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=2,
-                                                     update_count=20, max_sync_count=-1, timeout=60)
+        holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                                     polling_interval=2, update_count=20, max_sync_count=-1,
+                                                     timeout=60, namespace=namespace)
 
     client_thread = threading.Thread(target=poll_worker)
     client_thread.start()
@@ -164,13 +164,12 @@ def test_poll_mode_delete(duthosts, rand_one_dut_hostname, ptfhost, enum_rand_on
     '''
     duthost = duthosts[rand_one_dut_hostname]
     namespace = duthost.get_namespace_from_asic_id(enum_rand_one_asic_index)
-    path_ns = namespace if namespace else "localhost"
-    path_list = ["/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_0".format(path_ns),
-                 "/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_1/fake_key1".format(path_ns)]
+    path_list = ["FAKE_APPL_DB_TABLE_0", "FAKE_APPL_DB_TABLE_1/fake_key1"]
 
     _modify_fake_appdb_table(duthost, namespace, add=True, entries=2)  # add both tables data
-    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=1,
-                                       update_count=10, max_sync_count=-1, timeout=30)
+    result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                       polling_interval=1, update_count=10, max_sync_count=-1,
+                                       timeout=30, namespace=namespace)
     assert result['rc'] == 0, "ptf poll command failed: {}".format(result)
     updates = re.findall("json_ietf_val", str(result['stdout']))
     assert len(updates) == 10, "Expected 10 update responses, got {}".format(len(updates))
@@ -178,8 +177,9 @@ def test_poll_mode_delete(duthosts, rand_one_dut_hostname, ptfhost, enum_rand_on
     holder = {}
 
     def poll_worker():
-        holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=2,
-                                                     update_count=0, max_sync_count=15, timeout=60)
+        holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                                     polling_interval=2, update_count=0, max_sync_count=15,
+                                                     timeout=60, namespace=namespace)
 
     client_thread = threading.Thread(target=poll_worker)
     client_thread.start()
@@ -202,13 +202,12 @@ def test_poll_mode_default_route_supervisor(duthosts, rand_one_dut_hostname, ptf
     if not duthost.is_supervisor_node():
         pytest.skip("Testing only for supervisor node")
     namespace = duthost.get_namespace_from_asic_id(enum_rand_one_asic_index)
-    path_ns = namespace if namespace else "localhost"
-    path_list = ["/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_0".format(path_ns),
-                 "/sonic-db:APPL_DB/{}/ROUTE_TABLE/0.0.0.0\\/0".format(path_ns)]
+    path_list = ["FAKE_APPL_DB_TABLE_0", "ROUTE_TABLE/0.0.0.0\\/0"]
     _modify_fake_appdb_table(duthost, namespace)  # add first table data
     try:
-        result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=2,
-                                           update_count=5, max_sync_count=-1, timeout=30)
+        result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                           polling_interval=2, update_count=5, max_sync_count=-1,
+                                           timeout=30, namespace=namespace)
         assert result['rc'] == 0, "ptf poll command failed: {}".format(result)
         updates = re.findall("json_ietf_val", str(result['stdout']))
         assert len(updates) == 5, "Expected 5 update responses, got {}".format(len(updates))
@@ -231,11 +230,9 @@ def test_poll_mode_default_route(duthosts, rand_one_dut_hostname, ptfhost, enum_
         pytest.skip("Skipping for {}. This is not valid for downstream node".format(duthost))
 
     is_ipv6_only = is_ipv6_only_topology(tbinfo)
-    route = "::\\/0" if is_ipv6_only else "0.0.0.0\\/0"
+    route = "ROUTE_TABLE/::\\/0" if is_ipv6_only else "ROUTE_TABLE/0.0.0.0\\/0"
     namespace = duthost.get_namespace_from_asic_id(enum_rand_one_asic_index)
-    path_ns = namespace if namespace else "localhost"
-    path_list = ["/sonic-db:APPL_DB/{}/FAKE_APPL_DB_TABLE_0".format(path_ns),
-                 "/sonic-db:APPL_DB/{}/ROUTE_TABLE/{}".format(path_ns, route)]
+    path_list = ["FAKE_APPL_DB_TABLE_0", route]
 
     _modify_fake_appdb_table(duthost, namespace)  # add first table data
     try:
@@ -244,8 +241,9 @@ def test_poll_mode_default_route(duthosts, rand_one_dut_hostname, ptfhost, enum_
         assert wait_until(60, 5, 0, _verify_route_table_status, duthost, namespace, "0", is_ipv6_only), \
             "ROUTE_TABLE default route not missing"
 
-        result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=2,
-                                           update_count=5, max_sync_count=-1, timeout=30)
+        result = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                           polling_interval=2, update_count=5, max_sync_count=-1,
+                                           timeout=30, namespace=namespace)
         assert result['rc'] == 0, "ptf poll command failed: {}".format(result)
         updates = re.findall("json_ietf_val", str(result['stdout']))
         assert len(updates) == 5, "Expected 5 update responses, got {}".format(len(updates))
@@ -253,8 +251,9 @@ def test_poll_mode_default_route(duthosts, rand_one_dut_hostname, ptfhost, enum_
         holder = {}
 
         def poll_worker():
-            holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, polling_interval=10,
-                                                         update_count=10, max_sync_count=-1, timeout=120)
+            holder['result'] = gnmi_subscribe_polling_py(duthost, ptfhost, path_list, target="APPL_DB",
+                                                         polling_interval=10, update_count=10, max_sync_count=-1,
+                                                         timeout=120, namespace=namespace)
 
         client_thread = threading.Thread(target=poll_worker)
         client_thread.start()
