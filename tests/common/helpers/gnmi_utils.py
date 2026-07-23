@@ -1,11 +1,15 @@
 import ipaddress
 import logging
+<<<<<<< HEAD
 import re
 from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import NameOID
+=======
+import time
+>>>>>>> aec8168fb (NOS-10412: wait for supervisord before detecting telemetry gnmi program (#2181))
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +121,17 @@ class GNMIEnvironment(object):
             if duthost.shell(cmd, module_ignore_errors=True)['rc'] == 0:
                 self.gnmi_config_table = "TELEMETRY"
                 self.gnmi_container = TELEMETRY_CONTAINER
-                # GNMI program is telemetry or gnmi-native
-                res = duthost.shell("docker exec %s supervisorctl status" % self.gnmi_container,
-                                    module_ignore_errors=True)
-                if 'telemetry' in res['stdout']:
+                # GNMI program is telemetry or gnmi-native. Wait for supervisord
+                # to be reachable before reading status: if the container is
+                # still initializing, `supervisorctl status` returns
+                # "unix:///var/run/supervisor.sock no such file" (rc=4) and the
+                # program-name detection below silently falls back to the wrong
+                # program. Restarting a non-existent program is a no-op, so the
+                # telemetry server is never restarted to pick up the freshly
+                # configured cert and keeps serving its stale default cert
+                # (expired), failing every TLS handshake. See NOS-10412.
+                status = self._wait_supervisorctl_status(duthost, self.gnmi_container)
+                if 'telemetry' in status:
                     self.gnmi_program = "telemetry"
                 else:
                     self.gnmi_program = "gnmi-native"
@@ -132,6 +143,30 @@ class GNMIEnvironment(object):
             else:
                 logger.warning("Telemetry container is not running")
         return False
+
+    @staticmethod
+    def _wait_supervisorctl_status(duthost, container, timeout=60, interval=5):
+        """Return ``supervisorctl status`` stdout once supervisord is reachable.
+
+        supervisorctl exits 0 (all running) or 3 (some stopped) once
+        supervisord has responded; rc 4 with
+        "unix:///var/run/supervisor.sock no such file" means the socket is not
+        up yet because the container is still initializing. Polls until
+        supervisord responds and returns its status output, or "" if it never
+        becomes reachable within ``timeout`` seconds.
+        """
+        deadline = time.time() + timeout
+        while True:
+            res = duthost.shell("docker exec %s supervisorctl status" % container,
+                                module_ignore_errors=True)
+            if res['rc'] in (0, 3):
+                return res['stdout']
+            if time.time() >= deadline:
+                logger.warning("supervisord in %s not reachable after %ss (last rc=%s); "
+                               "gnmi program name detection may be unreliable",
+                               container, timeout, res['rc'])
+                return res['stdout']
+            time.sleep(interval)
 
     def _set_default_config(self):
         """Set default configuration when no container is found"""
