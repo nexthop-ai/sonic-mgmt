@@ -66,6 +66,92 @@ def get_config_from_yaml(file_path):
     return config
 
 
+<<<<<<< HEAD
+=======
+def _wait_for_status(duthost, status_cmd, expected_status, exact=False):
+    """
+    Poll status_cmd until its stdout matches expected_status.
+
+    exact=True requires stdout.strip() == expected_status (for terse outputs
+    like `systemctl is-active`, where substring matching would let "active"
+    match a stopped service's "inactive" status). exact=False substring-matches
+    (for verbose outputs like `supervisorctl status`, which include extra
+    columns such as PID/uptime alongside the state).
+    """
+    max_wait_sec = 10
+    retry_interval_sec = 0.5
+    max_retries = int(max_wait_sec / retry_interval_sec)
+    last_stdout = None
+    for _ in range(max_retries):
+        status_result = duthost.shell(status_cmd, module_ignore_errors=True)
+        last_stdout = status_result.get("stdout", "")
+        matched = last_stdout.strip() == expected_status if exact else expected_status in last_stdout
+        if matched:
+            return True
+        time.sleep(retry_interval_sec)
+    logger.warning(f"Timed out waiting for '{expected_status}' from '{status_cmd}', last observed: {last_stdout!r}")
+    return False
+
+
+def _run_control_cmd(duthost, action, name, cmd, verify_cmd, expected_status, exact=False):
+    logger.info(f"{action.capitalize()}ing {name}")
+    try:
+        result = duthost.shell(cmd, module_ignore_errors=True)
+        logger.info(
+            f"{action.capitalize()} {name} result: rc={result.get('rc', 'N/A')}, \
+                stdout='{result.get('stdout', '')}', stderr='{result.get('stderr', '')}'"
+        )
+
+        return _wait_for_status(duthost, verify_cmd, expected_status, exact=exact)
+
+    except Exception as e:
+        logger.error(f"Exception while {action}ing {name}: {e}")
+        return False
+
+
+def daemon_stop(duthost, daemon_name):
+    """Stop a daemon managed by supervisorctl inside the pmon container."""
+    return _run_control_cmd(
+        duthost, "stop", daemon_name,
+        cmd=f"docker exec pmon supervisorctl stop {daemon_name}",
+        verify_cmd=f"docker exec pmon supervisorctl status {daemon_name}",
+        expected_status="STOPPED",
+    )
+
+
+def daemon_start(duthost, daemon_name):
+    """Start a daemon managed by supervisorctl inside the pmon container."""
+    return _run_control_cmd(
+        duthost, "start", daemon_name,
+        cmd=f"docker exec pmon supervisorctl start {daemon_name}",
+        verify_cmd=f"docker exec pmon supervisorctl status {daemon_name}",
+        expected_status="RUNNING",
+    )
+
+
+def service_stop(duthost, service_name):
+    """Stop a host systemd service."""
+    return _run_control_cmd(
+        duthost, "stop", service_name,
+        cmd=f"sudo systemctl stop {service_name}",
+        verify_cmd=f"systemctl is-active {service_name}",
+        expected_status="inactive",
+        exact=True,
+    )
+
+
+def service_start(duthost, service_name):
+    """Start a host systemd service."""
+    return _run_control_cmd(
+        duthost, "start", service_name,
+        cmd=f"sudo systemctl start {service_name}",
+        verify_cmd=f"systemctl is-active {service_name}",
+        expected_status="active",
+        exact=True,
+    )
+
+
+>>>>>>> 68fc4f9a0 (NOS-4208: Reuse shared daemon/service utils in test_pddf_ledutil (#2177))
 def fanout_hosts_and_ports(fanouthosts, duts_and_ports):
     """
     Use cases:

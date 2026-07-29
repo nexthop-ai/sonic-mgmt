@@ -14,7 +14,7 @@ import pytest
 
 from tests.common.helpers.platform_api import chassis
 from tests.common.platform.device_utils import start_platform_api_service, platform_api_conn    # noqa: F401
-from tests.platform_tests.utils import get_config_from_yaml, is_pddf_supported_and_enabled
+from tests.platform_tests.utils import get_config_from_yaml, is_pddf_supported_and_enabled, service_start, service_stop
 
 logger = logging.getLogger(__name__)
 
@@ -93,23 +93,19 @@ def led_service_manager(dut):
 
         services_to_restart = []
         for service_name in services:
-            logger.info(f"Stopping {service_name} to allow manual LED control for {led_name}")
             service_status = dut.shell(f"systemctl is-active {service_name}", module_ignore_errors=True)
             if service_status["stdout"].strip() == "active":
-                dut.shell(f"sudo systemctl stop {service_name}")
+                logger.info(f"Stopping {service_name} to allow manual LED control for {led_name}")
+                if not service_stop(dut, service_name):
+                    logger.warning(f"Failed to verify {service_name} stopped")
                 services_to_restart.append(service_name)
-
-        if services_to_restart:
-            time.sleep(1)
 
         try:
             yield
         finally:
             for service_name in services_to_restart:
-                logger.info(f"Restarting {service_name}")
-                dut.shell(f"sudo systemctl start {service_name}")
-            if services_to_restart:
-                time.sleep(2)
+                if not service_start(dut, service_name):
+                    logger.warning(f"Failed to verify {service_name} restarted")
 
     yield _manage
 
