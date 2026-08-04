@@ -407,8 +407,8 @@ def test_show_platform_psustatus_json(duthosts, rand_one_dut_hostname, is_suppor
                          "power"]
         pytest_assert(all(key in psu_info for key in expected_keys), "Expected key(s) missing from JSON output: '{}'".
                       format(psu_status_output))
-        pytest_assert(psu_info["status"] in ["OK", "NOT OK", "NOT PRESENT"], "Unexpected PSU status value: '{}'".
-                      format(psu_info["status"]))
+        pytest_assert(psu_info["status"] in ["OK", "NOT OK", "NOT PRESENT", "NOT POWERED"],
+                      "Unexpected PSU status value: '{}'".format(psu_info["status"]))
         pytest_assert(psu_info["led_status"] in led_status_list, "Unexpected PSU led_status value: '{}'".
                       format(psu_info["led_status"]))
 

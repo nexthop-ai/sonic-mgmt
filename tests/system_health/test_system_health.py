@@ -59,8 +59,11 @@ EXPECT_FAN_BROKEN = '{} is broken'
 EXPECT_FAN_INVALID_SPEED = '{} speed is out of range'
 EXPECT_FAN_INVALID_DIRECTION = '{} direction'
 EXPECT_ASIC_HOT = 'ASIC temperature is too hot'
-EXPECT_PSU_MISSING = '{} is missing or not available'
-EXPECT_PSU_NO_POWER = '{} is out of power'
+EXPECT_PSU_MISSING = '{} is not present'
+# mock_psu_status(False) deasserts power-good while the PSU input stays live, so the
+# health checker classifies the PSU as faulted (not "present but not powered", which
+# requires positive evidence of no input voltage).
+EXPECT_PSU_FAULTED = '{} is faulted'
 EXPECT_PSU_HOT = '{} temperature is too hot'
 EXPECT_PSU_INVALID_VOLTAGE = '{} voltage is out of range'
 
@@ -223,10 +226,10 @@ def test_device_checker(duthosts, enum_rand_one_per_hwsku_hostname,
         fan_mock_result, fan_name = device_mocker.mock_fan_presence(False)
         fan_expect_value = EXPECT_FAN_MISSING.format(fan_name)
         psu_mock_result, psu_name = device_mocker.mock_psu_status(False)
-        psu_expect_value = EXPECT_PSU_NO_POWER.format(psu_name)
+        psu_expect_value = EXPECT_PSU_FAULTED.format(psu_name)
         if fan_mock_result and psu_mock_result:
             logger.info('Mocked fan absence {}'.format(fan_name))
-            logger.info('Mocked PSU no power for {}'.format(psu_name))
+            logger.info('Mocked PSU power-good fault for {}'.format(psu_name))
             logger.info('Waiting for mock fan/PSU state to appear in STATE_DB')
             assert wait_until(THERMAL_CHECK_INTERVAL, 10, 2,
                               check_system_health_info, duthost, fan_name, fan_expect_value), \
@@ -235,7 +238,7 @@ def test_device_checker(duthosts, enum_rand_one_per_hwsku_hostname,
                     redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, fan_name))
             assert wait_until(THERMAL_CHECK_INTERVAL, 10, 2,
                               check_system_health_info, duthost, psu_name, psu_expect_value), \
-                'Mock PSU no power, expect {}, but got {}'.format(
+                'Mock PSU power-good fault, expect {}, but got {}'.format(
                     psu_expect_value,
                     redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, psu_name))
 

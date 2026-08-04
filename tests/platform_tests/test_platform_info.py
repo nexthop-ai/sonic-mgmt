@@ -273,7 +273,7 @@ def check_all_psu_on(dut, psu_test_results):
                 continue
             if " ".join(fields[2:]) != 'NOT PRESENT':
                 psu_test_results[fields[1]] = line
-            if " ".join(fields[2:]) == "NOT OK":
+            if " ".join(fields[2:]) in ("NOT OK", "NOT POWERED"):
                 power_off_psu_list.append(fields[1])
     else:
         # Use JSON output
@@ -285,7 +285,7 @@ def check_all_psu_on(dut, psu_test_results):
                 continue
             if psu_info["status"] != 'NOT PRESENT':
                 psu_test_results[psu_info['name']] = psu_info
-            if psu_info["status"] == "NOT OK":
+            if psu_info["status"] in ("NOT OK", "NOT POWERED"):
                 power_off_psu_list.append(psu_info["name"])
 
     if power_off_psu_list:

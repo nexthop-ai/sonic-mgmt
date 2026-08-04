@@ -85,11 +85,12 @@ def fanout_switch_port_lookup(fanout_switches, dut_name, dut_port):
 
 def get_dut_psu_line_pattern(dut):
     if "201811" in dut.os_version or "201911" in dut.os_version:
-        psu_line_pattern = re.compile(r"PSU\s+(\d)+\s+(OK|NOT OK|NOT PRESENT)")
+        psu_line_pattern = re.compile(r"PSU\s+(\d)+\s+(OK|NOT OK|NOT PRESENT|NOT POWERED)")
     elif dut.facts['platform'] == "x86_64-dellemc_z9332f_d1508-r0":
-        psu_line_pattern = re.compile(r"PSU\s+(\d+).*?(OK|NOT OK|NOT PRESENT|WARNING)\s+(N/A)")
+        psu_line_pattern = re.compile(r"PSU\s+(\d+).*?(OK|NOT OK|NOT PRESENT|NOT POWERED|WARNING)\s+(N/A)")
     elif dut.facts["asic_type"] in ["mellanox"]:
-        psu_line_pattern = re.compile(r"PSU\s+(\d+).*?(OK|NOT OK|NOT PRESENT|WARNING)\s+(green|amber|red|off|N/A)")
+        psu_line_pattern = re.compile(
+            r"PSU\s+(\d+).*?(OK|NOT OK|NOT PRESENT|NOT POWERED|WARNING)\s+(green|amber|red|off|N/A)")
     else:
         # Changed the pattern to match different PSU name formats and status patterns.
         # Supports various PSU naming conventions:
@@ -104,7 +105,7 @@ def get_dut_psu_line_pattern(dut):
         #     PSU 9  PSU6.3KW-20A-HV  DTM273501QU      1.00  55.052         11.359         626.386      OK        green
         #
         psu_line_pattern = re.compile(
-            r"^(PSU\s+\d+|\S+)\s+.*?(OK|NOT OK|NOT PRESENT|WARNING)\s+(green|amber|red|off|N/A)")
+            r"^(PSU\s+\d+|\S+)\s+.*?(OK|NOT OK|NOT PRESENT|NOT POWERED|WARNING)\s+(green|amber|red|off|N/A)")
     return psu_line_pattern
 
 
