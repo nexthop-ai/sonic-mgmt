@@ -57,6 +57,16 @@ SERVER_FILE = 'platform_api_server.py'
 SERVER_PORT = 8000
 IPTABLES_PREPEND_RULE_CMD = 'iptables -I INPUT 1 -p tcp -m tcp --dport {} -j ACCEPT'.format(SERVER_PORT)
 IP6TABLES_PREPEND_RULE_CMD = 'ip6tables -I INPUT 1 -p tcp -m tcp --dport {} -j ACCEPT'.format(SERVER_PORT)
+
+NEIGHBOR_MISS_COPP_GROUP_KEY = "COPP_GROUP|queue1_group3"
+NEIGHBOR_MISS_COPP_DEFAULT_PPS = 2000
+# Full entry (not just cir/cbs) so a freshly created override passes YANG validation.
+NEIGHBOR_MISS_COPP_HSET_CMD = (
+    "sonic-db-cli CONFIG_DB HSET '{key}' "
+    "trap_action trap trap_priority 1 queue 1 meter_type packets "
+    "mode sr_tcm cir {cir} cbs {cbs} red_action drop"
+)
+
 test_report = dict()
 
 
@@ -454,6 +464,65 @@ def verify_yang(duthost):
 
     if not wait_until(60, 15, 0, duthost.yang_validate, strict_yang_validation):
         raise RebootHealthError("Yang validation failed")
+
+
+def ensure_neighbor_miss_copp(duthost, pps=NEIGHBOR_MISS_COPP_DEFAULT_PPS):
+    """
+    Raise the neighbor_miss CoPP rate so the warm-up's bulk ARP resolution
+    isn't throttled below the data-plane readiness threshold (the stock 200 pps
+    resolves too few VLAN neighbors within the warm-up window).
+
+    Returns the previous (cir, cbs) pair, or None if the group had no
+    CONFIG_DB entry beforehand (the CoPP defaults live in copp_cfg.json, so
+    an entry here is purely an override). Tests that reboot the DUT don't
+    need to restore (each image boot reloads the default); tests that keep
+    CONFIG_DB alive across the run should pass the returned value to
+    restore_neighbor_miss_copp() on teardown.
+    """
+    prev = None
+    result = duthost.shell(
+        "sonic-db-cli CONFIG_DB HMGET '{}' cir cbs".format(NEIGHBOR_MISS_COPP_GROUP_KEY),
+        module_ignore_errors=True)
+    if result.get("rc") == 0:
+        values = result.get("stdout_lines", [])
+        if len(values) == 2 and all(values):
+            prev = (values[0], values[1])
+    result = duthost.shell(
+        NEIGHBOR_MISS_COPP_HSET_CMD.format(key=NEIGHBOR_MISS_COPP_GROUP_KEY, cir=pps, cbs=pps),
+        module_ignore_errors=True)
+    if result.get("rc") != 0:
+        logging.warning("Failed to raise neighbor_miss CoPP rate: {}".format(result.get("stderr", "")))
+    return prev
+
+
+def restore_neighbor_miss_copp(duthost, prev):
+    """
+    Undo ensure_neighbor_miss_copp(): rewrite the override entry with the saved
+    cir/cbs, or delete it if there was none before (leaving it behind trips the
+    post-test config_db consistency check).
+    """
+    if prev:
+        cmd = NEIGHBOR_MISS_COPP_HSET_CMD.format(key=NEIGHBOR_MISS_COPP_GROUP_KEY, cir=prev[0], cbs=prev[1])
+    else:
+        cmd = "sonic-db-cli CONFIG_DB DEL '{}'".format(NEIGHBOR_MISS_COPP_GROUP_KEY)
+    result = duthost.shell(cmd, module_ignore_errors=True)
+    if result.get("rc") != 0:
+        logging.warning("Failed to restore neighbor_miss CoPP rate: {}".format(result.get("stderr", "")))
+
+
+@pytest.fixture
+def neighbor_miss_copp_override(duthosts, rand_one_dut_hostname):
+    """
+    Raise the neighbor_miss CoPP rate for the duration of a test and restore
+    the previous CONFIG_DB state on teardown. Use this in tests that keep
+    CONFIG_DB alive across the run; tests that reboot the DUT can call
+    ensure_neighbor_miss_copp() directly since each image boot reloads the
+    CoPP defaults anyway.
+    """
+    duthost = duthosts[rand_one_dut_hostname]
+    prev = ensure_neighbor_miss_copp(duthost)
+    yield
+    restore_neighbor_miss_copp(duthost, prev)
 
 
 @pytest.fixture

@@ -7,6 +7,7 @@ from tests.common.utilities import skip_release
 from tests.common.platform.device_utils import verify_dut_health         # noqa: F401
 from tests.common.fixtures.ptfhost_utils import copy_ptftests_directory     # noqa: F401
 from tests.common.platform.device_utils import advanceboot_loganalyzer  # noqa: F401
+from tests.common.platform.device_utils import neighbor_miss_copp_override  # noqa: F401
 
 pytestmark = [
     pytest.mark.disable_loganalyzer,
@@ -95,7 +96,8 @@ def select_services_to_warmrestart(duthost, request):
 def test_service_warm_restart(request, duthosts, rand_one_dut_hostname,
                               verify_dut_health, get_advanced_reboot,       # noqa: F811
                               advanceboot_loganalyzer,  # noqa: F811
-                              capture_interface_counters):
+                              capture_interface_counters,
+                              neighbor_miss_copp_override):  # noqa: F811
     duthost = duthosts[rand_one_dut_hostname]
 
     candidate_service_list = select_services_to_warmrestart(duthost, request)

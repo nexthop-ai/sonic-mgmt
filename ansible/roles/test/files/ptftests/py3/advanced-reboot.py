@@ -1697,6 +1697,12 @@ class ReloadTest(BaseTest):
                 "sudo " + self.reboot_type + ignore_db_integrity_check, timeout=10)
 
         else:
+            # Start the IO threads before restarting services so the capture
+            # covers the restart disruption window. There is no reboot command
+            # and no teamd flap to key off here, so start them directly.
+            self.sniffer_started = threading.Event()
+            self.sniff_thr.start()
+            self.sender_thr.start()
             self.restart_service()
             return
 
@@ -1905,8 +1911,8 @@ class ReloadTest(BaseTest):
             self.apply_filter_all_ports(
                 'not (arp and ether src {} and ether dst ff:ff:ff:ff:ff:ff) and not tcp'.format(
                     self.test_params['dut_mac']))
-            sender_start = datetime.datetime.now()
-            self.log("Sender started at %s" % str(sender_start))
+            sender_start = time.monotonic()
+            self.log("Sender started")
 
             self.packets_list = []
             from_t1_iter = itertools.cycle(self.from_t1)
@@ -1917,6 +1923,11 @@ class ReloadTest(BaseTest):
                 time.sleep(self.send_interval)
                 if self.reboot_start and self.finalizer_state == "inactive":
                     # keep sending packets until device reboots and finalizer enters inactive state
+                    break
+                if self.reboot_type == 'service-warm-restart' and \
+                        time.monotonic() - sender_start > self.time_to_listen:
+                    # no warmboot finalizer runs for a service warm restart; fall back
+                    # to the time-bound send window this test originally used
                     break
                 payload = '0' * 60 + str(self.sent_packet_count)
                 if (self.sent_packet_count % 5) == 0:   # From vlan to T1.
@@ -1935,8 +1946,8 @@ class ReloadTest(BaseTest):
 
             self.log("Sent count vlan to t1: {}".format(sent_count_vlan_to_t1))
             self.log("Sent count t1 to vlan: {}".format(sent_count_t1_to_vlan))
-            self.log("Sender has been running for %s" %
-                     str(datetime.datetime.now() - sender_start))
+            self.log("Sender has been running for %.1f seconds" %
+                     (time.monotonic() - sender_start))
             self.log("Total sent packets by sender: {}".format(self.sent_packet_count))
 
             # Signal sniffer thread to allow early finish.

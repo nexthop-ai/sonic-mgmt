@@ -1598,10 +1598,18 @@ platform_tests/test_sequential_restart.py::test_restart_syncd:
 #######################################
 platform_tests/test_service_warm_restart.py:
   skip:
+<<<<<<< HEAD
     reason: "Skipped on mellanox and nvidia asic from 202411 and later / This test is not run on this topology currently"
     conditions_logical_operator: or
     conditions:
       - "asic_type in ['mellanox', 'nvidia']"
+=======
+    reason: "Skipped on mellanox and nvidia asic from 202411 and later, and unsupported platforms / This test is not run on this topology currently / Only enabled on NH-4010 for Nexthop platforms."
+    conditions_logical_operator: or
+    conditions:
+      - "asic_type in ['mellanox', 'nvidia']"
+      - "'x86_64-nexthop_' in platform and not platform.startswith('x86_64-nexthop_4010')"
+>>>>>>> f0ebf024a (NOS-6788: unskip test_service_warm_restart on NH-4010 (#2415))
       - "topo_type not in ['t0']"
 
 #######################################

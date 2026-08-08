@@ -16,7 +16,7 @@ from tests.common.fixtures.ptfhost_utils import change_mac_addresses        # no
 
 from tests.common.platform.device_utils import RebootHealthError, \
     check_services, check_interfaces_and_transceivers, check_neighbors, \
-    verify_no_coredumps, handle_test_error
+    verify_no_coredumps, handle_test_error, ensure_neighbor_miss_copp
 from tests.platform_tests.verify_dut_health import wait_until_uptime, get_test_report
 
 pytestmark = [
@@ -51,6 +51,39 @@ class ContinuousReboot:
 
         self.init_reporting()
 
+<<<<<<< HEAD
+=======
+    def image_exists(self, image_path):
+        # Checked from the sonic-mgmt host: this only asks "is the image there",
+        # independent of the DUT's mgmt routing state.
+        http_code = self.localhost.shell(
+            "curl -o /dev/null --silent -Iw '%{{http_code}}' {}".format(image_path),
+            module_ignore_errors=True)["stdout"]
+        if http_code != '200':
+            logging.info("Image existence check returned HTTP {} for {}".format(http_code, image_path))
+        return http_code == '200'
+
+    def _dut_stdout(self, cmd):
+        return self.duthost.shell(cmd, module_ignore_errors=True).get("stdout", "").strip()
+
+    def ensure_dut_can_resolve(self, host):
+        """
+        install_sonic() downloads on the DUT by URL, but a freshly booted image
+        has no nameserver configured. If the DUT can't resolve the image host,
+        point it at the testbed DNS (.254 of the mgmt subnet). Best-effort.
+        """
+        if not host or self._dut_stdout("getent hosts {} | head -1".format(host)):
+            return
+        mgmt_ip = self._dut_stdout(
+            "ip -4 addr show eth0 | grep -oP '(?<=inet\\s)\\d+\\.\\d+\\.\\d+\\.\\d+'")
+        if not mgmt_ip:
+            logging.warning("Could not determine eth0 IP on DUT; skipping DNS setup")
+            return
+        dns = ".".join(mgmt_ip.split(".")[:3]) + ".254"
+        self.duthost.command(
+            "config dns nameserver add {}".format(dns), module_ignore_errors=True)
+
+>>>>>>> f0ebf024a (NOS-6788: unskip test_service_warm_restart on NH-4010 (#2415))
     def init_reporting(self):
         self.reboot_count = None
         self.current_image = None
@@ -79,6 +112,11 @@ class ContinuousReboot:
         @param reboot_kwargs: The argument used by reboot_helper
         """
         logging.info("Run %s reboot on DUT" % self.reboot_type)
+<<<<<<< HEAD
+=======
+        # Re-run before every reboot; the default (200 pps) is restored on each image boot.
+        ensure_neighbor_miss_copp(self.duthost, self.neighbor_miss_copp_pps)
+>>>>>>> f0ebf024a (NOS-6788: unskip test_service_warm_restart on NH-4010 (#2415))
         self.run_reboot_testcase()
         # Wait until uptime reaches allowed value
         wait_until_uptime(self.duthost, self.continuous_reboot_delay)
