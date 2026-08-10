@@ -504,6 +504,7 @@ def check_health_field_not_equal(duthost, field, unexpected):
     return not value or value != unexpected
 
 
+<<<<<<< HEAD
 def _fetch_led_and_status(duthost):
     """Fetch system health summary and return (led_color_lower, status_dict)."""
     summary = duthost.shell('show system-health summary')['stdout']
@@ -511,6 +512,23 @@ def _fetch_led_and_status(duthost):
     led_res = re.findall(r"System status LED\s+([\w ]+)", summary)
     led_status = led_res[0].strip().lower() if led_res else ""
     status_data = re.findall(r"(\w+):\s+Status:\s+(\w+)", summary)
+=======
+def check_system_health_led_info(duthost):
+    system_health_summary = duthost.shell('show system-health summary')['stdout']
+
+    "System status LED  red"
+    system_led_res = re.findall(r"System status LED[ \t]+(\S+)", system_health_summary)
+    system_led_status = system_led_res[0].strip() if system_led_res else None
+    logger.info(f"System status LED is {system_led_status}")
+
+    # Platforms without a controllable status LED (e.g. SONiC BMC) report "N/A"
+    if not system_led_status or system_led_status.upper() == "N/A":
+        logger.info("No system status LED reported, skipping LED color check")
+        return True
+
+    # Regex to find all status names and values
+    status_data = re.findall(r"(\w+):\s+Status:\s+(\w+)", system_health_summary)
+>>>>>>> cc0045b6e (NOS-12266: Skip LED color check in system_health when no system LED exists (sonic BMC) (#2300))
     status_dict = {name: status for name, status in status_data}
     return led_status, status_dict
 
