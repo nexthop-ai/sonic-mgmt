@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 import pytest
 import yaml
 import re
@@ -225,16 +224,24 @@ def base_verification(discard_group, pkt, ptfadapter, duthosts, asic_index, port
         if not tx_dut_ports:
             pytest.fail("No L3 interface specified")
 
-        time.sleep(ACL_COUNTERS_UPDATE_INTERVAL)
-        acl_drops = 0
-        for duthost in duthosts.frontend_nodes:
-            for sonic_host_or_asic_inst in duthost.get_sonic_host_and_frontend_asic_instance():
-                namespace = sonic_host_or_asic_inst.namespace if hasattr(sonic_host_or_asic_inst,
-                                                                         'namespace') else DEFAULT_NAMESPACE
-                if duthost.sonichost.is_multi_asic and namespace == DEFAULT_NAMESPACE:
-                    continue
-                acl_drops += duthost.acl_facts(namespace=namespace)["ansible_facts"]["ansible_acl_facts"][
-                    drop_information if drop_information else "DATAACL"]["rules"]["RULE_1"]["packets_count"]
+        def _get_acl_drops():
+            acl_drops = 0
+            for duthost in duthosts.frontend_nodes:
+                for sonic_host_or_asic_inst in duthost.get_sonic_host_and_frontend_asic_instance():
+                    namespace = sonic_host_or_asic_inst.namespace if hasattr(sonic_host_or_asic_inst,
+                                                                             'namespace') else DEFAULT_NAMESPACE
+                    if duthost.sonichost.is_multi_asic and namespace == DEFAULT_NAMESPACE:
+                        continue
+                    acl_drops += duthost.acl_facts(namespace=namespace)["ansible_facts"]["ansible_acl_facts"][
+                        drop_information if drop_information else "DATAACL"]["rules"]["RULE_1"]["packets_count"]
+            return acl_drops
+
+        # ACL counters are published asynchronously, so a single sample taken a fixed interval after
+        # the traffic can land before the update does. Poll instead, as verify_drop_counters() does
+        # for the L3 counters above.
+        wait_until(ACL_COUNTERS_UPDATE_INTERVAL * 3, ACL_COUNTERS_UPDATE_INTERVAL // 2, 0,
+                   lambda: _get_acl_drops() == pkt_number)
+        acl_drops = _get_acl_drops()
         if acl_drops != pkt_number:
             fail_msg = "ACL drop counter was not incremented on iface {}. DUT ACL counter == {}; Sent pkts == {}"\
                 .format(tx_dut_ports[ports_info["dut_iface"]], acl_drops, pkt_number)
