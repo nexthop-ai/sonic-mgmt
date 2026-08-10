@@ -8,6 +8,7 @@ from ptf.mask import Mask
 import ptf.packet as scapy
 import ptf.testutils as testutils
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import wait_until
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,60 @@ def test_lag_member_forwarding_packets(duthosts, enum_rand_one_per_hwsku_fronten
             pytest.fail(
                 "Failed to apply lag member configuration file: {}".format(result["stderr"])
             )
+
+        # swssconfig returns before orchagent/syncd finishes applying the config.
+        # Wait for ASIC_DB to reflect that LAG members of the tested LAG are
+        # disabled before sending traffic, otherwise packets may still be forwarded.
+        def check_lag_members_disabled_in_asic_db():
+            """Check ASIC_DB for EGRESS_DISABLE=true on members of the LAG under test.
+
+            Instead of looking up the LAG's SAI OID (which may not exist in
+            COUNTERS_LAG_NAME_MAP on converged-peer testbeds), find the member
+            port SAI OIDs and match them against LAG_MEMBER entries.
+            """
+            # Get SAI OIDs for the member ports we disabled
+            member_port_oids = set()
+            for member_name in portchannel_members:
+                port_oid = asichost.shell(
+                    "sonic-db-cli COUNTERS_DB HGET COUNTERS_PORT_NAME_MAP {}".format(
+                        member_name),
+                    module_ignore_errors=True
+                )["stdout"].strip()
+                if port_oid:
+                    member_port_oids.add(port_oid)
+
+            if len(member_port_oids) != len(portchannel_members):
+                logger.warning("Could not find all port OIDs: expected %d, found %d",
+                               len(portchannel_members), len(member_port_oids))
+                return False
+
+            # Find LAG_MEMBER entries whose PORT_ID matches our member ports
+            all_member_keys = asichost.shell(
+                "sonic-db-cli ASIC_DB KEYS 'ASIC_STATE:SAI_OBJECT_TYPE_LAG_MEMBER:*'"
+            )["stdout_lines"]
+
+            matched = 0
+            for key in all_member_keys:
+                port_id = asichost.shell(
+                    "sonic-db-cli ASIC_DB HGET '{}' SAI_LAG_MEMBER_ATTR_PORT_ID".format(key)
+                )["stdout"].strip()
+                if port_id in member_port_oids:
+                    egress_disable = asichost.shell(
+                        "sonic-db-cli ASIC_DB HGET '{}' SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE".format(
+                            key)
+                    )["stdout"].strip()
+                    if egress_disable != "true":
+                        return False
+                    matched += 1
+
+            return matched == len(member_port_oids)
+
+        pytest_assert(
+            wait_until(10, 0.5, 0, check_lag_members_disabled_in_asic_db),
+            "LAG members of {} not disabled in ASIC_DB within 10s after swssconfig".format(
+                portchannel_name)
+        )
+        logger.info("All LAG members of %s confirmed disabled in ASIC_DB", portchannel_name)
 
         # Make sure data forwarding starts to fail
         if peer_device_dest_ip:
