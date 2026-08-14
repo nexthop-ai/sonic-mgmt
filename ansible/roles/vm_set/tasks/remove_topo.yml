@@ -134,7 +134,7 @@
 
   - name: Remove duts ports
     include_tasks: remove_dut_port.yml
-    when: "external_port is defined and 'bmc' not in topo"
+    when: "(external_port is defined or hostvars[dut_name].dut_fp_prefix is defined) and 'bmc' not in topo"
     loop: "{{ duts_name.split(',') }}"
     loop_control:
       loop_var: dut_name
@@ -200,7 +200,7 @@
 
   - name: Remove duts ports
     include_tasks: remove_dut_port.yml
-    when: external_port is defined
+    when: external_port is defined or hostvars[dut_name].dut_fp_prefix is defined
     loop: "{{ duts_name.split(',') }}"
     loop_control:
       loop_var: dut_name

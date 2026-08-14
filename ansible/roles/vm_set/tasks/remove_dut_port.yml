@@ -1,6 +1,18 @@
+# A fabric-attached test server has per-port veths instead of VLAN subinterfaces; the
+# vxlan netdevs they redirect to are provisioned with the test server and left alone.
+- name: Remove front panel veths for fabric-attached test server
+  fp_veth_port:
+    fp_prefix: "{{ hostvars[dut_name].dut_fp_prefix }}"
+    vlan_ids: "{{ device_vlan_map_list[dut_name] }}"
+    vnis: "{{ hostvars[dut_name].dut_fp_vnis }}"
+    cmd: "remove"
+  become: yes
+  when: hostvars[dut_name].dut_fp_prefix is defined
+
 - name: Remove vlan port for vlan tunnel
   vlan_port:
     external_port: "{{ external_port }}"
     vlan_ids: "{{ device_vlan_map_list[dut_name] }}"
     cmd: "remove"
   become: yes
+  when: hostvars[dut_name].dut_fp_prefix is not defined

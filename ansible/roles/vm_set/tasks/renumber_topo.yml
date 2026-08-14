@@ -185,7 +185,7 @@
 
   - name: Create vlan ports for dut
     include_tasks: create_dut_port.yml
-    when: "external_port is defined and 'bmc' not in topo"
+    when: "(external_port is defined or hostvars[dut_name].dut_fp_prefix is defined) and 'bmc' not in topo"
     loop: "{{ duts_name.split(',') }}"
     loop_control:
       loop_var: dut_name
