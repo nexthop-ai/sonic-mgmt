@@ -1314,6 +1314,13 @@ class QosSaiBase(QosBase):
                 for intf in lag["members"]:
                     dutLagInterfaces.append(src_mgFacts["minigraph_ptf_indices"][intf])
 
+            # Upstream #24668 moved Broadcom T0 QoS testing onto the LAG uplink
+            # ports for TH6. On other Broadcom T0 platforms this breaks every
+            # dataplane test: dutTestParams keeps router_mac empty (VLAN L2
+            # assumption), so packets sent to routed LAG ports are dropped.
+            # Keep the LAG-port override TH6-only.
+            use_lag_test_ports = isBroadcomDevice(src_dut) and src_dut.get_asic_name() == "th6"
+
             config_facts = duthosts.config_facts(host=src_dut.hostname, source="running")
             vlan_info = config_facts[src_dut.hostname].get('VLAN', {})
             port_speeds = self.__buildPortSpeeds(config_facts[src_dut.hostname])
@@ -1337,7 +1344,11 @@ class QosSaiBase(QosBase):
                         testPortIds[src_dut_index][src_asic_index].union(set(dutLagInterfaces))
                 # The last port is used for up link from DUT switch
                 testPortIds[src_dut_index][src_asic_index] -= {len(src_mgFacts["minigraph_ptf_indices"]) - 1}
+<<<<<<< HEAD
             if isBroadcomTH6Device:
+=======
+            if use_lag_test_ports:
+>>>>>>> c7d3c5843 (NOS-14296: Restrict Broadcom QoS LAG test-port override to TH6 (#2671))
                 testPortIds[src_dut_index][src_asic_index] = set(dutLagInterfaces)
             testPortIds[src_dut_index][src_asic_index] = sorted(testPortIds[src_dut_index][src_asic_index])
             pytest_require(len(testPortIds[src_dut_index][src_asic_index]) != 0,
@@ -1350,7 +1361,11 @@ class QosSaiBase(QosBase):
             dualTorPortIndexes[src_dut_index][src_asic_index] = []
             if 'backend' in topo:
                 intf_map = src_mgFacts["minigraph_vlan_sub_interfaces"]
+<<<<<<< HEAD
             elif isBroadcomTH6Device:
+=======
+            elif use_lag_test_ports:
+>>>>>>> c7d3c5843 (NOS-14296: Restrict Broadcom QoS LAG test-port override to TH6 (#2671))
                 intf_map = src_mgFacts["minigraph_portchannel_interfaces"]
             else:
                 intf_map = src_mgFacts["minigraph_interfaces"]
@@ -1358,6 +1373,13 @@ class QosSaiBase(QosBase):
             use_separated_upkink_dscp_tc_map = separated_dscp_to_tc_map_on_uplink(dut_qos_maps)
             for portConfig in intf_map:
                 intf = portConfig["attachto"].split(".")[0]
+<<<<<<< HEAD
+=======
+                if use_lag_test_ports and intf in src_mgFacts["minigraph_portchannels"]:
+                    # minigraph_ptf_indices is keyed by physical port only, so a LAG
+                    # must be resolved to a member before the index lookup below.
+                    intf = src_mgFacts["minigraph_portchannels"][intf]['members'][0]
+>>>>>>> c7d3c5843 (NOS-14296: Restrict Broadcom QoS LAG test-port override to TH6 (#2671))
                 portIndex = src_mgFacts["minigraph_ptf_indices"][intf]
                 if ipaddress.ip_interface(portConfig['peer_addr']).ip.version == ip_version:
                     if isBroadcomTH6Device:
