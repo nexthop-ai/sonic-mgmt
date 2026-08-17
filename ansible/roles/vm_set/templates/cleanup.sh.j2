@@ -14,21 +14,30 @@ test -z "$(virsh list --all --name)" || virsh list --all --name | xargs -I % vir
 # remove all VM disks
 rm -f {{ root_path }}/disks/*
 
-# remove all ovs bridges
-test -z "$(ovs-vsctl list-br)" || ovs-vsctl list-br | xargs -I % ovs-vsctl del-br %
+# remove all ovs bridges, batched into one ovs-vsctl transaction per 50 bridges. One
+# ovs-vsctl per bridge costs ~12s on a testserver holding a wide topo (252 neighbors is
+# ~1000 bridges, so over 3 hours); batched it is under a second per bridge.
+del_br_args=()
+del_br_count=0
+for br in $(ovs-vsctl list-br); do
+  del_br_args+=(-- --if-exists del-br "$br")
+  del_br_count=$((del_br_count + 1))
+  if [ "$del_br_count" -ge 50 ]; then
+    ovs-vsctl "${del_br_args[@]}"
+    del_br_args=()
+    del_br_count=0
+  fi
+done
+test "$del_br_count" -eq 0 || ovs-vsctl "${del_br_args[@]}"
 
 # stop exabgp process before stopping ptf container
 ptf_container_names=$(docker ps | grep ptf | awk '{print $NF}')
 for ptf in $ptf_container_names;
 do
-  process_name="$(docker exec $ptf supervisorctl status | awk '{print $1}')"
-  for process in $process_name;
-  do
-    process_status="$(docker exec $ptf supervisorctl status | grep $process | awk '{print $2}')"
-    if [[ $process_status == "RUNNING" ]]; then
-      docker exec $ptf supervisorctl stop $process
-    fi
-  done
+  # One exec for the whole container instead of two per process. A wide topo runs an
+  # exabgp per neighbor per address family (504 of them for 252 neighbors), and the
+  # per-process loop spent ~1000 `docker exec`s getting to the same place.
+  docker exec $ptf supervisorctl stop all || true
 done
 
 # stop all running docker containers
