@@ -38,7 +38,7 @@ def restore_config_db(duthost):
     duthost.shell("mv /etc/sonic/config_db.json.bak /etc/sonic/config_db.json")
 
     # Reload to restore configuration
-    config_reload(duthost, safe_reload=True, check_intf_up_ports=True)
+    config_reload(duthost, safe_reload=True, check_intf_up_ports=True, wait_before_force_reload=300)
 
 
 @pytest.fixture(scope="module")
