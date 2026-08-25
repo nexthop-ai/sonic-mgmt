@@ -10,6 +10,7 @@ from .helper import gnmi_subscribe_polling
 from .helper import gnmi_subscribe_streaming_sample, gnmi_subscribe_streaming_onchange
 from tests.common.helpers.gnmi_utils import add_gnmi_client_common_name, gnmi_container
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.bgp import get_bgp_neighbors_from_config_facts
 from tests.common.utilities import DEFAULT_VRF_NAME, MGMT_VRF_NAME, wait_until
 from tests.common.plugins.allure_wrapper import allure_step_wrapper as allure
 
@@ -140,7 +141,7 @@ def wait_bgp_neighbor(duthost):
     Wait for BGP neighbor to be up
     '''
     config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-    bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
+    bgp_neighbors = get_bgp_neighbors_from_config_facts(duthost, config_facts)
     pytest_assert(wait_until(60, 10, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())),
                   "Not all BGP sessions are established on DUT")
 
