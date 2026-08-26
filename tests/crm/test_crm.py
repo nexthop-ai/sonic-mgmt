@@ -255,6 +255,14 @@ def get_acl_tbl_key(asichost):
     return "CRM:ACL_TABLE_STATS:{0}".format(oid.replace("oid:", ""))
 
 
+def _exceeded_threshold_margin(crm_used):
+    """
+    Headroom to subtract from an 'exceeded' threshold, capped so the resulting low threshold
+    stays non-negative. Scales with the resource so busy counters get proportionally more room.
+    """
+    return min(max(1, crm_used // 100), max(0, crm_used - 1))
+
+
 def verify_thresholds(duthost, asichost, **kwargs):
     """
     Verifies that WARNING message logged if there are any resources that exceeds a pre-defined threshold value.
@@ -307,6 +315,12 @@ def verify_thresholds(duthost, asichost, **kwargs):
                 loganalyzer.expect_regex = [EXPECT_CLEAR]
 
         kwargs['crm_used'], kwargs['crm_avail'] = get_crm_stats(kwargs['crm_cmd'], duthost)
+        # 'used' can tick down between this read and the next CRM poll (ARP/ND ageing, ECMP
+        # churn). An exact-match high threshold would then never be reached, and because the
+        # preceding 'type' change resets exceededLogCounter the CLEAR branch cannot fire
+        # either, so nothing is logged at all. Give the threshold room to absorb that drift.
+        kwargs['th_margin'] = _exceeded_threshold_margin(kwargs['crm_used']) \
+            if key == "exceeded_used" else 0
         cmd = template.render(**kwargs)
 
         with loganalyzer:

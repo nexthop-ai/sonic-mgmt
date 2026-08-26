@@ -7,9 +7,11 @@ EXPECT_EXCEEDED = ".* THRESHOLD_EXCEEDED .*"
 EXPECT_CLEAR = ".* THRESHOLD_CLEAR .*"
 
 THR_VERIFY_CMDS = OrderedDict([
+    # th_margin lowers the 'exceeded' thresholds so a counter that ticks down between the stats
+    # read and the next CRM poll still exceeds them. Callers that do not set it are unaffected.
     ("exceeded_used", "bash -c \"crm config thresholds {{crm_cli_res}}  type used; \
-         crm config thresholds {{crm_cli_res}} low {{crm_used|int - 1}}; \
-         crm config thresholds {{crm_cli_res}} high {{crm_used|int}}\""),
+         crm config thresholds {{crm_cli_res}} low {{crm_used|int - (th_margin|default(0)) - 1}}; \
+         crm config thresholds {{crm_cli_res}} high {{crm_used|int - (th_margin|default(0))}}\""),
     ("clear_used", "bash -c \"crm config thresholds {{crm_cli_res}} type used && \
          crm config thresholds {{crm_cli_res}} low {{crm_used|int}} && \
          crm config thresholds {{crm_cli_res}} high {{crm_used|int + 1}}\""),
