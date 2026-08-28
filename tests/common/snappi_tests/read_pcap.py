@@ -48,7 +48,10 @@ def validate_pfc_frame(pfc_pcap_file, SAMPLE_SIZE=15000, UTIL_THRESHOLD=0.8):
                 return False, "PFC frame is not valid"
             cev = [int(i) for i in pfc_packet.class_enable_vec]
 <<<<<<< HEAD
+<<<<<<< HEAD
             cev_nonzero = sum(cev) > 0
+=======
+>>>>>>> e9f43b744 (NOS-10472: snappi/pfc: keep the pause storm alive so paused-traffic tests stop cleanly (#2236))
 =======
 >>>>>>> e9f43b744 (NOS-10472: snappi/pfc: keep the pause storm alive so paused-traffic tests stop cleanly (#2236))
             # Per-frame detail at debug level so a 15k-packet sample does not flood the log.
@@ -56,12 +59,15 @@ def validate_pfc_frame(pfc_pcap_file, SAMPLE_SIZE=15000, UTIL_THRESHOLD=0.8):
                          .format(curPktCount, dest_mac, hex(pfc_packet.cbfc_opcode),
                                  pfc_packet.class_enable_vec, pfc_packet.class_pause_times))
 <<<<<<< HEAD
+<<<<<<< HEAD
             if cev_nonzero and not seen_non_zero_cev:
                 logger.info("First PFC frame with non-zero class enable vector at packet {}: "
                             "class_enable_vec={}, class_pause_times={}"
                             .format(curPktCount, pfc_packet.class_enable_vec, pfc_packet.class_pause_times))
             seen_non_zero_cev = seen_non_zero_cev or cev_nonzero
 =======
+=======
+>>>>>>> e9f43b744 (NOS-10472: snappi/pfc: keep the pause storm alive so paused-traffic tests stop cleanly (#2236))
             if sum(cev) > 0 and not seen_non_zero_cev:
                 logger.info("First PFC frame with non-zero class enable vector at packet {}: "
                             "class_enable_vec={}, class_pause_times={}"
