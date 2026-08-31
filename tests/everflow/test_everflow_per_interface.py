@@ -13,7 +13,8 @@ from . import everflow_test_utilities as everflow_utils
 from .everflow_test_utilities import BaseEverflowTest, erspan_ip_ver, skip_ipv6_everflow_tests  # noqa: F401
 from .everflow_test_utilities import TEMPLATE_DIR, EVERFLOW_RULE_CREATE_TEMPLATE, \
     DUT_RUN_DIR, EVERFLOW_RULE_CREATE_FILE, UP_STREAM
-from tests.common.helpers.assertions import pytest_require
+from tests.common.helpers.assertions import pytest_assert, pytest_require
+from tests.common.utilities import wait_until
 
 from .everflow_test_utilities import setup_info, EVERFLOW_DSCP_RULES, STABILITY_BUFFER  # noqa: F401
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor  # noqa: F401
@@ -126,7 +127,16 @@ def setup_mirror_session_dest_ip_route(tbinfo, setup_info, apply_mirror_session,
     session_prefixes = apply_mirror_session["session_prefixes"] if erspan_ip_ver == 4 \
         else apply_mirror_session["session_prefixes_ipv6"]
     everflow_utils.add_route(remote_dut, session_prefixes[0], peer_ip, namespace)
-    time.sleep(5)
+    # The ERSPAN session only turns ACTIVE once the dst route is programmed and its
+    # nexthop neighbor resolves, and aclorch defers installing mirror-action rules
+    # until then. Wait for ACTIVE instead of sleeping so a slow or failed activation
+    # surfaces here as a setup error rather than as a missing-packet test failure.
+    everflow_dut = setup_info[UP_STREAM]['everflow_dut']
+    session_name = apply_mirror_session["session_name"]
+    pytest_assert(
+        wait_until(60, 2, 0, everflow_utils.validate_mirror_session_up, everflow_dut, session_name),
+        "Mirror session {} did not become active after adding dst route {} via {}".format(
+            session_name, session_prefixes[0], peer_ip))
 
     yield (apply_mirror_session, BaseEverflowTest._get_tx_port_id_list(dest_port_ptf_id_list))
 
@@ -166,6 +176,10 @@ def apply_acl_rule(setup_info, tbinfo, setup_mirror_session_dest_ip_route, ip_ve
     logger.info("Applying acl rule config to DUT")
     command = "acl-loader update full {} --table_name {} --session_name {}" \
         .format(os.path.join(DUT_RUN_DIR, EVERFLOW_RULE_CREATE_FILE), table_name, EVERFLOW_SESSION_NAME)
+    # Snapshot ACL rule counts before applying so the readiness check below can
+    # wait on the delta actually landing in ASIC_DB (mirror-action rules are only
+    # installed once the mirror session is active, which is asynchronous).
+    baseline_counts = everflow_utils.get_acl_rule_counts(setup_info[UP_STREAM]['everflow_dut'])
     setup_info[UP_STREAM]['everflow_dut'].shell(cmd=command)
     ret = {
         "candidate_ports": candidate_ports,
@@ -173,7 +187,7 @@ def apply_acl_rule(setup_info, tbinfo, setup_mirror_session_dest_ip_route, ip_ve
         "mirror_session_info": mirror_session_info,
         "monitor_port_ptf_ids": monitor_port_ptf_ids
     }
-    time.sleep(2)
+    everflow_utils.wait_for_acl_rules_in_asic_db(setup_info[UP_STREAM]['everflow_dut'], baseline_counts)
 
     yield ret
 
