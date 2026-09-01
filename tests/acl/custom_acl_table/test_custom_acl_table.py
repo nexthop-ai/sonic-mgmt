@@ -12,6 +12,7 @@ from tests.common.helpers.assertions import pytest_assert
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor  # noqa F401
 from tests.common.utilities import get_all_upstream_neigh_type, get_neighbor_ptf_port_list, is_ipv6_only_topology
+from tests.common.utilities import wait_until
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,63 @@ def setup_counterpoll_interval(rand_selected_dut, rand_unselected_dut, tbinfo):
     rand_selected_dut.shell('counterpoll acl interval 10000')
     if "dualtor-aa" in tbinfo["topo"]["name"]:
         rand_unselected_dut.shell('counterpoll acl interval 10000')
+
+
+def acl_table_active(dut, table_name):
+    """
+    Check that the ACL table exists and is in Active state
+    """
+    acl_table_infos = dut.show_and_parse("show acl table {}".format(table_name))
+    for info in acl_table_infos:
+        if info.get('name') == table_name:
+            if info.get('status', '').lower() != 'active':
+                logger.info("ACL table {} exists but is not active yet (status: {})".format(
+                    table_name, info.get('status')))
+                return False
+            return True
+    return False
+
+
+def get_expected_rule_names(dut, table_name):
+    """
+    Read ACL_RULE entries for the given table back from CONFIG_DB
+    """
+    output = dut.shell('sonic-cfggen -d --var-json "ACL_RULE"')['stdout']
+    try:
+        rules = json.loads(output) if output.strip() else {}
+    except ValueError:
+        return []
+    return [key.split('|')[1] for key in rules if key.split('|')[0] == table_name]
+
+
+def acl_rules_active(dut, table_name, expected_rules):
+    """
+    Check that all expected rules of the table are present and Active in STATE_DB
+    """
+    rule_infos = dut.show_and_parse("show acl rule {}".format(table_name))
+    status_by_rule = {}
+    for info in rule_infos:
+        if info.get('rule'):
+            status_by_rule[info['rule']] = info.get('status', '')
+    missing = [r for r in expected_rules if r not in status_by_rule]
+    inactive = [r for r in expected_rules
+                if r in status_by_rule and status_by_rule[r].lower() != 'active']
+    if missing or inactive:
+        logger.info("ACL rules in {} not ready yet, missing: {}, inactive: {}".format(
+            table_name, missing, inactive))
+        return False
+    return True
+
+
+def dump_acl_diag_info(dut, table_name):
+    """
+    Collect ACL state to make packet verification failures diagnosable
+    """
+    dut.shell("show acl table {}".format(table_name), module_ignore_errors=True)
+    dut.shell("show acl rule {}".format(table_name), module_ignore_errors=True)
+    dut.shell("aclshow -a", module_ignore_errors=True)
+    dut.shell("ip route show default", module_ignore_errors=True)
+    dut.shell("ip -6 route show default", module_ignore_errors=True)
 
 
 def clear_acl_counter(dut):
@@ -152,6 +210,13 @@ def setup_and_cleanup_custom_acl_table(rand_selected_dut, rand_unselected_dut, t
             rand_unselected_dut.shell(cmd_remove_table)
         raise err
 
+    # The table is programmed to hardware asynchronously, wait until it turns Active
+    pytest_assert(wait_until(30, 2, 0, acl_table_active, rand_selected_dut, table_name),
+                  "ACL table {} did not become active".format(table_name))
+    if "dualtor-aa" in tbinfo["topo"]["name"]:
+        pytest_assert(wait_until(30, 2, 0, acl_table_active, rand_unselected_dut, table_name),
+                      "ACL table {} did not become active on unselected ToR".format(table_name))
+
     yield
 
     logger.info("Removing ACL table and custom type")
@@ -214,6 +279,17 @@ def setup_and_cleanup_acl_rules(rand_selected_dut, rand_unselected_dut, tbinfo,
         if "dualtor-aa" in tbinfo["topo"]["name"]:
             rand_unselected_dut.shell(cmd_rm_rules)
         raise err
+
+    # Rules are programmed to hardware asynchronously. The table carries low-priority
+    # catch-all DROP rules, so sending traffic before every FORWARD rule is Active
+    # gets the packet silently dropped. Wait until all rules turn Active.
+    expected_rules = get_expected_rule_names(rand_selected_dut, table_name)
+    pytest_assert(expected_rules, "No ACL_RULE entries found in CONFIG_DB for {}".format(table_name))
+    pytest_assert(wait_until(60, 2, 0, acl_rules_active, rand_selected_dut, table_name, expected_rules),
+                  "ACL rules in {} did not become active".format(table_name))
+    if "dualtor-aa" in tbinfo["topo"]["name"]:
+        pytest_assert(wait_until(60, 2, 0, acl_rules_active, rand_unselected_dut, table_name, expected_rules),
+                      "ACL rules in {} did not become active on unselected ToR".format(table_name))
 
     yield
 
@@ -349,6 +425,11 @@ def test_custom_acl(rand_selected_dut, rand_unselected_dut, tbinfo, ptfadapter,
         for upstream_neigh_type in upstream_neigh_types:
             dst_port_indices.extend(get_neighbor_ptf_port_list(rand_selected_dut, upstream_neigh_type, tbinfo))
 
+    # The FORWARD-ed packets are routed to the uplinks via the default route,
+    # make sure it is present before blaming ACL for a missing packet
+    pytest_assert(wait_until(120, 10, 0, rand_selected_dut.check_default_route),
+                  "Default route is missing on {}".format(rand_selected_dut.hostname))
+
     # Test regular ACL rules (IPv4 and IPv6 mix)
     test_pkts = build_testing_pkts(router_mac, tbinfo)
     for rule, pkt in list(test_pkts.items()):
@@ -363,7 +444,11 @@ def test_custom_acl(rand_selected_dut, rand_unselected_dut, tbinfo, ptfadapter,
             continue
         ptfadapter.dataplane.flush()
         testutils.send(ptfadapter, pkt=pkt, port_id=src_port_indice)
-        testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
+        try:
+            testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
+        except AssertionError:
+            dump_acl_diag_info(rand_selected_dut, "CUSTOM_TABLE")
+            raise
         acl_counter = read_acl_counter(rand_selected_dut, rule)
         if "dualtor-aa" in tbinfo["topo"]["name"]:
             acl_counter_unselected_dut = read_acl_counter(rand_unselected_dut, rule)
@@ -414,6 +499,11 @@ def test_custom_acl_ipv6(rand_selected_dut, rand_unselected_dut, tbinfo, ptfadap
         for upstream_neigh_type in upstream_neigh_types:
             dst_port_indices.extend(get_neighbor_ptf_port_list(rand_selected_dut, upstream_neigh_type, tbinfo))
 
+    # The FORWARD-ed packets are routed to the uplinks via the default route,
+    # make sure it is present before blaming ACL for a missing packet
+    pytest_assert(wait_until(120, 10, 0, rand_selected_dut.check_default_route),
+                  "Default route is missing on {}".format(rand_selected_dut.hostname))
+
     # Test IPv6-specific ACL rules
     test_pkts_ipv6 = build_testing_pkts_ipv6(router_mac)
     for rule, pkt in list(test_pkts_ipv6.items()):
@@ -430,10 +520,14 @@ def test_custom_acl_ipv6(rand_selected_dut, rand_unselected_dut, tbinfo, ptfadap
         testutils.send(ptfadapter, pkt=pkt, port_id=src_port_indice)
 
         # For DROP rules, verify packet is not forwarded; for FORWARD rules, verify packet is forwarded
-        if rule == 'DEFAULT_DROP_RULE':
-            testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
-        else:
-            testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
+        try:
+            if rule == 'DEFAULT_DROP_RULE':
+                testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
+            else:
+                testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=dst_port_indices, timeout=5)
+        except AssertionError:
+            dump_acl_diag_info(rand_selected_dut, "CUSTOM_IPV6_TABLE")
+            raise
 
         acl_counter = read_acl_counter(rand_selected_dut, rule)
         if "dualtor-aa" in tbinfo["topo"]["name"]:
