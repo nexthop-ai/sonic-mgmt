@@ -122,6 +122,7 @@ t0:
   - gnmi/test_gnmi_cert_rotation.py
   - gnmi/test_gnmi_configdb.py
   - gnmi/test_gnmi_countersdb.py
+  - gnmi/test_gnmi_default.py
   - gnmi/test_gnmi_poll.py
   - gnmi/test_gnmi_smartswitch.py
   - gnmi/test_gnoi_killprocess.py
@@ -300,7 +301,6 @@ t0:
   - tacacs/test_ro_user.py
   - tacacs/test_rw_user.py
   - gnmi/test_events.py
-  - telemetry/test_telemetry.py
   - test_features.py
   - test_interfaces.py
   - test_nbr_health.py
@@ -464,6 +464,7 @@ t1-lag:
   - gnmi/test_gnmi_cert_rotation.py
   - gnmi/test_gnmi_configdb.py
   - gnmi/test_gnmi_countersdb.py
+  - gnmi/test_gnmi_default.py
   - gnmi/test_gnmi_poll.py
   - gnmi/test_gnmi_smartswitch.py
   - gnmi/test_gnoi_killprocess.py
@@ -617,7 +618,6 @@ t1-lag:
   - tacacs/test_ro_user.py
   - tacacs/test_rw_user.py
   - gnmi/test_events.py
-  - telemetry/test_telemetry.py
   - test_features.py
   - test_interfaces.py
   - test_nbr_health.py
@@ -839,7 +839,6 @@ multi-asic-t1-lag:
   - tacacs/test_jit_user.py
   - tacacs/test_ro_user.py
   - tacacs/test_rw_user.py
-  - telemetry/test_telemetry.py
   - test_interfaces.py
 
 dpu:
@@ -907,6 +906,7 @@ onboarding_t1_multi_asic:
   - gnmi/test_gnmi_appldb.py
   - gnmi/test_gnmi_configdb.py
   - gnmi/test_gnmi_countersdb.py
+  - gnmi/test_gnmi_default.py
   - iface_loopback_action/test_iface_loopback_action.py
   - log_fidelity/test_bgp_shutdown.py
   - memory_checker/test_memory_checker.py
