@@ -392,6 +392,14 @@ class TestbedInfo(object):
             else:
                 topo_dir = os.path.join(os.path.dirname(self.testbed_filename), self.TOPOLOGY_FILEPATH)
                 topo_file = os.path.join(topo_dir, "topo_{}.yml".format(topo))
+                if not os.path.exists(topo_file):
+                    # A '<base>[-_]macsec' topo may be an alias of its base
+                    # topology (mirrors the first_found fallback the ansible
+                    # playbooks apply); fall back to the stripped base file.
+                    base_topo = re.sub(r'[-_]macsec$', '', topo)
+                    base_file = os.path.join(topo_dir, "topo_{}.yml".format(base_topo))
+                    if base_topo != topo and os.path.exists(base_file):
+                        topo_file = base_file
                 with open(topo_file, 'r') as fh:
                     tb['topo']['properties'] = yaml.safe_load(fh)
                 tb['topo']['ptf_map'] = self.calculate_ptf_index_map(tb)

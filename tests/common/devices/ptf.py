@@ -20,10 +20,12 @@ class PTFHost(AnsibleHostBase):
     Instance of this class can run ansible modules on the PTF host.
     """
 
-    def __init__(self, ansible_adhoc, hostname, duthost, tbinfo, macsec_enabled=False):
+    def __init__(self, ansible_adhoc, hostname, duthost, tbinfo, macsec_enabled=False,
+                 macsec_native=False):
         self.duthost = duthost
         self.tbinfo = tbinfo
         self.macsec_enabled = macsec_enabled
+        self.macsec_native = macsec_native
         AnsibleHostBase.__init__(self, ansible_adhoc, hostname)
 
     def change_mac_addresses(self):
@@ -36,14 +38,34 @@ class PTFHost(AnsibleHostBase):
         self.script(RESTART_INTERFACE_SCRIPT)
 
     def create_macsec_info(self):
+        # One STATE_DB query per namespace to find active MACsec ports — avoids
+        # O(N_ports) SSH calls that would otherwise saturate DUT management CPU
+        # and starve wpa_supplicant.
+        namespaces = ['']
+        try:
+            if self.duthost.is_multi_asic:
+                namespaces += self.duthost.get_asic_namespace_list()
+        except Exception:
+            pass
+        active_macsec_ports = set()
+        for ns in namespaces:
+            result = self.duthost.shell(
+                "sonic-db-cli {}STATE_DB KEYS 'MACSEC_PORT_TABLE|*'".format(
+                    "-n {} ".format(ns) if ns else ""),
+                module_ignore_errors=True)
+            for entry in result.get("stdout", "").strip().splitlines():
+                if "|" in entry:
+                    active_macsec_ports.add(entry.split("|", 1)[1])
+
         macsec_info = {}
-        for port_name, injected_port_id in \
-                list(self.duthost.get_extended_minigraph_facts(self.tbinfo)["minigraph_ptf_indices"].items()):
+        ptf_indices = self.duthost.get_extended_minigraph_facts(self.tbinfo)["minigraph_ptf_indices"]
+        for port_name, injected_port_id in list(ptf_indices.items()):
+            if port_name not in active_macsec_ports:
+                continue
             try:
                 macsec_info[injected_port_id] = load_macsec_info(
                     self.duthost, port_name, force_reload=True)
             except KeyError:
-                # If key error, It means the MACsec info isn't enabled in the specified port.
                 logging.info(
                     "MACsec isn't enabled on the port {}".format(port_name))
                 continue
@@ -51,6 +73,22 @@ class PTFHost(AnsibleHostBase):
         pickle.dump(macsec_info, tf)
         tf.flush()
         self.copy(src=tf.name, dest="/root/" + MACSEC_INFO_FILE)
+        # Broadcom derives the ingress SCI from {outer_src_MAC, port} and needs
+        # the outer-src-MAC rewrite (the ptftests/macsec.py default); opt out on
+        # other ASICs where the rewrite can break SecTAG-based SA lookup.
+        if self.duthost.facts.get("asic_type") == "broadcom":
+            self.shell("rm -f /root/macsec_no_rewrite_outer_smac")
+        else:
+            self.shell("touch /root/macsec_no_rewrite_outer_smac")
+        # Native-codec opt-in marker: present only when --macsec_ptf_native was
+        # passed. The docker-ptf native codec activates iff the marker exists;
+        # the ptftests/macsec.py monkeypatch stands down when it does. Default
+        # (marker absent) keeps the monkeypatch path, so codec-carrying PTF
+        # images change nothing for existing runs.
+        if self.macsec_native:
+            self.shell("touch /root/macsec_native_codec")
+        else:
+            self.shell("rm -f /root/macsec_native_codec")
 
     def add_ip_to_dev(self, dev, ip):
         """

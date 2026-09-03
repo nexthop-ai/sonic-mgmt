@@ -92,8 +92,20 @@
       | map(attribute='ptf_imagetag')
       | first is defined
 
+  # Normalize the topo name for the whitelist check. nhtools emits the
+  # MACsec topology variant as '<base>_macsec' with underscores in <base>
+  # (e.g. 't2_single_node_min_macsec'). The legacy `split('_') | first`
+  # would yield 't2' for that, which isn't in `topologies` (which holds
+  # the hyphenated base 't2-single-node-min'). Strip the '_macsec' suffix
+  # and convert remaining underscores to hyphens so the value matches
+  # what nhtools emits into veos's `topologies:` list. Fall back to the
+  # legacy behaviour for community topo names like 't0_smartswitch_ha'
+  # where 't0' is the whitelist entry.
+  - set_fact:
+      base_topo: "{{ topo | regex_replace('[-_]macsec$', '') | replace('_', '-') }}"
   - set_fact:
       base_topo: "{{ topo.split('_') | first }}"
+    when: base_topo not in topologies
   - set_fact:
       base_topo: "{{ base_topo.split('-') | first }}"
     when: base_topo not in topologies
@@ -110,7 +122,10 @@
     include_vars: "vars/docker_registry.yml"
 
   - name: Load topo variables
-    include_vars: "vars/topo_{{ topo }}.yml"
+    include_vars: >-
+      {{ lookup('first_found',
+                ['vars/topo_' ~ topo ~ '.yml',
+                 'vars/topo_' ~ (topo | regex_replace('[-_]macsec$', '')) ~ '.yml']) }}
 
   - name: Read duts minigraph
     conn_graph_facts:
@@ -151,8 +166,13 @@
           fail: msg="Define topo variable with -e topo=something"
           when: topo is not defined
 
+        # Normalize the topo name for the whitelist check below — see the
+        # matching block at the top of this file for the full rationale.
+        - set_fact:
+            base_topo: "{{ topo | regex_replace('[-_]macsec$', '') | replace('_', '-') }}"
         - set_fact:
             base_topo: "{{ topo.split('_') | first }}"
+          when: base_topo not in topologies
         - set_fact:
             base_topo: "{{ base_topo.split('-') | first }}"
           when: base_topo not in topologies
@@ -171,7 +191,10 @@
           when: VM_base is not defined
 
         - name: Load topo variables
-          include_vars: "vars/topo_{{ topo }}.yml"
+          include_vars: >-
+            {{ lookup('first_found',
+                      ['vars/topo_' ~ topo ~ '.yml',
+                       'vars/topo_' ~ (topo | regex_replace('[-_]macsec$', '')) ~ '.yml']) }}
 
         - name: Set default value for topo_is_multi_vrf
           set_fact:
