@@ -229,12 +229,12 @@ class SflowTest(BaseTest):
         logging.info("....%s : Counter samples collected for Individual  ports  = %s" % (
             collector, counter_sample))
         for port in counter_sample:
-            # checking  for max  2 samples instead of 1 considering initial time delay before tests
-            # as the counter sampling is random and non-deterministic over period of polling time
+            # Window is 2 x polling_int: hsflowd re-randomises poller phase on reconfig,
+            # so expect 1 to 3 samples per port.
             self.assertTrue(
-                1 <= counter_sample[port] <= 2,
+                1 <= counter_sample[port] <= 3,
                 " %s counter sample packets are collected in %s seconds of polling interval in port %s "
-                "instead of 1 or 2" % (counter_sample[port], polling_int, port))
+                "instead of 1 to 3" % (counter_sample[port], 2 * polling_int, port))
 
     # ---------------------------------------------------------------------------
 
@@ -314,10 +314,9 @@ class SflowTest(BaseTest):
             if self.polling_int == 0:
                 time.sleep(20)
             else:
-                # wait for polling time for collector to collect packets
                 logging.info(
-                    "Waiting for % seconds of polling interval" % self.polling_int)
-                time.sleep(self.polling_int)
+                    "Waiting for %s seconds (2 x polling interval)" % (2 * self.polling_int))
+                time.sleep(2 * self.polling_int)
         else:
             self.sendTraffic()
             time.sleep(10)  # For Test Stability
