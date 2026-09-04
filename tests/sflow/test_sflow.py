@@ -23,9 +23,6 @@ from tests.common.utilities import get_neighbor_port_list
 from tests.common.helpers.assertions import pytest_assert
 
 SFLOW_RATE_DEFAULT = 512
-# Seconds to wait for hsflowd to quiesce counter polling after it is disabled.
-# See TestSflowPolling.testDisablePolling for the rationale.
-SFLOW_DISABLE_POLL_SETTLE_TIME = 40
 
 pytestmark = [
     pytest.mark.topology('t0', 'm0', 'mx')
@@ -373,6 +370,108 @@ def wait_until_hsflowd_ready(duthost, collector_ips):
 # ----------------------------------------------------------------------------------
 
 
+def verify_hsflowd_collectors_removed(duthost, collector_ips):
+    """
+    Verify hsflowd has applied the removal of the specified collectors.
+
+    Args:
+        duthost: DUT host object
+        collector_ips: List of collector IP addresses that must be absent from hsflowd.auto
+
+    Returns:
+        True if none of the collector IPs are present in hsflowd.auto, False otherwise
+    """
+    return all(
+        duthost.shell(
+            f"docker exec sflow grep -q 'collector={ip}' /etc/hsflowd.auto 2>/dev/null",
+            module_ignore_errors=True
+        )['rc'] != 0
+        for ip in collector_ips
+    )
+
+
+def wait_until_hsflowd_collectors_removed(duthost, collector_ips):
+    """
+    Wait until hsflowd has applied the removal of the specified collectors.
+
+    CONFIG_DB (and therefore 'show sflow') reflects a collector delete immediately, but
+    hsflowd only re-syncs /etc/hsflowd.auto after re-walking collectors, ports, the port
+    index map and LAGs. On a high port count platform that takes several seconds, during
+    which the deleted collector still receives samples. Sync on hsflowd.auto instead of
+    CONFIG_DB before starting a PTF capture that expects no samples.
+
+    Args:
+        duthost: DUT host object
+        collector_ips: List of collector IP addresses that must be absent from hsflowd.auto
+
+    Raises:
+        AssertionError: If the collectors are still present after 60 seconds
+    """
+    logger.info(f"Waiting for hsflowd to drop collector(s): {collector_ips}")
+    start_time = time.time()
+    pytest_assert(
+        wait_until(
+            60, 2, 0,
+            verify_hsflowd_collectors_removed,
+            duthost,
+            collector_ips,
+        ),
+        f"hsflowd still has collector(s) {collector_ips} after 60 seconds. "
+        f"Check /etc/hsflowd.auto in sflow container."
+    )
+    elapsed = time.time() - start_time
+    logger.info(f"hsflowd dropped collector(s) after {elapsed:.1f} seconds")
+
+
+def verify_hsflowd_polling(duthost, polling_int):
+    """
+    Verify hsflowd.auto carries the expected polling interval.
+
+    Args:
+        duthost: DUT host object
+        polling_int: Expected polling interval in seconds
+
+    Returns:
+        True if hsflowd.auto has a polling line matching polling_int, False otherwise
+    """
+    return duthost.shell(
+        f"docker exec sflow grep -qE '^[[:space:]]*polling={polling_int}[[:space:]]*$' "
+        f"/etc/hsflowd.auto 2>/dev/null",
+        module_ignore_errors=True
+    )['rc'] == 0
+
+
+def wait_until_hsflowd_polling(duthost, polling_int):
+    """
+    Wait until hsflowd has applied the configured polling interval.
+
+    Same race as wait_until_hsflowd_collectors_removed(): 'show sflow' reads CONFIG_DB and
+    updates instantly, while hsflowd needs several seconds to regenerate hsflowd.auto. A
+    capture started before that still sees counter samples at the old interval.
+
+    Args:
+        duthost: DUT host object
+        polling_int: Polling interval in seconds that must be reflected in hsflowd.auto
+
+    Raises:
+        AssertionError: If the polling interval is not applied within 60 seconds
+    """
+    logger.info(f"Waiting for hsflowd to apply polling interval {polling_int}")
+    start_time = time.time()
+    pytest_assert(
+        wait_until(
+            60, 2, 0,
+            verify_hsflowd_polling,
+            duthost,
+            polling_int,
+        ),
+        f"hsflowd did not apply polling interval {polling_int} within 60 seconds. "
+        f"Check /etc/hsflowd.auto in sflow container."
+    )
+    elapsed = time.time() - start_time
+    logger.info(f"hsflowd applied polling interval {polling_int} after {elapsed:.1f} seconds")
+
+
 def config_sflow_collector(duthost, collector, config):
     collector = var[collector]
     if config == 'add':
@@ -575,10 +674,17 @@ class TestSflowCollector():
                    or len(re.findall(r"Name:", duthost.shell(
                        'show sflow')['stdout'])) == 0)
         verify_show_sflow(duthost, status='up', collector=[])
+<<<<<<< HEAD
         wait_until(30, 5, 0, verify_sflow_config_apply, duthost)
         partial_ptf_runner(
             enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
             active_collectors="[]")
+=======
+        wait_until_hsflowd_collectors_removed(duthost, [var['collector0']['ip_addr']])
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   enabled_sflow_interfaces=list(var['sflow_ports'].keys())), \
+               "Unexpected sflow samples received"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
         # re-add collector
         config_sflow_collector(duthost, 'collector0', 'add')
         verify_show_sflow(duthost, status='up', collector=['collector0'])
@@ -600,10 +706,18 @@ class TestSflowCollector():
         # Remove second collector anc check samples are received in only 1st collector
         config_sflow_collector(duthost, 'collector1', 'del')
         verify_show_sflow(duthost, status='up', collector=['collector0'])
+<<<<<<< HEAD
         wait_until(30, 5, 0, verify_sflow_config_apply, duthost)
         partial_ptf_runner(
             enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
             active_collectors="['collector0']")
+=======
+        wait_until_hsflowd_collectors_removed(duthost, [var['collector1']['ip_addr']])
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
+                                   active_collectors="['collector0']"), \
+               "No sflow samples received in collector"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
 
         # Re-add second collector and check if samples are received in both collectors again
         config_sflow_collector(duthost, 'collector1', 'add')
@@ -622,10 +736,18 @@ class TestSflowCollector():
         # remove first collector and check DUT sends samples to collector 2 with non default port number (6344)
         config_sflow_collector(duthost, 'collector0', 'del')
         verify_show_sflow(duthost, status='up', collector=['collector1'])
+<<<<<<< HEAD
         wait_until(30, 5, 0, verify_sflow_config_apply, duthost)
         partial_ptf_runner(
             enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
             active_collectors="['collector1']")
+=======
+        wait_until_hsflowd_collectors_removed(duthost, [var['collector0']['ip_addr']])
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   enabled_sflow_interfaces=list(var['sflow_ports'].keys()),
+                                   active_collectors="['collector1']"), \
+               "Received an uneexpected number of sflow samples"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
 
 
 # ------------------------------------------------------------------------------
@@ -642,15 +764,24 @@ class TestSflowPolling():
         duthost = duthosts[rand_one_dut_hostname]
         duthost.shell("config sflow polling-interval 20")
         verify_show_sflow(duthost, status='up', polling_int=20)
+<<<<<<< HEAD
         partial_ptf_runner(
             polling_int=20,
             active_collectors="['collector0','collector1']")
+=======
+        wait_until_hsflowd_polling(duthost, 20)
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   polling_int=20,
+                                   active_collectors="['collector0','collector1']"), \
+               "Missing sflow samples in either or both collectors"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
 
     def testDisablePolling(self, duthosts, rand_one_dut_hostname, partial_ptf_runner):
         duthost = duthosts[rand_one_dut_hostname]
         duthost.shell("config sflow polling-interval 0")
 
         verify_show_sflow(duthost, status='up', polling_int=0)
+<<<<<<< HEAD
         # verify_show_sflow only confirms CONFIG_DB was updated. hsflowd (host-sflow
         # >= 2.1.26, sonic-buildimage PR #27806) applies a runtime polling-interval
         # change asynchronously via its tick-driven reconfig state machine, so counter
@@ -662,15 +793,30 @@ class TestSflowPolling():
         partial_ptf_runner(
             polling_int=0,
             active_collectors="['collector0','collector1']")
+=======
+        wait_until_hsflowd_polling(duthost, 0)
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   polling_int=0,
+                                   active_collectors="['collector0','collector1']"), \
+               "Received an uneexpected number of sflow samples"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
 
     def testDifferentPollingInt(self, duthosts, rand_one_dut_hostname, partial_ptf_runner):
         duthost = duthosts[rand_one_dut_hostname]
         duthost.shell("config sflow polling-interval 60")
 
         verify_show_sflow(duthost, status='up', polling_int=60)
+<<<<<<< HEAD
         partial_ptf_runner(
             polling_int=60,
             active_collectors="['collector0','collector1']")
+=======
+        wait_until_hsflowd_polling(duthost, 60)
+        assert check_sflow_traffic(duthost, partial_ptf_runner,
+                                   polling_int=60,
+                                   active_collectors="['collector0','collector1']"), \
+               "Missing sflow samples in either or both collectors"
+>>>>>>> 05c0dd63e (NOS-12630: [sflow] Restore hsflowd.auto sync after collector delete and polling change (#3130))
 
 # ------------------------------------------------------------------------------
 
