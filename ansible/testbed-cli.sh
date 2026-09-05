@@ -562,6 +562,12 @@ function add_topo
     ip neighbor flush $ptf_ip || true
   done
 
+  # Neighbor side of per-interface MACsec is a test-server concern: configure
+  # the VMs now, from topology data alone, so deploy-mg only touches the DUT.
+  # Exits cleanly (meta: end_play) when the topology declares no macsec_links.
+  ansible-playbook -i "$inv_name" config_macsec_neighbors.yml --vault-password-file="$passwd" -l "$duts" \
+        -e testbed_name="$testbed_name" -e testbed_file="$tbfile" -e vm_file="$vmfile" -e vm_type="$vm_type"
+
   cache_files_path_value=$(is_cache_exist)
   if [[ -n $cache_files_path_value ]]; then
     echo "$testbed_name" > $cache_files_path_value/$duts
@@ -853,6 +859,12 @@ function deploy_minigraph
   fi
 
   ansible-playbook -i "$inventory" config_sonic_basedon_testbed.yml --vault-password-file="$passfile" -l "$duts" -e testbed_name="$testbed_name" -e testbed_file=$tbfile -e vm_file=$vmfile -e deploy=true -e save=true $ipv6_mgmt_flag $lab_name_flag "${filtered_args[@]}"
+
+  # Configure per-interface MACsec from the topology's macsec_links list,
+  # resolved to DUT ports via minigraph neighbors.
+  # Exits cleanly (meta: end_play) when no MACsec links are present — safe to
+  # run unconditionally without pre-inspecting the minigraph.
+  ansible-playbook -i "$inventory" config_macsec_basedon_minigraph.yml --vault-password-file="$passfile" -l "$duts" -e testbed_name="$testbed_name" -e testbed_file=$tbfile -e vm_file=$vmfile $ipv6_mgmt_flag "${filtered_args[@]}"
 
   echo Done
 }
