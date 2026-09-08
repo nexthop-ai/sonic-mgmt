@@ -1310,9 +1310,22 @@ class TestQosSai(QosSaiBase):
         if "pkts_num_egr_mem" in list(qosConfig.keys()):
             testParams["pkts_num_egr_mem"] = qosConfig["pkts_num_egr_mem"]
 
+        # LossyQueueTest needs cell_size for the cell-occupancy scaling that
+        # accompanies packet_size, and independently for the gr2 egress-pool
+        # adjustment. Only a handful of lossy_queue_1 sections carry their own
+        # cell_size; every other per-asic YAML defines it once at the topology
+        # level, so fall back there instead of tying it to packet_size.
+        cellSize = qosConfig["lossy_queue_1"].get(
+            "cell_size", dutQosConfig["param"].get("cell_size"))
+        if cellSize is not None:
+            testParams["cell_size"] = cellSize
+
         if "packet_size" in list(qosConfig["lossy_queue_1"].keys()):
+            pytest_assert(
+                cellSize,
+                "lossy_queue_1 sets packet_size but no cell_size is defined "
+                "for this speed/cable section or its topology")
             testParams["packet_size"] = qosConfig["lossy_queue_1"]["packet_size"]
-            testParams["cell_size"] = qosConfig["lossy_queue_1"]["cell_size"]
 
         if "pkts_num_margin" in list(qosConfig["lossy_queue_1"].keys()):
             testParams["pkts_num_margin"] = qosConfig["lossy_queue_1"]["pkts_num_margin"]
