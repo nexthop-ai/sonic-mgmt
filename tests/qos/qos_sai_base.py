@@ -2409,7 +2409,21 @@ class QosSaiBase(QosBase):
                     " host:{}".format(duthost.hostname))
                 all_docker0_ipv6_addrs[duthost.hostname] = None
 
+            # snmpd binds the mgmt and Loopback0 IPv6 addresses at start and exits if
+            # either is missing; swss restarts in this module restart snmp. Neither
+            # interface sends NDP on the ports under test, so keep IPv6 on both.
+            kept_ipv6_addrs = {}
+            for intf in ("eth0", "Loopback0"):
+                kept_ipv6_addrs[intf] = duthost.shell(
+                    "ip -6 addr show dev {} scope global | awk '/inet6/ {{print $2}}'".format(intf),
+                    module_ignore_errors=True)["stdout_lines"]
+
             duthost.shell("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+
+            for intf, addrs in kept_ipv6_addrs.items():
+                duthost.shell("sysctl -w net.ipv6.conf.{}.disable_ipv6=0".format(intf))
+                for addr in addrs:
+                    duthost.shell("ip -6 addr add {} dev {}".format(addr, intf), module_ignore_errors=True)
 
         yield
 
