@@ -349,7 +349,9 @@ def gnmi_tls(request, duthosts, ptfhost):
             logger.info("Waiting for critical processes to be healthy after rollback")
             wait_critical_processes(duthost)
             logger.info("All critical processes are healthy")
-        except Exception as e:
+        except (Exception, pytest.fail.Exception) as e:
+            # wait_critical_processes reports via pytest_assert, which raises Failed
+            # (a BaseException) -- a bare `except Exception` lets it error the teardown.
             logger.error("Waiting for critical processes failed with exception: %s", e)
 
         try:
