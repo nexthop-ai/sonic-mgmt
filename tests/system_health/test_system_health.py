@@ -121,18 +121,18 @@ def test_service_checker(duthosts, enum_rand_one_per_hwsku_hostname):
         for container_name, processes in list(processes_status.items()):
             if processes["status"] is False or len(processes["exited_critical_process"]) > 0:
                 for process_name in processes["exited_critical_process"]:
-                    expect_error_dict[process_name] = '{}:{} is not running'.format(
-                        container_name, process_name)
+                    field, messages = expected_process_not_running(container_name, process_name)
+                    expect_error_dict[field] = messages
 
         if expect_error_dict:
             logger.info('Verify data in redis')
-            for name, error in list(expect_error_dict.items()):
+            for field, messages in list(expect_error_dict.items()):
                 result = wait_until(
-                    WAIT_TIMEOUT, 10, 2, check_system_health_info, duthost, name, error)
-                value = redis_get_field_value(
-                    duthost, STATE_DB, HEALTH_TABLE_NAME, name)
-                assert result is True, 'Expect error {}, got {}'.format(
-                    error, value)
+                    WAIT_TIMEOUT, 10, 2, check_system_health_info_any_of, duthost, field, messages)
+                table_output = redis_get_system_health_info(
+                    duthost, STATE_DB, HEALTH_TABLE_NAME)
+                assert result is True, 'Expect {} to be one of {}, got table {}'.format(
+                    field, messages, table_output)
 
         expect_summary = SUMMARY_OK if not expect_error_dict else SUMMARY_NOT_OK
         polling_interval = get_system_health_config(
@@ -163,6 +163,7 @@ def test_service_checker_with_process_exit(duthosts, enum_rand_one_per_hwsku_hos
             if not running_critical_process:
                 continue
 
+<<<<<<< HEAD
             critical_process = random.sample(running_critical_process, 1)[0]
             with ProcessExitContext(duthost, container, critical_process):
                 # use wait_until to check if SYSTEM_HEALTH_INFO has expected content
@@ -172,6 +173,15 @@ def test_service_checker_with_process_exit(duthosts, enum_rand_one_per_hwsku_hos
                                    "'{}' is not running".format(critical_process)]
                 result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info_any_of, duthost, category,
                                     expected_values)
+=======
+        critical_process = random.sample(running_critical_process, 1)[0]
+        with ProcessExitContext(duthost, container, critical_process):
+            # use wait_until to check if SYSTEM_HEALTH_INFO has expected content
+            # avoid waiting for too long or DEFAULT_INTERVAL is not long enough to refresh db
+            category, expected_values = expected_process_not_running(container, critical_process)
+            result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info_any_of, duthost, category,
+                                expected_values)
+>>>>>>> 4214bb47c (NOS-15536: Fetching the correct redis hash for getting the process down update (#3378))
 
                 assert result is True, '{} is not recorded'.format(
                     critical_process)
@@ -558,6 +568,17 @@ def check_system_health_info(duthost, category, expected_value):
     value = redis_get_field_value(
         duthost, STATE_DB, HEALTH_TABLE_NAME, category)
     return value == expected_value
+
+
+def expected_process_not_running(container_name, process_name):
+    """Return the SYSTEM_HEALTH_INFO field and the messages healthd writes for a down process.
+
+    healthd keys the table by '<container>:<process>'.
+    """
+    field = '{}:{}'.format(container_name, process_name)
+    messages = ["Process '{}' in container '{}' is not running".format(process_name, container_name),
+                "'{}' is not running".format(process_name)]
+    return field, messages
 
 
 def check_health_field_contains(duthost, field, expected):
