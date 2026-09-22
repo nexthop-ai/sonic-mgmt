@@ -67,6 +67,9 @@ _TOR_ONLY_PROTOCOL = ["DHCP", "DHCP6"]
 _TEST_RATE_LIMIT_DEFAULT = 600
 _TEST_RATE_LIMIT_MARVELL = 625
 
+# TH5/TH6 can only trap UDLD, never forward it (expected behaviour per CSP CS00012467487)
+UDLD_UNSUPPORTED_FANOUT_ASICS = ["th5", "th6"]
+
 # Protocol to trap ID mapping indicating which trap
 # being for which protocol. Trap ID is used to verify
 # the trap installation status.
@@ -109,6 +112,7 @@ class TestCOPP(object):
             Checks that the policer enforces the rate limit for protocols
             that have a set rate limit.
         """
+<<<<<<< HEAD
         # If fanout is running 7060x6 and running SONiC, the only supported action for UDLD is trap, which means
         # UDLD packet will not be forwarded to DUT
         # Nokia H5/H6 fanouts (all port-count variants, e.g. h5_32d, h5_64d, h5_64o, h6_64, h6_128) and
@@ -124,6 +128,17 @@ class TestCOPP(object):
                 ):
                     pytest.skip("Skip UDLD test for Arista-7060x6, Nokia-H5/H6 and Nexthop-4210 "
                                 "fanout without UDLD forward support")
+=======
+        # A fanout that can only trap UDLD never forwards the injected packets on to the DUT
+        if 'UDLD' == protocol:
+            for fanouthost in list(fanouthosts.values()):
+                if fanouthost.get_fanout_os() != 'sonic':
+                    continue
+                asic_name = fanouthost.get_asic_name()
+                if asic_name in UDLD_UNSUPPORTED_FANOUT_ASICS:
+                    pytest.skip("Skip UDLD test: fanout platform {} with {} asic has no UDLD forward support"
+                                .format(fanouthost.facts["platform"], asic_name))
+>>>>>>> bc5ba362f (NOS-8734: [copp] Skip UDLD policer test by fanout ASIC family, not platform name (#3491))
 
         duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
         namespace = DEFAULT_NAMESPACE
