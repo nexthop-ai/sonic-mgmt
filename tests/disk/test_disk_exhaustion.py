@@ -82,18 +82,17 @@ def construct_packet_and_get_params(duthost, ptfadapter, tbinfo):
                                mg_facts["minigraph_vlan_sub_interfaces"]
                                if is_matching_ip_version(subintf_info['peer_addr'])]
 
-    elif len(mg_facts["minigraph_interfaces"]) >= 2:
-        # generate peer_ip and interfaces pair,
-        # be like:[("10.0.0.57", ["Ethernet48"])]
-        peer_ip_ifaces_pair = [(intf["peer_addr"], [intf["attachto"]]) for intf in mg_facts["minigraph_interfaces"]
-                               if
-                               is_matching_ip_version(intf['peer_addr'])]
-
     else:
-        # generate peer_ip and interfaces(port channel members) pair,
-        # be like:[("10.0.0.57", ["Ethernet48", "Ethernet52"])]
-        peer_ip_ifaces_pair = [(pair[0], mg_facts["minigraph_portchannels"][pair[1]]["members"]) for pair in
-                               peer_ip_pc_pair]
+        # routed interfaces first, then port channels (with their members), be like:
+        # [("10.0.0.57", ["Ethernet48"]), ("10.0.0.59", ["Ethernet52", "Ethernet56"])]
+        peer_ip_ifaces_pair = [(intf["peer_addr"], [intf["attachto"]]) for intf in mg_facts["minigraph_interfaces"]
+                               if is_matching_ip_version(intf['peer_addr'])]
+        peer_ip_ifaces_pair += [(pair[0], mg_facts["minigraph_portchannels"][pair[1]]["members"]) for pair in
+                                peer_ip_pc_pair]
+
+    pytest_assert(len(peer_ip_ifaces_pair) >= 2,
+                  "Need at least two IPv{} L3 peers to forward between, found {}".format(
+                      6 if is_v6_topo else 4, peer_ip_ifaces_pair))
 
     # use first port of first peer_ip_ifaces pair as input port
     # all ports in second peer_ip_ifaces pair will be output/forward port
