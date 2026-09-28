@@ -45,6 +45,7 @@ STORM_VLAN_TAG = 100
 # MAC_MOVE_GUARD configuration applied during the tests
 MAC_MOVE_GUARD_THRESHOLD = 100
 MAC_MOVE_GUARD_DETECT_INTERVAL = 10
+<<<<<<< HEAD
 MAC_MOVE_GUARD_ACTION_INTERVAL = 60
 # Rate limit applied to the storm sender. The guard trips when a single MAC
 # moves MAC_MOVE_GUARD_THRESHOLD times inside MAC_MOVE_GUARD_DETECT_INTERVAL,
@@ -60,14 +61,19 @@ STORM_MOVES_PER_SEC_PER_MAC = STORM_MOVE_RATE_MARGIN * int(math.ceil(
     float(MAC_MOVE_GUARD_THRESHOLD) / MAC_MOVE_GUARD_DETECT_INTERVAL))
 # Each move costs two frames: one on each of the two storm interfaces.
 STORM_PPS = STORM_MOVES_PER_SEC_PER_MAC * STORM_NUM_MACS * 2
+=======
+MAC_MOVE_GUARD_ACTION_INTERVAL = 120
+>>>>>>> 66f6e15e6 (NOS-12912: mac move guard, action_interval range fix in yang (#3707))
 # Action interval used by the DISABLE_LEARN_ON_MAC_WITH_ACL test. Kept high so
 # the bad MAC is not auto-released while we drive the storm and observe
 # orchagent quiescence. The test reconfigures this to a small value after the
 # storm is stopped to drive the cleanup phase.
 DISABLE_LEARN_ON_MAC_ACTION_INTERVAL = 600
 # Short action_interval reapplied after the storm is stopped to force the
-# bad-MAC tracking entry / ACL entry to age out promptly.
-DISABLE_LEARN_ON_MAC_CLEANUP_ACTION_INTERVAL = 30
+# bad-MAC tracking entry / ACL entry to age out promptly. 120 is the YANG
+# minimum (sonic-mac-move-guard.yang, range 120..86400); the orchagent
+# recovery timer ticks every 30 s, so release lands in [120, 150] s.
+DISABLE_LEARN_ON_MAC_CLEANUP_ACTION_INTERVAL = 120
 
 
 def _build_mmg_config(action, action_interval):
@@ -388,6 +394,7 @@ def test_fdb_mac_move_guard_disable_port(duthosts, fanouthosts, rand_one_dut_hos
     """
     Validate the MAC_MOVE_GUARD feature end-to-end:
 
+<<<<<<< HEAD
       1. Configure MAC_MOVE_GUARD (GLOBAL) with action=DISABLE_PORT,
          threshold=100, detect_interval=10s, action_interval=60s.
       2. Drive a MAC-move storm from PTF on two VLAN-member ports so the
@@ -395,6 +402,17 @@ def test_fdb_mac_move_guard_disable_port(duthosts, fanouthosts, rand_one_dut_hos
       3. Verify that one of the two DUT ports is disabled by the guard.
       4. Stop the storm and verify the disabled port auto-recovers after
          action_interval (60s).
+=======
+      1. Configure a dedicated VLAN with a minimum number of tagged L2 member
+         ports (see :func:`_provision_l2_storm_ports`).
+      2. Configure MAC_MOVE_GUARD (GLOBAL) with action=DISABLE_PORT,
+         threshold=100, detect_interval=10s, action_interval=120s.
+      3. Drive a MAC-move storm from PTF across those ports so the per-MAC move
+         count crosses the configured threshold.
+      4. Verify that one of the storm ports is disabled by the guard.
+      5. Stop the storm and verify the disabled port auto-recovers after
+         action_interval (120s).
+>>>>>>> 66f6e15e6 (NOS-12912: mac move guard, action_interval range fix in yang (#3707))
     """
 
     fdb_cleanup(duthosts, rand_one_dut_hostname, fanouthosts)

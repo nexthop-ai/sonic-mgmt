@@ -198,8 +198,8 @@ def test_remove_global_row(duthosts, rand_one_dut_hostname):
     ("threshold", "0", "threshold range is 1..max"),
     ("detect_interval", "0", "detect_interval range is 1..3600"),
     ("detect_interval", "3601", "detect_interval range is 1..3600"),
-    ("action_interval", "0", "action_interval range is 1..86400"),
-    ("action_interval", "86401", "action_interval range is 1..86400"),
+    ("action_interval", "119", "action_interval range is 120..86400"),
+    ("action_interval", "86401", "action_interval range is 120..86400"),
     ("action", "DROP_MAC", "action is restricted to the YANG enum values"),
     ("enabled", "maybe", "enabled must be boolean"),
 ])
