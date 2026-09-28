@@ -105,7 +105,14 @@ def test_bgp_queues(duthosts, enum_frontend_dut_hostname, enum_asic_index, tbinf
         # or "VOQ_CHASSIS_PEER_V4" or "VOQ_CHASSIS_PEER_V6" for VOQ_CHASSIS
         # If it's external it will be "RH_V4", "RH_V6", "AH_V4", "AH_V6", ...
         # Skip internal neighbors for VOQ_CHASSIS until BRCM fixes iBGP traffic in 2024011
-        if ("INTERNAL" in v["peer group"] or 'VOQ_CHASSIS' in v["peer group"]):
+        # Confed-internal peers are plain iBGP regardless of peer group. A confed-external
+        # peer may carry no "peer group" key; treat that as external.
+        if v.get("confed_peer_type") == "internal":
+            continue
+        if "peer group" not in v:
+            logger.warning("neighbor %s has no peer group; treating as external", k)
+        peer_group = v.get("peer group", "")
+        if ("INTERNAL" in peer_group or 'VOQ_CHASSIS' in peer_group):
             # Skip iBGP neighbors since we only want to verify eBGP
             continue
         # Only consider established bgp sessions

@@ -67,8 +67,15 @@ def setup(tbinfo, nbrhosts, duthosts, enum_frontend_dut_hostname, enum_rand_one_
     tor_neighbors = dict()
     neigh_asn = dict()
     for k, v in bgp_facts['bgp_neighbors'].items():
-        # Skip iBGP neighbors
-        if "INTERNAL" not in v["peer group"] and "VOQ_CHASSIS" not in v["peer group"]:
+        # Skip iBGP neighbors, including confed-internal peers, which are plain iBGP
+        # regardless of peer group. A confed-external peer may carry no "peer group"
+        # key in bgp_facts; treat that as external rather than raising KeyError.
+        if v.get("confed_peer_type") == "internal":
+            continue
+        if "peer group" not in v:
+            logger.warning("neighbor %s has no peer group; treating as external", k)
+        peer_group = v.get("peer group", "")
+        if "INTERNAL" not in peer_group and "VOQ_CHASSIS" not in peer_group:
             neigh_keys.append(v['description'])
             neigh_asn[v['description']] = v['remote AS']
             tor_neighbors[v['description']] = nbrhosts[v['description']]["host"]
