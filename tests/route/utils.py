@@ -44,7 +44,7 @@ def generate_intf_neigh(asichost, num_neigh, ip_version, mg_facts=None, is_backe
                 "vlan"
             ].startswith("PortChannel"):
                 continue
-            if interfaces[itfs_name]["vlan"] == "trunk":
+            if interfaces[itfs_name]["vlan"] in ("access", "trunk"):
                 continue
         if ip_version == 4:
             intf_neigh = {

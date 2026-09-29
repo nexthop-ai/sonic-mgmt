@@ -140,7 +140,7 @@ class TestFdbMacLearning:
         logging.info("ifs_status {} ".format(ifs_status))
         for _, interface_info in ifs_status.items():
             if (r'N\/A' != interface_info['alias']) and (r'N\/A' != interface_info['type']) \
-                    and ('up' == interface_info['oper']) and (interface_info['vlan'] == 'trunk'):
+                    and ('up' == interface_info['oper']) and (interface_info['vlan'] in ('access', 'trunk')):
                 up_interfaces.append(interface_info['interface'])
 
         if len(up_interfaces) < 4:
