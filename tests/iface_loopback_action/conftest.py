@@ -2,7 +2,7 @@ import pytest
 from tests.common.plugins.ptfadapter import get_ifaces, get_ifaces_map
 from tests.common import constants
 from .iface_loopback_action_helper import get_tested_up_ports, remove_orig_dut_port_config, \
-    get_portchannel_peer_port_map, recover_config, apply_config
+    get_portchannel_peer_port_map, recover_config, apply_config, cleanup_leftover_ptf_teamd_bonds
 from .iface_loopback_action_helper import ETHERNET_RIF, VLAN_RIF, PO_RIF, SUB_PORT_RIF, PO_SUB_PORT_RIF
 from tests.common.fixtures.duthost_utils import \
     backup_and_restore_config_db_package  # lgtm[py/unused-import]  # noqa: F401
@@ -186,6 +186,37 @@ def generate_ip_list():
     return dut_ip_list, ptf_ip_list
 
 
+# Neighbor ports setup shut down. recover brings them back after recover_config.
+_peer_shutdown_ports = {}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_created_ptf_teamd_bonds(ptfhost):
+    """Yield first so leftover teamd LAGs are dropped even if recover_config fails."""
+    yield
+    cleanup_leftover_ptf_teamd_bonds(ptfhost)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def recover(duthost, ptfhost, ports_configuration, is_sonic_mlnx_leaf_fanout):
+    """
+    Yield first so a failed setup still restores DUT/PTF configuration.
+    Neighbor no_shutdown runs after recover_config (same order as before).
+    :param duthost: DUT host object
+    :param ptfhost: PTF host object
+    :param ports_configuration: ports configuration parameters
+    """
+    if is_sonic_mlnx_leaf_fanout:
+        yield
+        return
+    yield
+    recover_config(duthost, ptfhost, ports_configuration)
+    for vm_host, peer_ports in list(_peer_shutdown_ports.items()):
+        for peer_port in peer_ports:
+            vm_host.no_shutdown(peer_port)
+    _peer_shutdown_ports.clear()
+
+
 @pytest.fixture(scope="module", autouse=True)
 def setup(duthost, ptfhost, orig_ports_configuration, ports_configuration,
           backup_and_restore_config_db_package, nbrhosts, tbinfo, is_sonic_mlnx_leaf_fanout):  # noqa: F811
@@ -204,6 +235,7 @@ def setup(duthost, ptfhost, orig_ports_configuration, ports_configuration,
         pytest.skip("Not supporteds on Mellanox leaf-fanout running SONiC")
         return
     peer_shutdown_ports = get_portchannel_peer_port_map(duthost, orig_ports_configuration, tbinfo, nbrhosts)
+    _peer_shutdown_ports.update(peer_shutdown_ports)
     remove_orig_dut_port_config(duthost, orig_ports_configuration)
     for vm_host, peer_ports in list(peer_shutdown_ports.items()):
         for peer_port in peer_ports:
@@ -211,24 +243,6 @@ def setup(duthost, ptfhost, orig_ports_configuration, ports_configuration,
     apply_config(duthost, ptfhost, ports_configuration)
 
     yield
-    for vm_host, peer_ports in list(peer_shutdown_ports.items()):
-        for peer_port in peer_ports:
-            vm_host.no_shutdown(peer_port)
-
-
-@pytest.fixture(scope="module", autouse=True)
-def recover(duthost, ptfhost, ports_configuration, is_sonic_mlnx_leaf_fanout):
-    """
-    restore the original configurations
-    :param duthost: DUT host object
-    :param ptfhost: PTF host object
-    :param ports_configuration: ports configuration parameters
-    """
-    if is_sonic_mlnx_leaf_fanout:
-        yield
-        return
-    yield
-    recover_config(duthost, ptfhost, ports_configuration)
 
 
 @pytest.fixture(scope='module')

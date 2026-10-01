@@ -40,6 +40,7 @@ from sub_ports_helpers import remove_vlan
 from sub_ports_helpers import add_member_to_vlan
 from sub_ports_helpers import remove_sub_port_from_ptf
 from sub_ports_helpers import remove_bond_port
+from sub_ports_helpers import cleanup_leftover_ptf_teamd_bonds
 from sub_ports_helpers import add_static_route_to_dut
 from sub_ports_helpers import remove_static_route_from_dut
 from sub_ports_helpers import update_dut_arp_table
@@ -400,7 +401,93 @@ def apply_route_config_for_port(request, tbinfo, duthost, ptfhost, port_type, de
             # Add static route from selected interface to sub-port on the PTF
             add_static_route_to_ptf(ptfhost, dst_port_network, dut_port_ip)
 
+<<<<<<< HEAD
             port_map[ptf_port]['dst_ports'].append((next_hop_sub_port, name_of_namespace))
+=======
+        # Get additional IP addresses for configuration of RIF on the DUT and PTF
+        ip_subnet = unicode('172.19.0.0/16')
+        subnet = ipaddress.ip_network(ip_subnet)
+        subnets = [i for i, _ in zip(subnet.subnets(new_prefix=30), dut_ports)]
+
+        sub_ports_keys = sub_ports.copy()
+
+        for dut_port, ptf_port, subnet in zip(list(dut_ports.values()), ptf_ports, subnets):
+            dut_port_ip, ptf_port_ip = ('{}/{}'.format(host, 30) for host in subnet.hosts())
+            if 'svi' in request.param:
+                ptf_port = '{}.{}'.format(ptf_port, vlan_id)
+            # Recorded before the DUT is touched so that teardown can undo a
+            # partially configured port if setup fails part-way through.
+            port_map[ptf_port] = {'dut_port': dut_port,
+                                  'ip': ptf_port_ip,
+                                  'neighbor_ip': dut_port_ip,
+                                  'dst_ports': [],
+                                  'ptf_configured': False}
+
+            remove_ip_from_port(duthost, dut_port)
+
+            if 'svi' in request.param:
+                # Configure  SVI port on the DUT
+                remove_member_from_vlan(duthost, vlan_id, dut_port)
+                setup_vlan(duthost, vlan_id)
+                vlan_created = True
+                add_member_to_vlan(duthost, vlan_id, dut_port)
+                add_ip_to_dut_port(duthost, 'Vlan{}'.format(vlan_id), dut_port_ip)
+                # Configure additional sub-port for connection between SVI port of the DUT and PTF
+                create_sub_port_on_ptf(ptfhost, ptf_port, ptf_port_ip)
+                port_map[ptf_port]['ptf_configured'] = True
+                # Wait for SVI RIF to be programmed in hardware before sending traffic.
+                # Without this, packets may be lost if orchagent hasn't finished programming
+                # the VLAN RIF and the return path doesn't work yet.
+                py_assert(wait_until(30, 1, 0, _check_ip_reachable, duthost,
+                                     ptf_port_ip.split('/')[0]),
+                          "DUT could not reach PTF SVI port {} within 30s".format(ptf_port_ip))
+            else:
+                # should remove the port from every VLAN it is in first to configure L3 RIF
+                remove_member_from_all_vlans(duthost, dut_port)
+                # Configure L3 RIF on the DUT
+                add_ip_to_dut_port(duthost, dut_port, dut_port_ip)
+                # Configure L3 RIF on the PTF
+                add_ip_to_ptf_port(ptfhost, ptf_port, ptf_port_ip)
+                port_map[ptf_port]['ptf_configured'] = True
+
+            # Get two random sub-ports which are not part of the selected DUT interface
+            sub_ports_on_port = random.sample([sub_port for sub_port in sub_ports_keys
+                                               if dut_port + '.' not in sub_port], 2)
+
+            for sub_port in sub_ports_on_port:
+                sub_ports_keys.pop(sub_port)
+
+            # Configure static route between selected sub-ports and selected interfaces on the PTF
+            for next_hop_sub_port in sub_ports_on_port:
+                name_of_namespace = 'vnet_for_{}'.format(next_hop_sub_port)
+                dst_port_network = ipaddress.ip_network(str(sub_ports[next_hop_sub_port]['neighbor_ip']),
+                                                        strict=False)
+
+                # Add selected sub-port to namespace on the PTF
+                add_port_to_namespace(ptfhost,
+                                      name_of_namespace,
+                                      sub_ports[next_hop_sub_port]['neighbor_port'],
+                                      sub_ports[next_hop_sub_port]['neighbor_ip'])
+
+                namespaces[name_of_namespace] = (sub_ports[next_hop_sub_port]['neighbor_port'],
+                                                 sub_ports[next_hop_sub_port]['neighbor_ip'])
+                # Recorded before the routes go in, so a failure between the
+                # two still gets the namespace torn down.
+                port_map[ptf_port]['dst_ports'].append((next_hop_sub_port, name_of_namespace))
+
+                # Add static route from sub-port to selected interface on the PTF
+                add_static_route_to_ptf(ptfhost, subnet, sub_ports[next_hop_sub_port]['ip'], name_of_namespace)
+                # Add static route from selected interface to sub-port on the PTF
+                add_static_route_to_ptf(ptfhost, dst_port_network, dut_port_ip)
+    except BaseException:
+        # Setup used to skip teardown when it failed before yield. Clean up
+        # immediately so the leftover does not last for the rest of this suite.
+        # BaseException: pytest.fail() raises Failed, which Exception misses.
+        logger.error("apply_route_config_for_port[%s] setup failed; cleaning up what was configured",
+                     request.param)
+        teardown(best_effort=True)
+        raise
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 
     yield {
         'port_map': port_map,
@@ -613,18 +700,29 @@ def reload_ptf_config(request, ptfhost, define_sub_ports_configuration, port_typ
 
     if 'port_in_lag' in port_type:
         ptf_ports = define_sub_ports_configuration['ptf_ports']
+        # Always detach members even if the bond netdev is already gone; a
+        # leftover enslaved eth still has an rx-handler and blocks macvlan.
         for bond_port, port_name in list(ptf_ports.items()):
-            if bond_port in ptf_port_list:
-                remove_bond_port(ptfhost, bond_port, port_name)
+            remove_bond_port(ptfhost, bond_port, port_name)
 
     ptfhost.shell("supervisorctl restart ptf_nn_agent")
     time.sleep(5)
 
 
 @pytest.fixture(scope="package", autouse=True)
-def teardown_test_class(duthost):
+def cleanup_created_ptf_teamd_bonds(ptfhost):
+    """Yield first so leftover teamd LAGs are dropped even if class teardown is skipped."""
+    yield
+    cleanup_leftover_ptf_teamd_bonds(ptfhost)
+
+
+@pytest.fixture(scope="package", autouse=True)
+def teardown_test_class(duthost, cleanup_created_ptf_teamd_bonds):
     """
-    Reload DUT configuration after running of test suite
+    Reload DUT configuration after running of test suite.
+
+    Pytest LIFO: this finalizer (`config_reload`) runs first. Leftover PTF
+    teamd LAGs are dropped afterwards by cleanup_created_ptf_teamd_bonds.
 
     Args:
         duthost: DUT host object

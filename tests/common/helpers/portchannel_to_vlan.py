@@ -15,6 +15,7 @@ from tests.common.fixtures.duthost_utils import utils_vlan_intfs_dict_add
 from tests.common.helpers.backend_acl import bind_acl_table
 from tests.common.config_reload import config_reload
 from tests.common.utilities import check_skip_release
+from tests.common.vs_data import is_vs_device
 
 
 # TODO: Remove this once we no longer support Python 2
@@ -121,14 +122,90 @@ def setup_dut_lag(duthost, dut_ports, vlan, src_vlan_id):
     return lag_port_map
 
 
+<<<<<<< HEAD
 def setup_ptf_lag(ptfhost, ptf_ports, vlan):
     """
     Setup ptf lag
+=======
+def ptf_supports_team(ptfhost):
+    """True when the PTF kernel can create a team netdevice.
+
+    VTB kernels such as 6.8-aws ship bonding and not the team module. teamd
+    then exits immediately with "Operation not supported".
+    """
+    probe = "teamprobe"
+    result = ptfhost.shell(
+        "ip link del {0} 2>/dev/null; ip link add name {0} type team && ip link del {0}".format(probe),
+        module_ignore_errors=True,
+    )
+    return result["rc"] == 0
+
+
+def setup_ptf_lag_teamd(ptfhost, lag_name, lag_ip, port_list, mode="teamd"):
+    """
+    Setup PTF LAG using teamd (for virtual interfaces)
+
+    teamd is compatible with virtual interfaces (veth pairs) and provides
+    proper LACP negotiation without requiring hardware-level MII detection.
+    mode "bond" uses the kernel bonding driver when the team device is missing.
+
+    Args:
+        ptfhost: PTF host object
+        lag_name: name of the LAG interface
+        lag_ip: IP address to assign to LAG
+        port_list: list of port names
+        mode: ptf_portchannel backend, "teamd" or "bond"
+    """
+    # Extract interface indices from eth<N> format for teamd config
+    port_indices = []
+    for port_name in port_list:
+        port_indices.append(int(port_name.replace("eth", "")))
+
+    portchannel_config = {
+        lag_name: {
+            "intfs": port_indices
+        }
+    }
+
+    ptfhost.ptf_portchannel(cmd="start", portchannel_config=portchannel_config, mode=mode)
+
+    # Add IP address to the LAG interface
+    ptfhost.shell("ip addr add {} dev {}".format(lag_ip, lag_name))
+
+
+def setup_ptf_lag_kbond(ptfhost, lag_name, lag_ip, port_list):
+    """
+    Setup PTF LAG using kernel bonding (for physical interfaces)
+
+    Traditional kernel bonding approach that works well with physical interfaces
+    that provide proper hardware-level MII detection and link state information.
+
+    Args:
+        ptfhost: PTF host object
+        lag_name: name of the LAG interface
+        lag_ip: IP address to assign to LAG
+        port_list: list of port names
+    """
+    # Create kernel bond with LACP
+    ptfhost.create_lag(lag_name, lag_ip, "802.3ad")
+
+    for port_name in port_list:
+        ptfhost.add_intf_to_lag(lag_name, port_name)
+
+    ptfhost.startup_lag(lag_name)
+
+
+def setup_ptf_lag(ptfhost, ptf_ports, vlan, duthost):
+    """
+    Setup PTF LAG. VS/KVM uses teamd when the kernel has a team device, and
+    kernel bonding otherwise. Hardware uses kernel bonding.
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 
     Args:
         ptfhost: PTF host object
         ptf_ports: ports need to configure
         vlan: information about vlan configuration
+        duthost: DUT host object
 
     Returns:
         information about ptf lag
@@ -145,6 +222,19 @@ def setup_ptf_lag(ptfhost, ptf_ports, vlan):
         ptfhost.add_intf_to_lag(PTF_LAG_NAME, port_name)
         port_list.append(port_name)
 
+<<<<<<< HEAD
+=======
+    if is_vs_device(duthost) and ptf_supports_team(ptfhost):
+        logging.info("VS/KVM testbed, using teamd for LAG setup")
+        setup_ptf_lag_teamd(ptfhost, PTF_LAG_NAME, lag_ip, port_list)
+    elif is_vs_device(duthost):
+        logging.info("VS/KVM kernel has no team device, using kernel bond for LAG setup")
+        setup_ptf_lag_teamd(ptfhost, PTF_LAG_NAME, lag_ip, port_list, mode="bond")
+    else:
+        logging.info("Hardware testbed, using kernel bonding for LAG setup")
+        setup_ptf_lag_kbond(ptfhost, PTF_LAG_NAME, lag_ip, port_list)
+
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
     lag_port_map = {}
     lag_port_map[PTF_LAG_NAME] = {
         "port_list": port_list,
@@ -233,7 +323,7 @@ def setup_dut_ptf(ptfhost, duthost, tbinfo, vlan_intfs_dict):
             vlan['ip'] = v['ip']
             break
     dut_lag_map = setup_dut_lag(duthost, dut_ports, vlan, src_vlan_id)
-    ptf_lag_map = setup_ptf_lag(ptfhost, ptf_ports, vlan)
+    ptf_lag_map = setup_ptf_lag(ptfhost, ptf_ports, vlan, duthost)
     return dut_lag_map, ptf_lag_map, src_vlan_id
 
 

@@ -5,6 +5,7 @@ import time
 import re
 import logging
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.ptf_teamd import kill_ptf_teamd, PtfTeamdBondRegistry
 from tests.common.utilities import wait_until
 from tests.common.config_reload import config_reload
 
@@ -318,7 +319,7 @@ def apply_ptf_config(ptfhost, ports_configuration):
         ptf_port = port_conf['ptf_port']
 
         if port_type == PO_SUB_PORT_RIF or port_type == PO_RIF:
-            add_ptf_bond(ptfhost, ptf_port, port_conf['po_id'], port_conf['ptf_ip_addr'])
+            add_ptf_bond(ptfhost, ptf_port, port_conf['po_id'])
 
     ptfhost.shell("supervisorctl restart ptf_nn_agent")
     time.sleep(5)
@@ -334,7 +335,7 @@ def remove_ptf_config(ptfhost, ports_configuration):
         port_type = port_conf['type']
         ptf_port = port_conf['ptf_port']
         if port_type == PO_SUB_PORT_RIF or port_type == PO_RIF:
-            remove_ptf_bond(ptfhost, ptf_port, port_conf['po_id'], port_conf['ptf_ip_addr'])
+            remove_ptf_bond(ptfhost, ptf_port, port_conf['po_id'])
 
     ptfhost.shell("supervisorctl restart ptf_nn_agent")
     time.sleep(5)
@@ -480,39 +481,64 @@ def remove_dut_vlan_member(duthost, port, vlan_id):
     duthost.shell('config vlan member del {} {}'.format(vlan_id, port))
 
 
-def add_ptf_bond(ptfhost, port, bond_id, ip_addr):
+_ptf_teamd_bonds_created = PtfTeamdBondRegistry("iface_loopback_action")
+
+
+def _remove_registered_ptf_bond(ptfhost, bond_port, port):
+    remove_ptf_bond(ptfhost, port, bond_port[len("bond"):])
+
+
+def cleanup_leftover_ptf_teamd_bonds(ptfhost):
+    _ptf_teamd_bonds_created.cleanup(ptfhost, _remove_registered_ptf_bond)
+
+
+def add_ptf_bond(ptfhost, port, bond_id):
     """
     Add bond on the ptf host
     :param ptfhost: PTF host object
     :param port: the ptf port which will be added to the bond
     :param bond_id: bond id
-    :param ip_addr: ip address
     """
-    try:
-        bond_port = 'bond{}'.format(bond_id)
-        ptfhost.shell("teamd -t {} -d -c '{{\"runner\": {{\"name\": \"lacp\"}}}}'".format(bond_port))
-        ptfhost.shell("ip link set {} down".format(port))
-        ptfhost.shell("ip link set {} master {}".format(port, bond_port))
-        ptfhost.shell("ip link set dev {} up".format(bond_port))
-        ptfhost.shell("ifconfig {} mtu 9216 up".format(bond_port))
-    except Exception as e:
-        logger.error("Err when add bond on ptf host: {}".format(e))
+    bond_port = 'bond{}'.format(bond_id)
+    ptfhost.shell("teamd -t {} -d -c '{{\"runner\": {{\"name\": \"lacp\"}}}}'".format(bond_port))
+    # Track as soon as teamd is started so cleanup_created_ptf_teamd_bonds
+    # (yields first) still kills it if a later step fails.
+    _ptf_teamd_bonds_created.register(bond_port, port)
+    # Kernel enslavement (ip link set master), not teamdctl port add. teamd
+    # still sees the member via netlink; remove_ptf_bond uses teamdctl port
+    # remove plus nomaster so a stale teamdctl state does not leave the eth
+    # enslaved.
+    ptfhost.shell("ip link set {} down".format(port))
+    ptfhost.shell("ip link set {} master {}".format(port, bond_port))
+    ptfhost.shell("ip link set dev {} up".format(bond_port))
+    ptfhost.shell("ifconfig {} mtu 9216 up".format(bond_port))
 
 
-def remove_ptf_bond(ptfhost, port, bond_id, ip_addr):
+def remove_ptf_bond(ptfhost, port, bond_id):
     """
     Remove bond on the ptf host
+
+    Each step is independent so a half-built bond still gets teamd killed and
+    the member detached. A leftover enslaved member still has an rx-handler.
+
+    Add uses the kernel API (ip link set master); remove still starts with
+    teamdctl port remove. That is intentional: teamdctl is a no-op
+    (module_ignore_errors) if the port was never in teamd's soft state, and
+    nomaster then detaches the kernel slave.
+
     :param ptfhost: PTF host object
     :param port: the ptf port which will be removed from the bond
     :param bond_id: bond id
     """
-    try:
-        ptfhost.shell("ip link set bond{} nomaster".format(bond_id))
-        ptfhost.shell("ip link set {} nomaster".format(port))
-        ptfhost.shell("ip link set {} up".format(port))
-        ptfhost.shell("ip link del bond{}".format(bond_id))
-    except Exception as e:
-        logger.error("Err when remove bond on ptf host: {}".format(e))
+    bond_port = 'bond{}'.format(bond_id)
+    ptfhost.shell("teamdctl {} port remove {}".format(bond_port, port),
+                  module_ignore_errors=True)
+    ptfhost.shell("ip link set {} nomaster".format(port),
+                  module_ignore_errors=True)
+    ptfhost.shell("ip link set {} up".format(port),
+                  module_ignore_errors=True)
+    kill_ptf_teamd(ptfhost, bond_port)
+    _ptf_teamd_bonds_created.forget(bond_port)
 
 
 def verify_traffic(duthost, ptfadapter, rif_interfaces, ports_configuration, action_list):

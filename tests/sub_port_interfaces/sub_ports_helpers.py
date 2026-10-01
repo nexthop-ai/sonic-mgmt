@@ -17,6 +17,7 @@ from scapy.layers.l2 import Dot1Q
 from scapy.all import Ether
 
 from tests.common.helpers.assertions import pytest_assert, pytest_require
+from tests.common.helpers.ptf_teamd import kill_ptf_teamd, PtfTeamdBondRegistry
 from tests.common.utilities import wait_until
 from tests.common.pkt_filter.filter_pkt_in_buffer import FilterPktBuffer
 from tests.common import constants
@@ -649,6 +650,168 @@ def create_lag_port(duthost, config_port_indices):
     return lag_port_map
 
 
+<<<<<<< HEAD
+=======
+# Exceptions a best-effort cleanup step may absorb: ordinary errors plus the
+# pytest outcome raised by pytest_assert/pytest.fail, which is a BaseException.
+# KeyboardInterrupt and friends are deliberately not in this list.
+CLEANUP_EXCEPTIONS = (Exception, pytest.fail.Exception)
+
+
+def _best_effort(func, *args, **kwargs):
+    """
+    Run a cleanup step, log instead of raising if it fails
+
+    Used on rollback paths only: the original exception is what the caller
+    re-raises, and one cleanup step failing must not stop the remaining ones.
+    """
+    try:
+        func(*args, **kwargs)
+    except CLEANUP_EXCEPTIONS as e:
+        logger.error("cleanup step %s%s failed: %s", func.__name__, args[1:], e)
+
+
+def remove_stale_bond_port(ptfhost, bond_port):
+    """
+    Drop any teamd instance or team device left behind for bond_port
+
+    A run that aborted part way through create_bond_port() leaves its teamd
+    alive.  That daemon owns /var/run/teamd/<bond_port>.sock, so the next
+    'teamd -d' cannot bind it and every subsequent 'teamdctl port add' is
+    answered by the stale daemon instead.
+
+    Args:
+        ptfhost: PTF host object
+        bond_port: bond-port name
+    """
+    kill_ptf_teamd(ptfhost, bond_port)
+
+
+_ptf_teamd_bonds_created = PtfTeamdBondRegistry("sub_port_interfaces")
+
+
+def cleanup_leftover_ptf_teamd_bonds(ptfhost):
+    _ptf_teamd_bonds_created.cleanup(ptfhost, remove_bond_port)
+
+
+def is_teamd_ready(ptfhost, bond_port):
+    """
+    Check whether teamd for bond_port is answering on its control socket
+
+    Args:
+        ptfhost: PTF host object
+        bond_port: bond-port name
+
+    Returns:
+        True if teamd is up and reachable
+    """
+    return ptfhost.shell('teamdctl {} state dump'.format(bond_port),
+                         module_ignore_errors=True)['rc'] == 0
+
+
+def is_bond_member(ptfhost, bond_port, port_name):
+    """
+    Check whether port_name is currently enslaved to bond_port
+
+    Args:
+        ptfhost: PTF host object
+        bond_port: bond-port name
+        port_name: member name of bond-port
+
+    Returns:
+        True if port_name is a member of bond_port
+    """
+    return ptfhost.shell('test -e /sys/class/net/{}/lower_{}'.format(bond_port, port_name),
+                         module_ignore_errors=True)['rc'] == 0
+
+
+def add_port_to_bond(ptfhost, bond_port, port_name):
+    """
+    Enslave port_name to bond_port, retrying transient rejections
+
+    The kernel's team_port_add() refuses a port that is administratively up
+    (-EBUSY).  On a physical testbed the PTF ports are 802.1Q VLAN devices on a
+    trunk shared with the fanout, so team's dev_open() of the port can also fail
+    in vlan_dev_open() with -ENETDOWN while that trunk is momentarily down.
+    teamdctl reports every such rejection identically as "PortAddFail", so
+    re-assert the admin-down and retry rather than letting one transient
+    rejection fail module setup for every dependent test.
+
+    Args:
+        ptfhost: PTF host object
+        bond_port: bond-port name
+        port_name: member name of bond-port
+    """
+    last_err = ''
+
+    for attempt in range(1, BOND_PORT_ADD_RETRIES + 1):
+        ptfhost.shell('ip link set {} down'.format(port_name))
+        res = ptfhost.shell('teamdctl {} port add {}'.format(bond_port, port_name),
+                            module_ignore_errors=True)
+
+        if res['rc'] == 0 and is_bond_member(ptfhost, bond_port, port_name):
+            return
+
+        last_err = res['stderr'] or res['stdout']
+        logger.warning('Attempt %d/%d to add %s to %s failed: %s',
+                       attempt, BOND_PORT_ADD_RETRIES, port_name, bond_port, last_err)
+        time.sleep(BOND_PORT_ADD_INTERVAL)
+
+    port_state = ptfhost.shell('ip -d link show {}'.format(port_name),
+                               module_ignore_errors=True)['stdout']
+    pytest_assert(False,
+                  'Failed to add {} to {} after {} attempts: {}\nPort state: {}'
+                  .format(port_name, bond_port, BOND_PORT_ADD_RETRIES, last_err, port_state))
+
+
+def is_ptf_team_supported(ptfhost):
+    """
+    Check whether the PTF kernel can create team netdevs
+
+    teamd builds the bond device itself, through libteam's team_create() ->
+    rtnetlink RTM_NEWLINK with kind=team.  A kernel without that link kind
+    answers EOPNOTSUPP, so teamd dies within milliseconds with "Daemon process
+    failed. / Failed: Operation not supported" and every [port_in_lag] test
+    fails in setup instead of being skipped (NOS-17220).
+
+    Probe the link kind on a scratch device rather than assuming: the module
+    can be absent on one testbed and present on another for the same image
+    (physical testservers have it, some virtual testbeds do not), so this is a
+    property of the PTF, not of the platform under test.
+
+    Args:
+        ptfhost: PTF host object
+
+    Returns:
+        True if the PTF kernel can create a team netdev
+    """
+    cached = _ptf_team_supported.get(ptfhost.hostname)
+    if cached is not None:
+        return cached
+
+    # Clear our own leftover first: an earlier run of this pid that died between
+    # the add and the delete would make 'add' fail with EEXIST, which reads as
+    # "unsupported".  The name carries our pid, so this can only ever remove a
+    # device of ours - it cannot touch a probe another process has in flight.
+    ptfhost.shell('ip link del {}'.format(TEAM_PROBE_DEVICE), module_ignore_errors=True)
+
+    # Only the 'add' answers the question. Folding the cleanup into the same
+    # command would report an unsupported kernel whenever the delete fails,
+    # which is a supported kernel losing 13 tests to a bogus reason.
+    res = ptfhost.shell('ip link add name {} type team'.format(TEAM_PROBE_DEVICE),
+                        module_ignore_errors=True)
+    supported = res['rc'] == 0
+    if supported:
+        ptfhost.shell('ip link del {}'.format(TEAM_PROBE_DEVICE), module_ignore_errors=True)
+    else:
+        logger.warning('PTF cannot create team netdevs: %s',
+                       (res['stderr'] or res['stdout']).strip())
+
+    _ptf_team_supported[ptfhost.hostname] = supported
+    return supported
+
+
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 def create_bond_port(ptfhost, ptf_ports):
     """
     Create bond ports on the PTF
@@ -665,16 +828,45 @@ def create_bond_port(ptfhost, ptf_ports):
 
     for port_index, port_name in list(ptf_ports.items()):
         bond_port = 'bond{}'.format(port_index)
+<<<<<<< HEAD
         cmds.append("ip link add {} type bond".format(bond_port))
         cmds.append("ip link set {} type bond miimon 100 mode 802.3ad".format(bond_port))
         cmds.append("ip link set {} down".format(port_name))
         cmds.append("ip link set {} master {}".format(port_name, bond_port))
+=======
+        teamd_config = (
+            '{{'
+            '"device": "{bond_port}", '
+            '"runner": {{"name": "lacp", "active": true, "fast_rate": true}}, '
+            '"link_watch": {{"name": "ethtool"}}'
+            '}}'
+        ).format(bond_port=bond_port)
+
+        remove_stale_bond_port(ptfhost, bond_port)
+
+        # 'teamd -d' daemonizes, so wait for the control socket before driving
+        # it with teamdctl.
+        ptfhost.shell("teamd -d -t {} -c '{}'".format(bond_port, teamd_config))
+        # Track as soon as teamd is started so cleanup_created_ptf_teamd_bonds
+        # (yields first) still kills it if a later step fails.
+        bond_port_map[bond_port] = port_name
+        _ptf_teamd_bonds_created.register(bond_port, port_name)
+        pytest_assert(wait_until(TEAMD_READY_TIMEOUT, 1, 0, is_teamd_ready, ptfhost, bond_port),
+                      'teamd for {} did not come up on the PTF'.format(bond_port))
+
+        add_port_to_bond(ptfhost, bond_port, port_name)
+
+        cmds = []
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
         cmds.append("ip link set dev {} up".format(bond_port))
         cmds.append("ifconfig {} mtu 9216 up".format(bond_port))
 
+<<<<<<< HEAD
         bond_port_map[bond_port] = port_name
 
     ptfhost.shell_cmds(cmds=cmds)
+=======
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
     ptfhost.shell("supervisorctl restart ptf_nn_agent")
     time.sleep(5)
 
@@ -894,11 +1086,15 @@ def remove_bond_port(ptfhost, bond_port, port_name):
     """
     Remove bond-port from DUT
 
+    nomaster runs before teamd is killed so a leftover enslaved member (still
+    holding an rx-handler) is detached even if the daemon is already gone.
+
     Args:
         ptfhost: PTF host object
         bond_port: bond-port name
         port_name: member name of bond-port
     """
+<<<<<<< HEAD
     cmds = []
 
     cmds.append("ip link set {} nomaster".format(bond_port))
@@ -907,6 +1103,16 @@ def remove_bond_port(ptfhost, bond_port, port_name):
     cmds.append("ip link del {}".format(bond_port))
 
     ptfhost.shell_cmds(cmds=cmds)
+=======
+    ptfhost.shell("teamdctl {} port remove {}".format(bond_port, port_name),
+                  module_ignore_errors=True)
+    ptfhost.shell("ip link set {} nomaster".format(port_name),
+                  module_ignore_errors=True)
+    ptfhost.shell("ip link set {} up".format(port_name),
+                  module_ignore_errors=True)
+    remove_stale_bond_port(ptfhost, bond_port)
+    _ptf_teamd_bonds_created.forget(bond_port)
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 
 
 def remove_ip_from_port(duthost, port, ip=None):

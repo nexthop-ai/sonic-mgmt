@@ -7,7 +7,6 @@ import random
 import logging
 import os
 import tempfile
-import traceback
 
 from collections import OrderedDict
 from natsort import natsorted
@@ -307,7 +306,39 @@ def setup_vlan_peer(duthost, ptfhost, cfg_facts):
         ptfhost.shell("ip netns add {}".format(ns))
 
         # bind port to namespace
-        ptfhost.shell("ip link add e{}mv1 link eth{} type macvlan mode bridge".format(vlan_peer_port, vlan_peer_port))
+        eth_dev = "eth{}".format(vlan_peer_port)
+        result = ptfhost.shell(
+            "ip link add e{}mv1 link {} type macvlan mode bridge".format(
+                vlan_peer_port, eth_dev),
+            module_ignore_errors=True,
+        )
+        if result["rc"] != 0:
+            link_state = ptfhost.shell(
+                "ip -d link show {}".format(eth_dev), module_ignore_errors=True)
+            master = ptfhost.shell(
+                "basename \"$(readlink /sys/class/net/{}/master)\" 2>/dev/null"
+                .format(eth_dev),
+                module_ignore_errors=True,
+            )["stdout"].strip()
+            if master:
+                teamd_pid = ptfhost.shell(
+                    "cat /var/run/teamd/{0}.pid 2>/dev/null || "
+                    "pgrep -n -f 'teamd.*-t {0}' || true".format(master),
+                    module_ignore_errors=True,
+                )["stdout"].strip() or "(no teamd pid)"
+                teamd_holding = "{} pid={}".format(master, teamd_pid)
+            else:
+                teamd_holding = "(none)"
+            raise Exception(
+                "Failed to create macvlan e{0}mv1 on {1} (rc={2}): {3}\n"
+                "ip -d link show {1}:\n{4}\n"
+                "teamd pid holding {1}: {5}".format(
+                    vlan_peer_port, eth_dev, result["rc"],
+                    result.get("stderr") or result.get("stdout") or "",
+                    link_state.get("stdout") or "(no output)",
+                    teamd_holding,
+                )
+            )
         ptfhost.shell("ip link set e{}mv1 netns {}".format(vlan_peer_port, ns))
         ptfhost.shell("ip netns exec {} ip link set dev e{}mv1 up".format(ns, vlan_peer_port))
 
@@ -570,64 +601,69 @@ def restore_config_db(localhost, duthost, ptfhost):
 
 
 @pytest.fixture(scope="module", autouse=True)
+def restore_vrf_config(localhost, duthosts, rand_one_dut_hostname, ptfhost):
+    """Yield first so a failed setup_vrf still restores config_db and PTF peers."""
+    yield
+    if "dut_ip" not in g_vars:
+        return
+    duthost = duthosts[rand_one_dut_hostname]
+    restore_config_db(localhost, duthost, ptfhost)
+
+
+@pytest.fixture(scope="module", autouse=True)
 def setup_vrf(
     tbinfo, duthosts, rand_one_dut_hostname, ptfhost, localhost,
+<<<<<<< HEAD
+=======
+    restore_vrf_config,
+    relax_snmp_start_limit,
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
     skip_test_module_over_backend_topologies  # noqa: F811
 ):
     duthost = duthosts[rand_one_dut_hostname]
 
+    # dut_ip is set before mutating config_db so restore_vrf_config (yields first)
+    # can restore if a later step fails.
+    g_vars["dut_ip"] = duthost.host.options["inventory_manager"].get_host(duthost.hostname).vars["ansible_host"]
+
     # backup config_db.json
     duthost.shell("mv /etc/sonic/config_db.json /etc/sonic/config_db.json.bak")
+    # Don't care about 'pmon'/'snmp'/'lldp' here (see VRF_CRITICAL_SERVICES)
+    duthost.critical_services = list(VRF_CRITICAL_SERVICES)
+    cfg_t0 = get_cfg_facts(duthost)  # generate cfg_facts for t0 topo
 
-    # Setup global variables
-    global g_vars
+    setup_vrf_cfg(duthost, localhost, cfg_t0)
 
+<<<<<<< HEAD
     try:
         # Setup dut
         g_vars["dut_ip"] = duthost.host.options["inventory_manager"].get_host(duthost.hostname).vars["ansible_host"]
         # Don't care about 'pmon' and 'lldp' here
         duthost.critical_services = ["swss", "syncd", "database", "teamd", "bgp"]
         cfg_t0 = get_cfg_facts(duthost)  # generate cfg_facts for t0 topo
+=======
+    # Generate cfg_facts for t0-vrf topo, should not use cfg_facts fixture here. Otherwise, the cfg_facts
+    # fixture will be executed before setup_vrf and will have the original non-VRF config facts.
+    cfg_facts = get_cfg_facts(duthost)
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 
-        setup_vrf_cfg(duthost, localhost, cfg_t0)
+    duthost.shell("sonic-clear arp")
+    duthost.shell("sonic-clear nd")
+    duthost.shell("sonic-clear fdb all")
 
-        # Generate cfg_facts for t0-vrf topo, should not use cfg_facts fixture here. Otherwise, the cfg_facts
-        # fixture will be executed before setup_vrf and will have the original non-VRF config facts.
-        cfg_facts = get_cfg_facts(duthost)
+    with open("../ansible/vars/topo_{}.yml".format(tbinfo["topo"]["name"]), "r") as fh:
+        g_vars["topo_properties"] = yaml.safe_load(fh)
 
-        duthost.shell("sonic-clear arp")
-        duthost.shell("sonic-clear nd")
-        duthost.shell("sonic-clear fdb all")
+    g_vars["props"] = g_vars["topo_properties"]["configuration_properties"]["common"]
 
-        with open("../ansible/vars/topo_{}.yml".format(tbinfo["topo"]["name"]), "r") as fh:
-            g_vars["topo_properties"] = yaml.safe_load(fh)
+    g_vars["vlan_peer_ips"], g_vars["vlan_peer_vrf2ns_map"] = setup_vlan_peer(duthost, ptfhost, cfg_facts)
 
-        g_vars["props"] = g_vars["topo_properties"]["configuration_properties"]["common"]
+    g_vars["vrf_intfs"] = get_vrf_intfs(cfg_facts)
 
-        g_vars["vlan_peer_ips"], g_vars["vlan_peer_vrf2ns_map"] = setup_vlan_peer(duthost, ptfhost, cfg_facts)
-
-        g_vars["vrf_intfs"] = get_vrf_intfs(cfg_facts)
-
-        g_vars["vrf_intf_member_port_indices"], g_vars["vrf_member_port_indices"] = get_vrf_ports(cfg_facts)
-
-    except Exception as e:
-        # Ensure that config_db is restored.
-        # If exception is raised in setup, the teardown code won't be executed. That's why we need to capture
-        # exception and do cleanup here in setup part (code before 'yield').
-        logger.error("Exception raised in setup: {}".format(repr(e)))
-        logger.error(json.dumps(traceback.format_exception(*sys.exc_info()), indent=2))
-
-        restore_config_db(localhost, duthost, ptfhost)
-
-        # Setup failed. There is no point to continue running the cases.
-        # If this line is hit, script execution will stop here
-        pytest.fail("VRF testing setup failed")
+    g_vars["vrf_intf_member_port_indices"], g_vars["vrf_member_port_indices"] = get_vrf_ports(cfg_facts)
 
     # --------------------- Testing -----------------------
     yield
-
-    # --------------------- Teardown -----------------------
-    restore_config_db(localhost, duthost, ptfhost)
 
 
 @pytest.fixture

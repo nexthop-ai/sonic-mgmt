@@ -2,6 +2,12 @@ import pytest
 
 from test_vrf import g_vars
 from test_vrf import setup_vrf              # noqa: F401
+<<<<<<< HEAD
+=======
+from test_vrf import restore_vrf_config     # noqa: F401
+from test_vrf import relax_snmp_start_limit  # noqa: F401
+from test_vrf import ignore_snmp_reboot_syslog  # noqa: F401
+>>>>>>> c7401ce19 (NOS-8660: Detach leftover PTF teamd LAG members before VRF macvlan setup (#2984))
 from test_vrf import dut_facts             # noqa: F401
 from test_vrf import gen_vrf_neigh_file
 from test_vrf import partial_ptf_runner     # noqa: F401
