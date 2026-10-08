@@ -163,6 +163,8 @@ DEFAULT_TTL = 64
 DEFAULT_ECN = 1
 DEFAULT_PKT_COUNT = 10
 PG_TOLERANCE = 2
+# Smallest burst that overfills the egress path of a TX-disabled XGS port.
+EGR_MEM_PROBE_PKTS = 2000
 
 # Constants for voq/oq watchdog test
 WATCHDOG_TIMEOUT_SECONDS = {"voq": 60,
@@ -6451,10 +6453,30 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
             # so if queue min is zero, it will directly trek into shared pool by 1
             # TH2 uses scheduler-based TX enable, this does not require sending packets
             # to leak out
+<<<<<<< HEAD
+=======
+            # Track if dynamic leakout compensation was performed
+            leakout_compensated = False
+            egr_mem_probe = 0
+
+>>>>>>> 6b4306c1e (NOS-18182: [qos] pre-fill the TH6 800G egress path in the queue watermark test (#3950))
             if hwsku in ('DellEMC-Z9332f-O32', 'DellEMC-Z9332f-M-O16C64') or 'Arista-7060X6' in hwsku \
                     or 'Nokia-IXR7220-H6' in hwsku or 'M2-W6940' in hwsku:
                 que_min_pkts_num = pkts_num_egr_mem + pkts_num_leak_out + pkts_num_fill_min
                 send_packet(self, src_port_id, pkt, que_min_pkts_num)
+<<<<<<< HEAD
+=======
+            elif platform_asic and platform_asic == "broadcom":
+                # Packets the egress path holds past the MMU while TX is
+                # disabled are released from the queue's accounting, so the
+                # fill below would read that much short of what was sent.
+                # Overfill that depth, whatever it is, and start the fill
+                # from what lands in the queue. pkts_num_egr_mem only sizes
+                # the probe.
+                egr_mem_probe = max(2 * pkts_num_egr_mem, EGR_MEM_PROBE_PKTS)
+                que_min_pkts_num = pkts_num_leak_out + pkts_num_fill_min + egr_mem_probe
+                send_packet(self, src_port_id, pkt, que_min_pkts_num)
+>>>>>>> 6b4306c1e (NOS-18182: [qos] pre-fill the TH6 800G egress path in the queue watermark test (#3950))
             else:
                 que_min_pkts_num = pkts_num_leak_out + pkts_num_fill_min
                 send_packet(self, src_port_id, pkt, que_min_pkts_num)
@@ -6484,7 +6506,19 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                             None, pg_cntrs, None, None, None,
                             None, None, pg_shared_wm_res, pg_headroom_wm_res, q_wm_res)
 
+<<<<<<< HEAD
             if 'Arista-7060X6' in hwsku or 'M2-W6940' in hwsku:
+=======
+            start_wm = 0
+            if egr_mem_probe:
+                start_wm = q_wm_res[queue] // cell_size
+                print("egress path holds %d packets (pkts_num_egr_mem: %d)" % (
+                    egr_mem_probe - start_wm // cell_occupancy, pkts_num_egr_mem), file=sys.stderr)
+                assert start_wm > 0, \
+                    "{} probe packets did not reach queue {}; the egress path is deeper".format(
+                        egr_mem_probe, queue)
+            elif 'Arista-7060X6' in hwsku:
+>>>>>>> 6b4306c1e (NOS-18182: [qos] pre-fill the TH6 800G egress path in the queue watermark test (#3950))
                 assert (q_wm_res[queue] <= (margin + 1) * cell_size)
             elif pkts_num_fill_min:
                 assert (q_wm_res[queue] == 0)
@@ -6500,8 +6534,14 @@ class QSharedWatermarkTest(sai_base_test.ThriftInterfaceDataPlane):
                     assert (q_wm_res[queue] <= 1 * cell_size)
 
             # send packet batch of fixed packet numbers to fill queue shared
+<<<<<<< HEAD
             # first round sends only 1 packet
             expected_wm = 0
+=======
+            # For q3d, start with pkts_inc for efficiency
+            # For other platforms, first round sends only 1 packet for precision
+            expected_wm = start_wm
+>>>>>>> 6b4306c1e (NOS-18182: [qos] pre-fill the TH6 800G egress path in the queue watermark test (#3950))
             total_shared = pkts_num_trig_drp - pkts_num_fill_min - 1
             pkts_inc = (total_shared // cell_occupancy) >> 2
             if 'cisco-8000' in asic_type:
