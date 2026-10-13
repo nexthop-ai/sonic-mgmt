@@ -7,6 +7,7 @@
 | ----- | ----------------- | ---------------- | ------------------------------------------------------------ |
 | 1   | 26th March 2026 | Chinmoy Dey    | Initial Version of SONiC BMC Redfish API test plan         |
 | 2   | 2nd April 2026  | Shreyansh Jain | Add certificate-based authentication test cases            |
+| 3   | 13th October 2026 | Shreyansh Jain | Align certificate cases with the staging pipeline; fix test case 3 |
 
 # Related documents
 
@@ -113,7 +114,7 @@ sonic-mgmt/tests/redfish/
 ├── test_redfish_event_subscription.py   # EventService subscription tests
 ├── test_redfish_dbus_health.py          # D-Bus infrastructure tests
 ├── test_redfish_graceful_degradation.py # Degradation behavior tests
-└── test_redfish_cert_auth.py            # Certificate-based authentication tests
+└── test_redfish_certificates.py         # Certificate provisioning, rotation and client-certificate access
 ```
 
 # Supported Topology
@@ -199,20 +200,23 @@ Each test module carries its own in-file `pytest.mark.topology("any")` marker (t
    - `Chassis.@odata.id` equals `/redfish/v1/Chassis`
    - `Systems.@odata.id` equals `/redfish/v1/Systems`
 
-### Test Case \#3 — Unauthenticated access is not rejected
+### Test Case \#3 — Service root is readable without a client certificate
 
 
-| Field        | Value                               |
-| :------------- | :------------------------------------ |
-| **Test ID**  | `test_redfish_service_root_no_auth` |
-| **Priority** | P0                                  |
-| **Endpoint** | `GET /redfish/v1`                   |
+| Field        | Value                                             |
+| :------------- | :-------------------------------------------------- |
+| **Test ID**  | `test_service_root_readable_without_a_certificate` |
+| **Priority** | P0                                                |
+| **Endpoint** | `GET /redfish/v1`                                 |
+
+DSP0266 requires the service root to be reachable without authentication, so a client can identify the service before it has credentials. Implemented in `test_redfish_certificates.py`, on a provisioned BMC.
 
 **Steps:**
 
-1. Send `GET /redfish/v1` to the BMC
+1. Send `GET /redfish/v1` to the BMC **without** a client certificate, verifying the server against the provisioned CA
 2. Validate HTTP response status code is `200`
-3. Validate `Content-Type` header contains `application/json`
+3. Validate the response body contains `@odata.id`
+
 ---
 
 ## Section 2: Chassis Inventory
@@ -693,24 +697,23 @@ busctl call xyz.openbmc_project.ObjectMapper \
 
 ## Section 12: Certificate-Based Authentication (mTLS)
 
-Certificate-based tests use a `bmc_tls_certs` pytest fixture that handles the full lifecycle:
+Certificate tests live in `test_redfish_certificates.py` and use the `bmc_tls_certs` pytest fixture:
 
-1. **Setup** — Generates CA, server, and client certificates using `openssl` inside the sonic-mgmt container. Copies them to the BMC via `sshpass+scp`, installs them into the `redfish` Docker container, and enables `TLSStrict` in bmcweb.
-2. **Tests run** — All tests in this section use the generated client certificate.
-3. **Teardown** — Removes the CA certificate from the BMC truststore, restores `TLSStrict=false` in bmcweb, and restarts the service, leaving the BMC in Basic Auth mode.
+1. **Setup:** snapshots `REDFISH|config` and `REDFISH|certs`, sets aside any device certificates it will overwrite, and registers the restore before the first change. It then generates a CA, server and client chain in the sonic-mgmt container, writes the delivery paths (`server_crt`, `server_key`, `ca_crt`) and the trusted client common name (`client_crt_cname`) to `REDFISH|certs` in CONFIG_DB, restarts `sonic-dbus-bridge` to apply the common name, delivers the files under `/etc/sonic/credentials`, and waits for STATE_DB `REDFISH_CERT_STATUS|global` to report `in_sync`.
+2. **Tests run:** requests use the generated client certificate unless the case says otherwise.
+3. **Teardown:** returns the BMC to the state it was in before the run: removes the provisioned marker and test files, restores the saved CONFIG_DB entries and device files, and recreates the `redfish` container.
 
-### Test Case \#30 — Certificates are installed on the BMC
+### Test Case \#30 — Delivered certificates are staged
 
-| Field        | Value                          |
-| :------------- | :------------------------------- |
-| **Test ID**  | `test_cert_installed_on_bmc`   |
-| **Priority** | P0                             |
+| Field        | Value                              |
+| :------------- | :----------------------------------- |
+| **Test ID**  | `test_delivered_certs_are_staged`  |
+| **Priority** | P0                                 |
 
 **Steps:**
 
-1. Verify the server certificate exists at `redfish:/etc/ssl/certs/https/server.pem`
-2. Verify the CA certificate exists at `redfish:/etc/ssl/certs/authority/CA-cert.pem`
-3. Verify bmcweb is running (`supervisorctl status bmcweb` shows `RUNNING`)
+1. Verify the staged server file `redfish:/etc/ssl/certs/https/server.pem` holds the certificate and key
+2. Verify its serial matches the delivered server certificate and that it is not self-signed
 
 ### Test Case \#31 — Valid client certificate is accepted
 
@@ -731,40 +734,52 @@ Certificate-based tests use a `bmc_tls_certs` pytest fixture that handles the fu
 | :------------- | :------------------------------------------ |
 | **Test ID**  | `test_cert_auth_on_authenticated_endpoint` |
 | **Priority** | P0                                        |
-| **Endpoint** | `GET /redfish/v1/Chassis/chassis`         |
+| **Endpoint** | `GET /redfish/v1/UpdateService`           |
 
 **Steps:**
 
-1. Send `GET /redfish/v1/Chassis/chassis` using only the client certificate (no Basic Auth credentials)
+1. Send `GET /redfish/v1/UpdateService` using only the client certificate (no local user or password)
 2. Validate HTTP status is `200`
 3. Validate the response contains `@odata.id`
 
-### Test Case \#33 — Missing certificate is rejected when TLSStrict is enabled
+### Test Case \#33 — Privileged resources are refused without a client certificate
 
-| Field        | Value                        |
-| :------------- | :----------------------------- |
-| **Test ID**  | `test_no_cert_rejected`      |
-| **Priority** | P0                           |
-| **Endpoint** | `GET /redfish/v1`            |
+| Field        | Value                                                |
+| :------------- | :----------------------------------------------------- |
+| **Test ID**  | `test_privileged_path_refused_without_a_certificate` |
+| **Priority** | P0                                                   |
+| **Endpoint** | `GET /redfish/v1/Managers`                           |
 
 **Steps:**
 
-1. Send `GET /redfish/v1` with no client certificate (TLSStrict is enabled)
-2. Validate the request fails with `TLSV13_ALERT_CERTIFICATE_REQUIRED` (TLS handshake error) or HTTP `401`/`403`
+1. Send `GET /redfish/v1/Managers` with no client certificate
+2. Validate HTTP status is `401` or `403`
 
-### Test Case \#34 — Certificate signed by untrusted CA is rejected
+The service root stays readable without a certificate (test case 3); every other resource requires one.
+
+### Test Case \#34 — Certificate signed by an untrusted CA is rejected
 
 | Field        | Value                        |
 | :------------- | :----------------------------- |
 | **Test ID**  | `test_wrong_ca_rejected`     |
 | **Priority** | P1                           |
-| **Endpoint** | `GET /redfish/v1`            |
+| **Endpoint** | `GET /redfish/v1/UpdateService/FirmwareInventory` |
 
 **Steps:**
 
-1. Generate a fresh self-signed certificate not signed by the BMC's trusted CA
-2. Send `GET /redfish/v1` with the untrusted certificate
-3. Validate the request fails with `SSLV3_ALERT_BAD_CERTIFICATE` (TLS error) or HTTP `401`/`403`
+1. Generate a client certificate from a CA the BMC does not trust
+2. Send `GET /redfish/v1/UpdateService/FirmwareInventory` with it
+3. Validate HTTP status is `401` or `403`; if the TLS handshake is refused instead, validate that the trusted client still gets `200` on `/redfish/v1/Managers`, so a dead listener is not counted as a rejection
+
+### Further certificate coverage
+
+`test_redfish_certificates.py` also covers, by class:
+
+- `TestRedfishCertProvisioning`: provisioned state, status publishing, rotation, mismatched certificate and key not staged
+- `TestRedfishCommonNameValidation`: trusted client common names (unset list, exact match, wildcard, independent entries)
+- `TestRedfishCertRestartBehaviour`, `TestRedfishFailClosed`, `TestRedfishContainerRecreate`: restarts, fail-closed behaviour and recovery
+- `TestRedfishNegativeInput`, `TestRedfishFirstInstallMismatch`, `TestRedfishWatcherResilience`, `TestRedfishObservability`: bad input, watcher behaviour and `REDFISH_CERT_STATUS` reporting
+- `TestRedfishBootstrap`, `TestRedfishConfiguredPaths`, `TestRedfishConfiguredPort`, `TestRedfishCaRotation`: unprovisioned device, configured paths (nothing is staged without `REDFISH|certs`), configured port and CA rotation
 
 ---
 
