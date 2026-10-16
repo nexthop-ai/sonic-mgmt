@@ -76,23 +76,27 @@ def _lt_status(duthost):
 
 
 def _summary(duthost, expected):
+    """expected = (lt_ports, active_ports): golden LT-on ports, and the admin-up subset that must train."""
+    lt_ports, active = expected
     cdb = _config_db_lt(duthost)
     st = _lt_status(duthost)
-    on_cdb = sorted(p for p in expected if cdb.get(p) == "on")
-    trained = sorted(p for p in expected if st.get(p, ("",))[0] == "trained")
-    up = sorted(p for p in expected if st.get(p, ("", "", ""))[2] == "up")
+    on_cdb = sorted(p for p in lt_ports if cdb.get(p) == "on")
+    trained = sorted(p for p in active if st.get(p, ("",))[0] == "trained")
+    up = sorted(p for p in active if st.get(p, ("", "", ""))[2] == "up")
     saved = _lt_ports_in(_json_file(duthost, "/etc/sonic/config_db.json"))
-    saved_on = sorted(p for p in expected if saved.get(p) == "on")
+    saved_on = sorted(p for p in lt_ports if saved.get(p) == "on")
     bgp_globals = duthost.shell('sonic-db-cli CONFIG_DB keys "BGP_GLOBALS|*"')["stdout_lines"]
-    s = dict(expected=len(expected), config_db_lt_on=len(on_cdb), trained=len(trained), oper_up=len(up),
-             saved_config_lt_on=len(saved_on), bgp_globals_keys=len(bgp_globals))
+    s = dict(golden_lt_ports=len(lt_ports), active_ports=len(active), config_db_lt_on=len(on_cdb),
+             trained=len(trained), oper_up=len(up), saved_config_lt_on=len(saved_on),
+             bgp_globals_keys=len(bgp_globals))
     logger.info("LT summary: %s", s)
-    return s, {"not_trained": sorted(set(expected) - set(trained)), "not_on": sorted(set(expected) - set(on_cdb))}
+    return s, {"not_trained": sorted(set(active) - set(trained)), "not_on": sorted(set(lt_ports) - set(on_cdb))}
 
 
 def _all_trained(duthost, expected):
+    lt_ports, active = expected
     s, _ = _summary(duthost, expected)
-    return s["trained"] == len(expected) and s["config_db_lt_on"] == len(expected)
+    return s["trained"] == len(active) and s["config_db_lt_on"] == len(lt_ports)
 
 
 def _none_trained(duthost, expected):
@@ -110,7 +114,11 @@ def lt_expected(duthosts, rand_one_dut_hostname):
     logger.info("Golden config carries link_training on %d ports, off %d ports",
                 len(expected), sum(1 for v in lt.values() if v == "off"))
     pytest_assert(expected, "golden config carries no PORT.link_training=on; nothing to validate")
-    return expected
+    st = _lt_status(duthost)
+    active = sorted(p for p in expected if st.get(p, ("", "", "", ""))[3] == "up")
+    logger.info("%d of those ports are admin up (topology ports) and must train: %s", len(active), active)
+    pytest_assert(active, "none of the golden link_training ports is admin up")
+    return expected, active
 
 
 def test_00_baseline_after_deploy_mg(duthosts, rand_one_dut_hostname, lt_expected):
@@ -123,7 +131,7 @@ def test_00_baseline_after_deploy_mg(duthosts, rand_one_dut_hostname, lt_expecte
                   "baseline: not all golden LT ports are link_training on + trained: {}".format(
                       _summary(duthost, lt_expected)))
     s, _ = _summary(duthost, lt_expected)
-    pytest_assert(s["saved_config_lt_on"] == len(lt_expected), "saved config_db.json missing link_training")
+    pytest_assert(s["saved_config_lt_on"] == len(lt_expected[0]), "saved config_db.json missing link_training")
 
 
 def test_01_plain_load_minigraph_drops_lt(duthosts, rand_one_dut_hostname, lt_expected):
@@ -141,13 +149,13 @@ def test_02_config_reload_minigraph_reapplies_lt(duthosts, rand_one_dut_hostname
                   override_config=False)
     hits = [m for r in caplog.records for m in [REAPPLY_RE.search(r.getMessage())] if m]
     pytest_assert(hits, "no 'Re-applying link_training' log line after non-override minigraph reload")
-    pytest_assert(int(hits[-1].group(1)) == len(lt_expected),
-                  "reapply covered {} ports, golden has {}".format(hits[-1].group(1), len(lt_expected)))
+    pytest_assert(int(hits[-1].group(1)) == len(lt_expected[0]),
+                  "reapply covered {} ports, golden has {}".format(hits[-1].group(1), len(lt_expected[0])))
     logger.info("reapply log: %s", hits[-1].group(0))
     pytest_assert(wait_until(TRAIN_TIMEOUT, TRAIN_INTERVAL, 0, _all_trained, duthost, lt_expected),
                   "after non-override reload: {}".format(_summary(duthost, lt_expected)))
     s, _ = _summary(duthost, lt_expected)
-    pytest_assert(s["saved_config_lt_on"] == len(lt_expected), "config save did not persist link_training")
+    pytest_assert(s["saved_config_lt_on"] == len(lt_expected[0]), "config save did not persist link_training")
 
 
 def test_03_config_reload_minigraph_override_unchanged(duthosts, rand_one_dut_hostname, lt_expected, caplog):
@@ -160,7 +168,7 @@ def test_03_config_reload_minigraph_override_unchanged(duthosts, rand_one_dut_ho
     pytest_assert(wait_until(TRAIN_TIMEOUT, TRAIN_INTERVAL, 0, _all_trained, duthost, lt_expected),
                   "after override reload: {}".format(_summary(duthost, lt_expected)))
     s, _ = _summary(duthost, lt_expected)
-    pytest_assert(s["saved_config_lt_on"] == len(lt_expected), "config save did not persist link_training")
+    pytest_assert(s["saved_config_lt_on"] == len(lt_expected[0]), "config save did not persist link_training")
     cmp = duthost.shell("cmp {} {}".format(GOLDEN_CONFIG_DB_PATH, GOLDEN_CONFIG_DB_PATH_ORI),
                         module_ignore_errors=True)
     pytest_assert(cmp["rc"] == 0, "golden config no longer matches .origin.backup")
