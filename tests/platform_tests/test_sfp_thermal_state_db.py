@@ -191,10 +191,21 @@ class TestSfpThermalStateDb:
             if temp != "N/A":
                 cli_temperatures[sensor] = temp
 
-        pytest_assert(
-            len(cli_temperatures) > 0,
-            "All SFP sensors report N/A temperature — cannot verify DOM sourcing"
-        )
+        if not cli_temperatures:
+            pytest_assert(
+                not port_index_to_dom,
+                "All SFP sensors report N/A temperature in 'show platform temperature', but "
+                "TRANSCEIVER_DOM_TEMPERATURE has numeric values: {}".format(port_index_to_dom)
+            )
+            passive_cable_ports = set(get_passive_cable_port_list(duthost))
+            non_passive_cable_ports = sorted(set(sfp_ports) - passive_cable_ports)
+            pytest_assert(
+                not non_passive_cable_ports,
+                "All SFP sensors report N/A temperature, but non-passive-copper/unknown "
+                "transceivers are present: {}".format(non_passive_cable_ports)
+            )
+            pytest.skip("All SFP sensors report N/A temperature and all transceivers are "
+                        "passive copper without temperature monitoring")
 
         mismatches = []
         matched_count = 0
