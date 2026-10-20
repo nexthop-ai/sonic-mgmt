@@ -5,7 +5,18 @@ from tests.common.helpers.platform_api import psu
 from tests.common.mellanox_data import is_mellanox_device
 from tests.common.utilities import skip_release_for_platform, wait_until
 from tests.common.platform.device_utils import platform_api_conn, start_platform_api_service    # noqa: F401
+<<<<<<< HEAD
 from .power_api_test_base import TestPowerApi, STRING_TYPE
+=======
+from tests.platform_tests.utils import (
+    daemon_start,
+    daemon_stop,
+    start_cpu_stress,
+    stop_cpu_stress,
+    is_pddf_supported_and_enabled,
+)
+from .power_api_test_base import TestPowerApi as PowerApiTestBase, STRING_TYPE
+>>>>>>> d75f53f71 (NOS-18560: platform_tests/api: fix TestPowerApi base collection and stale PSU helpers (#3827))
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +31,7 @@ STATUS_LED_COLOR_RED = "red"
 STATUS_LED_COLOR_OFF = "off"
 
 
-class TestPsuApi(TestPowerApi):
+class TestPsuApi(PowerApiTestBase):
     ''' Platform API test cases for the PSU class'''
 
     power_unit_api = psu
@@ -54,6 +65,41 @@ class TestPsuApi(TestPowerApi):
 
         return data
 
+<<<<<<< HEAD
+=======
+    @pytest.fixture(scope="function")
+    def psu_max_powers(self, duthosts, enum_rand_one_per_hwsku_hostname, platform_api_conn, setup):  # noqa: F811
+        """Rated output power in watts, keyed by PSU name.
+
+        A PSU is absent from the mapping when it is skipped or not present, when
+        it reports no usable rating, or when the platform does not implement
+        get_maximum_supplied_power.
+        """
+        duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+        self.duthost = duthost
+
+        # This platform doesn't support this API.
+        if "arm64-c8220tg_48a_o" in duthost.facts['platform']:
+            logger.info("Platform does not report maximum supplied power")
+            return {}
+
+        psu_info = {"duthost": duthost, "api": platform_api_conn, "psu_id": None}
+        max_powers = {}
+        for psu_id in range(self.num_power_units):
+            if self._skip_absent_power_unit(psu_id, platform_api_conn):
+                continue
+            psu_info["psu_id"] = psu_id
+            name = psu.get_name(platform_api_conn, psu_id)
+            max_power = self.get_psu_parameter(psu_info, "max_power", psu.get_maximum_supplied_power,
+                                               "maximum supplied power")
+            if max_power is not None and max_power > 0:
+                logger.info("{} max power rating: {}W".format(name, max_power))
+                max_powers[name] = max_power
+            else:
+                logger.warning("Failed to retrieve {} max power rating".format(name))
+        return max_powers
+
+>>>>>>> d75f53f71 (NOS-18560: platform_tests/api: fix TestPowerApi base collection and stale PSU helpers (#3827))
     #
     # Functions to test methods inherited from DeviceBase class
     #
@@ -209,6 +255,118 @@ class TestPsuApi(TestPowerApi):
         self.assert_expectations()
 
     @pytest.mark.disable_loganalyzer
+<<<<<<< HEAD
+=======
+    def test_load_sharing(self, duthosts, enum_rand_one_per_hwsku_hostname, localhost,
+                          platform_api_conn, psu_max_powers):  # noqa: F811
+        """PSU load sharing test"""
+        duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+        skip_release_for_platform(duthost, ["202012", "201911", "201811"], ["arista"])
+
+        LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER = 0.20  # +/- 20% of max rated power
+        SAMPLE_WINDOW_FOR_AVERAGE_POWER_S = 0.5
+
+        def get_psu_powers():
+            """Get power readings from all PSUs"""
+            psu_powers = {}
+            for psu_id in range(self.num_power_units):
+                if self._skip_absent_power_unit(psu_id, platform_api_conn):
+                    continue
+                name = psu.get_name(platform_api_conn, psu_id)
+                power = psu.get_power(platform_api_conn, psu_id)
+                if self.expect(power is not None, "Unable to retrieve PSU {} power".format(psu_id)):
+                    psu_powers[name] = power
+            return psu_powers
+
+        def get_average_power_per_psu():
+            sample_window_s = SAMPLE_WINDOW_FOR_AVERAGE_POWER_S
+            sample_interval_s = 0.02
+            num_samples = int(sample_window_s / sample_interval_s)
+
+            power_totals = {}
+            for _ in range(num_samples):
+                psu_powers = get_psu_powers()
+                for name, power in psu_powers.items():
+                    power_totals[name] = power_totals.get(name, 0.0) + power
+                time.sleep(sample_interval_s)
+
+            return {name: total / num_samples for name, total in power_totals.items()}
+
+        def check_load_sharing(psu_max_powers, test_phase=""):
+            average_power_per_psu = get_average_power_per_psu()
+            average_power_all_psus = sum(average_power_per_psu.values()) / len(average_power_per_psu)
+
+            logger.info(
+                f"[{test_phase}] Average power across all PSUs: {average_power_all_psus: .2f}W"
+            )
+
+            for name, power in average_power_per_psu.items():
+                if name not in psu_max_powers:
+                    pytest.fail(f"[{test_phase}] No max power rating found for PSU '{name}'")
+                rated_max = psu_max_powers[name]
+                max_deviation = rated_max * LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER
+                deviation = abs(power - average_power_all_psus)
+                logger.info(
+                    f"[{test_phase}] {name}: {power: .2f}W "
+                    f"(deviation: {deviation: .2f}W, max allowed: {max_deviation: .2f}W)"
+                )
+                tolerance_pct = f"{LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER: .0%}"
+                self.expect(
+                    deviation <= max_deviation,
+                    f"[{test_phase}] {name} power {power: .2f}W deviates {deviation: .2f}W "
+                    f"from average {average_power_all_psus: .2f}W "
+                    f"(max allowed: {max_deviation: .2f}W, "
+                    f"{tolerance_pct} of {rated_max: .0f}W rated)",
+                )
+
+            # Log compact summary table
+            summary_lines = [f"[{test_phase}] Load sharing summary:"]
+            for name, power in average_power_per_psu.items():
+                deviation = abs(power - average_power_all_psus)
+                max_dev = psu_max_powers[name] * LOAD_BALANCE_TOLERANCE_FROM_AVERAGE_POWER
+                status = "PASS" if deviation <= max_dev else "FAIL"
+                summary_lines.append(
+                    f"  {name}: {power: .2f}W (deviation: {deviation: .2f}W) [{status}]"
+                )
+            logger.info("\n".join(summary_lines))
+
+        if not psu_max_powers:
+            pytest.fail("No PSUs reported a valid max power rating; cannot evaluate load sharing")
+
+        logger.info("Nominal Operation Load Sharing Check")
+        check_load_sharing(psu_max_powers, test_phase="Nominal Operation")
+
+        if not is_pddf_supported_and_enabled(duthost):
+            logger.info("Skipping increased load test - platform does not support PDDF")
+            self.assert_expectations()
+            return
+
+        logger.info("Increased Power Consumption Load Sharing Check")
+        logger.info("Increasing fan speed")
+        if not self.expect(daemon_stop(duthost, "thermalctld"), "Failed to stop thermalctld daemon"):
+            logger.warning("Skipping high load test - thermalctld could not be stopped")
+            self.assert_expectations()
+            return
+
+        TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC = 5
+
+        try:
+            duthost.shell("sudo pddf_fanutil setspeed 100", module_ignore_errors=True)
+            logger.info("Increasing CPU Load")
+            max_stress_duration_s = (int)(TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC+SAMPLE_WINDOW_FOR_AVERAGE_POWER_S) * 2
+            start_cpu_stress(duthost, max_stress_duration_s)
+            time.sleep(TIME_TO_WAIT_FOR_FAN_SPEED_CHANGE_SEC)
+
+            check_load_sharing(psu_max_powers, test_phase="Increased Load")
+        finally:
+            stop_cpu_stress(duthost)
+            if not self.expect(daemon_start(duthost, "thermalctld"), "Failed to start thermalctld daemon"):
+                logger.warning("thermalctld could not be started after test")
+
+        self.assert_expectations()
+
+    @pytest.mark.disable_loganalyzer
+>>>>>>> d75f53f71 (NOS-18560: platform_tests/api: fix TestPowerApi base collection and stale PSU helpers (#3827))
     def test_led(self, duthosts, enum_rand_one_per_hwsku_hostname, localhost, platform_api_conn):     # noqa: F811
         ''' PSU status led test '''
         duthost = duthosts[enum_rand_one_per_hwsku_hostname]
