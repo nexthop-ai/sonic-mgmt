@@ -8,6 +8,21 @@ logger.setLevel(logging.INFO)
 # Add this to store memory errors per test
 _memory_errors_by_test = {}
 
+# Highest pre-test value per DUT/command/item seen in the current test module
+_module_reference = {"module": None, "values": {}}
+
+
+def _update_module_reference(item, hostname, before_values):
+    module_id = item.nodeid.split("::")[0]
+    if _module_reference["module"] != module_id:
+        logger.info("Test module changed to {}; resetting the memory module reference".format(module_id))
+        _module_reference.update(module=module_id, values={})
+    host_ref = _module_reference["values"].setdefault(hostname, {})
+    for name, items in before_values.items():
+        ref = host_ref.setdefault(name, {})
+        for mem_item, value in items.items():
+            ref[mem_item] = max(ref.get(mem_item, 0), value)
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -96,6 +111,8 @@ def pytest_runtest_setup(item):
                 logger.warning("Error collecting initial memory data for {}: {}".format(name, str(e)))
                 memory_values["before_test"][duthost.hostname][name] = {}
 
+        _update_module_reference(item, duthost.hostname, memory_values["before_test"][duthost.hostname])
+
     logger.info("Before test: collected memory_values {}".format(memory_values))
 
 
@@ -158,7 +175,8 @@ def pytest_runtest_teardown(item, nextitem):
         if any(memory_values["before_test"][duthost.hostname]) and any(memory_values["after_test"][duthost.hostname]):
             try:
                 memory_monitors[duthost.hostname].check_memory_thresholds(
-                    memory_values["after_test"][duthost.hostname], memory_values["before_test"][duthost.hostname])
+                    memory_values["after_test"][duthost.hostname], memory_values["before_test"][duthost.hostname],
+                    reference_values=_module_reference["values"].get(duthost.hostname))
 
                 # Check if any memory errors were detected
                 if memory_monitors[duthost.hostname].has_memory_errors():

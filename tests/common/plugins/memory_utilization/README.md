@@ -48,7 +48,7 @@ The memory utilization plugin for SONiC testing automatically monitors memory us
 
 **How It Works:**
 1. **Pre-test:** Collects baseline memory usage using configured commands and parsers.
-2. **Post-test:** Collects memory usage again and compares with baseline.
+2. **Post-test:** Collects memory usage again and compares with baseline. An increase is measured from the module reference (the highest pre-test value seen so far in the current test module) whenever the test's own pre-test value is below it, so a DUT still recovering from an earlier reboot or reload in the same module is not reported as growth.
 3. **Validation:** Checks if usage exceeds high thresholds or if increase is above allowed limits.
 4. **Reporting:** Fails the test if any check fails, with clear diagnostics.
 
@@ -141,6 +141,7 @@ Each threshold type has specific behavior:
 - **`"type": "percentage"`**: Relative percentage of baseline value
   - Example: `{"type": "percentage", "value": "10%"}` means 10% of current memory usage
   - Calculation: If baseline is 100 MB, threshold becomes 10 MB
+  - For increase thresholds the baseline is the pre-test value, or the module reference when that is higher
   - For example: Dynamic thresholds that scale with current usage
 
 - **`"type": "percentage_points"`**: Absolute percentage values
@@ -194,7 +195,7 @@ You can also specify `"max"` comparison to use the largest threshold:
 1. **Before Test**:
    - Executes each command in the configuration
    - Parses output using the specified function
-   - Stores baseline memory values
+   - Stores baseline memory values and raises the module reference to them if higher (the reference is reset when the test module changes)
 
 2. **After Test**:
    - Executes the same commands again
@@ -203,7 +204,7 @@ You can also specify `"max"` comparison to use the largest threshold:
 
 3. **Validation**:
    - Checks if current values exceed high thresholds
-   - Checks if increases exceed increase thresholds
+   - Checks if increases exceed increase thresholds, measured from the pre-test value or the module reference, whichever is higher
    - Fails the test if any threshold is exceeded
 
 ## Usage Guide
@@ -461,6 +462,7 @@ When a memory threshold is exceeded, the plugin will fail the test with a detail
 - The specific memory parameter that exceeded the threshold
 - The current value compared to the threshold value
 - Additional contextual information about memory usage
+- When the increase was measured from the module reference, the message says so and still reports the test's own pre-test value as `previous`
 
 Example failure messages:
 
@@ -474,3 +476,9 @@ Common troubleshooting steps:
 2. Verify if the memory increase is expected due to test operations
 3. Analyze the DUT logs for potential memory leaks or resource issues
 4. For persistent issues, consider increasing the threshold or disabling the specific check
+
+## Unit Tests
+
+```
+python3 -m pytest --noconftest -p no:logging tests/common/plugins/memory_utilization/unit_test/ -v
+```

@@ -147,8 +147,12 @@ class MemoryMonitor:
             "proceeding with possibly stale output".format(MONIT_STATUS_FRESHNESS_MAX_RETRIES))
         return output
 
-    def check_memory_thresholds(self, current_values, previous_values):
-        """Check memory usage against thresholds. """
+    def check_memory_thresholds(self, current_values, previous_values, reference_values=None):
+        """Check memory usage against thresholds.
+
+        reference_values: highest pre-test values seen earlier in this module. When the
+        pre-test value is below it, the increase is measured from the reference instead.
+        """
         logger.debug("Starting memory threshold check")
         logger.debug("Previous values: {}".format(previous_values))
         logger.debug("Current values: {}".format(current_values))
@@ -191,6 +195,17 @@ class MemoryMonitor:
                             previous_values, current_values, is_current=True
                         )
 
+                # Returning to a level already seen earlier in this module is not growth: the pre-test
+                # snapshot is usually taken while the DUT is still coming back up from a reboot or reload.
+                # Growth above the module's highest pre-test value still alarms.
+                reference_value = round(float((reference_values or {}).get(name, {}).get(mem_item, 0)), 1)
+                reference_base = reference_value if reference_value > previous_value else None
+                if reference_base is not None:
+                    logger.info("{}:{} pre-test value {} is below module reference {}; "
+                                "measuring increase from the reference".format(
+                                    name, mem_item, previous_value, reference_base))
+                increase_base = reference_base or previous_value
+
                 # Get increase thresholds: warning (soft) and fail (hard)
                 # memory_increase_threshold: warning level (log warning but don't fail)
                 # memory_increase_fail_threshold: fail level (store error, fail the test)
@@ -198,18 +213,18 @@ class MemoryMonitor:
                 # (backward compatible)
                 increase_threshold_raw = normalized_thresholds.get("memory_increase_threshold", float('inf'))
                 logger.debug("Raw increase threshold for {}:{}: {}".format(name, mem_item, increase_threshold_raw))
-                increase_threshold = self._parse_threshold(increase_threshold_raw, previous_value)
+                increase_threshold = self._parse_threshold(increase_threshold_raw, increase_base)
                 logger.info("Calculated increase threshold for {}:{}: {}".format(name, mem_item, increase_threshold))
 
                 increase_fail_threshold_raw = normalized_thresholds.get("memory_increase_fail_threshold", None)
                 if increase_fail_threshold_raw is not None:
-                    increase_fail_threshold = self._parse_threshold(increase_fail_threshold_raw, previous_value)
+                    increase_fail_threshold = self._parse_threshold(increase_fail_threshold_raw, increase_base)
                     logger.info("Calculated increase fail threshold for {}:{}: {}".format(
                         name, mem_item, increase_fail_threshold))
                 else:
                     increase_fail_threshold = None
 
-                increase = current_value - previous_value
+                increase = current_value - increase_base
 
                 if increase_fail_threshold is not None:
                     # Two-tier mode: warn at lower threshold, fail at higher threshold
@@ -220,19 +235,19 @@ class MemoryMonitor:
                             increase = (increase * 100)/current_value
                         self._handle_memory_threshold_exceeded(
                             name, mem_item, increase, increase_fail_threshold_raw,
-                            previous_values, current_values, is_increase=True
+                            previous_values, current_values, is_increase=True, reference_base=reference_base
                         )
                     elif increase > increase_threshold:
                         self._handle_memory_warning(
                             name, mem_item, increase, increase_threshold_raw,
-                            previous_values, current_values
+                            previous_values, current_values, reference_base=reference_base
                         )
                 else:
                     # Legacy single-tier mode: threshold acts as fail level
                     if increase > increase_threshold:
                         self._handle_memory_threshold_exceeded(
                             name, mem_item, increase, increase_threshold_raw,
-                            previous_values, current_values, is_increase=True
+                            previous_values, current_values, is_increase=True, reference_base=reference_base
                         )
 
     def _normalize_thresholds(self, thresholds):
@@ -383,8 +398,12 @@ class MemoryMonitor:
             return float('inf')
 
     def _handle_memory_threshold_exceeded(self, name, mem_item, value, threshold,
-                                          previous_values, current_values, is_current=False, is_increase=False):
-        """Handle memory threshold or increase exceeded."""
+                                          previous_values, current_values, is_current=False, is_increase=False,
+                                          reference_base=None):
+        """Handle memory threshold or increase exceeded.
+
+        reference_base: module reference the increase was measured from, when it replaced the pre-test value.
+        """
         logger.info("{}:{}, previous_values: {}".format(name, mem_item, previous_values))
         logger.info("{}:{}, current_values: {}".format(name, mem_item, current_values))
 
@@ -430,9 +449,9 @@ class MemoryMonitor:
 
         if is_increase:
             # For percentage threshold, display actual % increase; otherwise display raw increase (e.g. MB)
-            prev_f = float(prev_val)
-            if threshold_type == 'percentage' and prev_f > 0:
-                display_value = (float(curr_val) - prev_f) / prev_f * 100
+            base = reference_base or float(prev_val)
+            if threshold_type == 'percentage' and base > 0:
+                display_value = (float(curr_val) - base) / base * 100
             else:
                 display_value = value
             val_str, th_str = format_threshold_and_value(threshold, display_value)
@@ -440,6 +459,8 @@ class MemoryMonitor:
                 "[ALARM]: {}:{} memory usage increased by {}, exceeds increase threshold {} (previous: {}, current: {})"
                 .format(name, mem_item, val_str, th_str, fmt(prev_val, threshold_type), fmt(curr_val, threshold_type))
             )
+            if reference_base is not None:
+                message += ", measured from module reference {}".format(fmt(reference_base, threshold_type))
         else:
             which = "Current" if is_current else "Previous"
             val_str, th_str = format_threshold_and_value(threshold, value)
@@ -458,7 +479,7 @@ class MemoryMonitor:
             logger.debug("Stored memory error: {}".format(message))
 
     def _handle_memory_warning(self, name, mem_item, value, threshold,
-                               previous_values, current_values):
+                               previous_values, current_values, reference_base=None):
         """Handle memory increase that exceeds warning threshold but not fail threshold.
 
         Logs a warning for visibility but does not store an error or fail the test.
@@ -469,10 +490,12 @@ class MemoryMonitor:
         curr_val = current_values.get(name, {}).get(mem_item, 0)
 
         threshold_str = self._format_threshold_for_display(threshold)
+        reference_str = "" if reference_base is None else \
+            ", measured from module reference {:.1f} MB".format(reference_base)
         logger.warning(
             "[WARNING]: {}:{} memory usage increased by {:.1f} MB, exceeds warning threshold {} "
-            "(previous: {:.1f} MB, current: {:.1f} MB). Not failing - within fail threshold."
-            .format(name, mem_item, value, threshold_str, prev_val, curr_val)
+            "(previous: {:.1f} MB, current: {:.1f} MB{}). Not failing - within fail threshold."
+            .format(name, mem_item, value, threshold_str, prev_val, curr_val, reference_str)
         )
 
     def get_memory_errors(self):
