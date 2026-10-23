@@ -534,33 +534,23 @@ qos_params:
                 q_list: [0, 1, 3, 4, 5, 6]
                 q_pkt_cnt: [80, 100, 300, 100, 100, 700]
             ecn_1:
-                dscp: 8
+                dscp: 3
                 ecn: 0
-                num_of_pkts: 5000
-                limit: 182000
-                min_limit: 180000
+                num_of_pkts: 1500
+                limit: 1500
+                min_limit: 1200
                 cell_size: 4096
+                packet_size: 3950
+            # min_limit above num_of_pkts keeps the marking checks out of
+            # scope: below green_min no packet should be marked.
             ecn_2:
-                dscp: 8
+                dscp: 3
                 ecn: 1
-                num_of_pkts: 2047
-                limit: 182320
-                min_limit: 0
+                num_of_pkts: 1500
+                limit: 1500
+                min_limit: 2000
                 cell_size: 4096
-            ecn_3:
-                dscp: 0
-                ecn: 0
-                num_of_pkts: 5000
-                limit: 182000
-                min_limit: 180000
-                cell_size: 4096
-            ecn_4:
-                dscp: 0
-                ecn: 1
-                num_of_pkts: 2047
-                limit: 182320
-                min_limit: 0
-                cell_size: 4096
+                packet_size: 3950
             hdrm_pool_wm_multiplier: 1
             cell_size: 4096
         topo-t2-single-node-min: *topo-t2_single_node_min
