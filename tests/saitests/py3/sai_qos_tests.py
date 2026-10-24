@@ -1722,6 +1722,7 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
         pkt_dst_mac = router_mac if router_mac != '' else dst_port_mac
         asic_type = self.test_params.get("sonic_asic_type")
         platform_asic = self.test_params['platform_asic']
+        dut_asic = self.test_params.get('dut_asic')
 
         print("dst_port_id: %d, src_port_id: %d" %
               (dst_port_id, src_port_id), file=sys.stderr)
@@ -1792,11 +1793,7 @@ class DscpToPgMapping(sai_base_test.ThriftInterfaceDataPlane):
                 print(list(map(operator.sub, pg_cntrs, pg_cntrs_base)),
                       file=sys.stderr)
                 for i in range(0, PG_NUM):
-<<<<<<< HEAD
-                    if platform_asic and platform_asic == "broadcom-dnx":
-=======
-                    if (dut_asic in ("th5", "th6")) or (platform_asic and platform_asic in ("broadcom-dnx")):
->>>>>>> f092eb546 (NOS-12301: [qos] allow PG7 increments in DscpToPgMapping on TH6 (#4004))
+                    if (dut_asic in ("th5", "th6")) or (platform_asic and platform_asic == "broadcom-dnx"):
                         # DNX/Chassis:
                         # pg = 0 => Some extra packets with unmarked TC
                         # pg = 4 => Extra packets for LACP/BGP packets
