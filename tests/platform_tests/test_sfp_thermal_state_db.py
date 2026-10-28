@@ -130,17 +130,16 @@ class TestSfpThermalStateDb:
             )
         )
 
-    def _extract_port_index_from_sensor(self, sensor_name):
+    def _get_sfp_sensor_ports(self, duthost):
         """
-        Attempt to extract a numeric port/module index from a sensor name.
-        E.g., 'xSFP module 3 Temp' -> 3, 'Transceiver Ethernet4 Temp' -> 4
-        Returns the index as int, or None if not parseable.
+        Map each 'xSFP module N Temp' label (lowercased) to its port. The CLI
+        numbers SFP rows by the CONFIG_DB PORT index, not the Ethernet number.
         """
-        # Match patterns like 'module N', 'Ethernet N', or standalone number
-        match = re.search(r'(?:module|ethernet)\s*(\d+)', sensor_name, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-        return None
+        ports = duthost.config_facts(host=duthost.hostname, source="running")["ansible_facts"].get("PORT", {})
+        return {
+            "xsfp module {} temp".format(attrs["index"]): port
+            for port, attrs in ports.items() if "index" in attrs
+        }
 
     def test_sfp_temperature_values_match_xcvrd_tables(
             self, duthosts, enum_rand_one_per_hwsku_hostname):
@@ -173,15 +172,12 @@ class TestSfpThermalStateDb:
         logger.info("TRANSCEIVER_DOM_TEMPERATURE values (first 5): %s",
                     json.dumps(dict(list(dom_temperatures.items())[:5]), indent=2))
 
-        # Build port-index -> DOM temperature mapping for per-port verification
-        port_index_to_dom = {}
+        numeric_dom = {}
         for port, val in dom_temperatures.items():
-            match = re.search(r'(\d+)$', port)
-            if match:
-                try:
-                    port_index_to_dom[int(match.group(1))] = round(float(val), 1)
-                except (ValueError, TypeError):
-                    pass  # Skip ports with non-numeric temperature values
+            try:
+                numeric_dom[port] = round(float(val), 1)
+            except (ValueError, TypeError):
+                pass  # Skip ports with non-numeric temperature values
 
         # Collect temperature values from CLI SFP rows
         cli_temperatures = {}
@@ -191,11 +187,30 @@ class TestSfpThermalStateDb:
             if temp != "N/A":
                 cli_temperatures[sensor] = temp
 
+<<<<<<< HEAD
         pytest_assert(
             len(cli_temperatures) > 0,
             "All SFP sensors report N/A temperature — cannot verify DOM sourcing"
         )
+=======
+        if not cli_temperatures:
+            pytest_assert(
+                not numeric_dom,
+                "All SFP sensors report N/A temperature in 'show platform temperature', but "
+                "TRANSCEIVER_DOM_TEMPERATURE has numeric values: {}".format(numeric_dom)
+            )
+            passive_cable_ports = set(get_passive_cable_port_list(duthost))
+            non_passive_cable_ports = sorted(set(sfp_ports) - passive_cable_ports)
+            pytest_assert(
+                not non_passive_cable_ports,
+                "All SFP sensors report N/A temperature, but non-passive-copper/unknown "
+                "transceivers are present: {}".format(non_passive_cable_ports)
+            )
+            pytest.skip("All SFP sensors report N/A temperature and all transceivers are "
+                        "passive copper without temperature monitoring")
+>>>>>>> cf2b8a661 (NOS-17635: [platform_tests] Match SFP temperature rows to ports by CONFIG_DB index (#4327))
 
+        sensor_ports = self._get_sfp_sensor_ports(duthost)
         mismatches = []
         matched_count = 0
         for sensor, cli_temp in cli_temperatures.items():
@@ -205,25 +220,20 @@ class TestSfpThermalStateDb:
                 continue
 
             # Try per-port match first
-            port_idx = self._extract_port_index_from_sensor(sensor)
-            if port_idx is not None and port_idx in port_index_to_dom:
-                dom_val = port_index_to_dom[port_idx]
-                if abs(cli_val - dom_val) < 0.5:
+            port = sensor_ports.get(sensor.lower())
+            if port in dom_temperatures:
+                dom_val = numeric_dom.get(port)
+                if dom_val is not None and abs(cli_val - dom_val) < 0.5:
                     matched_count += 1
-                    continue
                 else:
                     mismatches.append(
-                        "Sensor '{}' (port idx {}): CLI temp={} vs DOM temp={}".format(
-                            sensor, port_idx, cli_val, dom_val)
+                        "Sensor '{}' ({}): CLI temp={} vs DOM temp={}".format(
+                            sensor, port, cli_val, dom_temperatures[port])
                     )
-                    continue
+                continue
 
             # Fallback: check against all DOM values with proximity tolerance
-            found_close = any(
-                abs(cli_val - round(float(dv), 1)) < 0.5
-                for dv in dom_temperatures.values()
-                if dv is not None
-            )
+            found_close = any(abs(cli_val - dom_val) < 0.5 for dom_val in numeric_dom.values())
             if found_close:
                 matched_count += 1
             else:
