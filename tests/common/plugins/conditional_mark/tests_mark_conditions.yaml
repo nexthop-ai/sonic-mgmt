@@ -5595,6 +5595,15 @@ span/test_port_mirroring.py:
     conditions:
       - "https://github.com/sonic-net/sonic-mgmt/issues/9647 and 'dualtor' in topo_name and asic_type in ['mellanox']"
 
+span/test_sflow_sampling_truncation.py:
+  use_longest: True
+
+span/test_sflow_sampling_truncation.py::test_sflow_with_sw_sflow_same_port:
+  skip:
+    reason: "Software sFlow is not supported on broadcom-dnx"
+    conditions:
+      - "asic_subtype in ['broadcom-dnx']"
+
 #######################################
 #####            srv6             #####
 #######################################

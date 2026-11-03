@@ -6,6 +6,7 @@ import json
 import time
 import logging
 
+import ptf.testutils as testutils
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.utilities import wait_until
 
@@ -26,6 +27,34 @@ ENCAP_OVERHEAD = 62
 
 # Allowance (bytes) for trailing padding / alignment some platforms add.
 MIRROR_LEN_TOLERANCE = 8
+
+# Batch sends and raise the ptf_nn_agent socket send timeout
+SEND_BATCH_SIZE = 1000
+SEND_SOCKET_TIMEOUT_MS = 30000
+
+
+def _relax_nn_send_timeout(ptfadapter, inject_index, timeout_ms=SEND_SOCKET_TIMEOUT_MS):
+    '''
+    Raise the nanomsg send timeout on the ptf dataplane inject socket so high-volume
+    sends block on backpressure until the ptf_nn_agent drains its queue
+    '''
+    try:
+        import nnpy
+        sock = ptfadapter.dataplane.ports[(0, inject_index)].packet_inject.socket
+        sock.setsockopt(nnpy.SOL_SOCKET, nnpy.SNDTIMEO, timeout_ms)
+    except (ImportError, KeyError, AttributeError) as exc:
+        logger.debug("Could not raise nn send timeout on port %s: %s", inject_index, exc)
+
+
+def send_batched(ptfadapter, inject_index, pkt, count):
+    '''Send `count` copies of `pkt` from PTF port `inject_index` in batches.'''
+    ptfadapter.dataplane.flush()
+    _relax_nn_send_timeout(ptfadapter, inject_index)
+    remaining = count
+    while remaining > 0:
+        batch = min(remaining, SEND_BATCH_SIZE)
+        testutils.send(ptfadapter, inject_index, pkt, count=batch)
+        remaining -= batch
 
 
 def expected_mirror_len(original_len, truncate_size=0):

@@ -15,6 +15,7 @@ from erspan_helpers import (
     expected_mirror_len,
     collect_erspan_packets,
     create_erspan_session_config,
+    send_batched,
     assert_mirror_session_config_db_fields,
     mirror_session_config_db_exists,
 )
@@ -31,9 +32,6 @@ DEFAULT_SAMPLE_RATE = 50000
 
 # Number of probe packets for truncation checks
 TRUNCATION_PROBE_COUNT = 1000
-# Batch sends and raise the ptf_nn_agent socket send timeout
-SEND_BATCH_SIZE = 1000
-SEND_SOCKET_TIMEOUT_MS = 30000
 
 
 def _assert_mirror_len(observed_len, original_len, truncate_size):
@@ -48,19 +46,6 @@ def _assert_mirror_len(observed_len, original_len, truncate_size):
         "(original={}, truncate_size={})".format(
             observed_len, MIRROR_LEN_TOLERANCE, expected, original_len, truncate_size)
     )
-
-
-def _relax_nn_send_timeout(ptfadapter, inject_index, timeout_ms=SEND_SOCKET_TIMEOUT_MS):
-    '''
-    Raise the nanomsg send timeout on the ptf dataplane inject socket so high-volume
-    sends block on backpressure until the ptf_nn_agent drains its queue
-    '''
-    try:
-        import nnpy
-        sock = ptfadapter.dataplane.ports[(0, inject_index)].packet_inject.socket
-        sock.setsockopt(nnpy.SOL_SOCKET, nnpy.SNDTIMEO, timeout_ms)
-    except (ImportError, KeyError, AttributeError) as exc:
-        logger.debug("Could not raise nn send timeout on port %s: %s", inject_index, exc)
 
 
 def _send_sampled_traffic_and_collect(ptfadapter, erspan_session, inject_index,
@@ -82,13 +67,7 @@ def _send_sampled_traffic_and_collect(ptfadapter, erspan_session, inject_index,
         pktlen=pktlen, eth_src=src_mac, eth_dst=eth_dst or 'ff:ff:ff:ff:ff:ff'
     )
 
-    ptfadapter.dataplane.flush()
-    _relax_nn_send_timeout(ptfadapter, inject_index)
-    remaining = total_packets
-    while remaining > 0:
-        batch = min(remaining, SEND_BATCH_SIZE)
-        testutils.send(ptfadapter, inject_index, pkt, count=batch)
-        remaining -= batch
+    send_batched(ptfadapter, inject_index, pkt, total_packets)
     logger.info("Sent %d packets (pktlen=%d) from PTF port %d", total_packets, pktlen, inject_index)
 
     return collect_erspan_packets(

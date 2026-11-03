@@ -3,11 +3,12 @@ Conftest file for span tests
 '''
 
 import pytest
+import ipaddress
 import logging
 
 from tests.common.storage_backend.backend_utils import skip_test_module_over_backend_topologies     # noqa F401
 from tests.common.utilities import skip_release, wait_until
-from tests.common.helpers.assertions import pytest_assert as _pytest_assert
+from tests.common.helpers.assertions import pytest_assert as _pytest_assert, pytest_require as _pytest_require
 from erspan_helpers import (   # noqa F401
     ERSPAN_SESSION_NAME,
     ERSPAN_SRC_IP,
@@ -21,6 +22,15 @@ from erspan_helpers import (   # noqa F401
     remove_mirror_session,
     create_erspan_session_config,
     apply_static_fdb,
+)
+from sflow_helpers import (
+    MIRRORED_SFLOW_SESSION_NAME,
+    MIRRORED_SFLOW_DEFAULT_DIRECTION,
+    SFLOW_DEFAULT_UDP_DST_PORT,
+    create_mirrored_sflow_session_config,
+    wait_mirror_session_active,
+    get_port_ifindexes,
+    mirrored_sflow_view,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +62,9 @@ def ports_for_test(cfg_facts):
     Return:
         dict: port info for 3 selected ports
     '''
+    if not cfg_facts.get('VLAN'):
+        return None
+
     # Select vlan for test
     vlans = cfg_facts['VLAN']
     vlan_ids = [vlans[vlan]['vlanid'] for vlan in list(vlans.keys())]
@@ -97,6 +110,10 @@ def setup_monitor_port(duthosts, rand_one_dut_hostname, ports_for_test):
         rand_one_dut_hostname: hostname of a random chosen dut to run test.
         ports_for_test: pytest fixture containing info on selected ports
     '''
+    if ports_for_test is None:
+        yield
+        return
+
     duthost = duthosts[rand_one_dut_hostname]
 
     port = ports_for_test['monitor']['name']
@@ -519,3 +536,145 @@ def erspan_session(request, duthosts, rand_one_dut_hostname, erspan_ports, setup
     apply_static_fdb(duthost, erspan_ports['vlan'], src_port, probe_dst_mac,
                      op="DEL", ignore_errors=True)
     remove_mirror_session(duthost, ERSPAN_SESSION_NAME)
+
+
+# ---------------------------------------------------------------------------
+# SFLOW mirror session fixtures. They select their own ports from the minigraph, so they
+# work on routed (t2) topologies where the VLAN-based ERSPAN fixtures have nothing to pick.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def skip_if_mirrored_sflow_unsupported(request, duthosts, rand_one_dut_hostname):
+    '''Skip on multi-ASIC and supervisor DUTs, and when the platform cannot create a mirror
+    session of type SFLOW.'''
+    duthost = duthosts[rand_one_dut_hostname]
+    if duthost.is_multi_asic or duthost.is_supervisor_node():
+        pytest.skip("Skip: mirrored sFlow tests run on single-ASIC linecards and switches only")
+    # erspan_capabilities holds the whole SWITCH_CAPABILITY table, not only ERSPAN keys
+    capable = request.getfixturevalue('erspan_capabilities').get("MIRROR_SESSION_SFLOW_CAPABLE", "false")
+    if capable.lower() != 'true':
+        pytest.skip("Skip: platform does not support SFLOW mirror sessions "
+                    "(MIRROR_SESSION_SFLOW_CAPABLE != true)")
+
+
+@pytest.fixture(scope="module")
+def mirrored_sflow_ports(duthosts, rand_one_dut_hostname, tbinfo):
+    '''
+    Ports for the SFLOW tests on a routed topology:
+      - source: an up routed port; the sampled session and the RX probes use it
+      - collector: an up PortChannel, preferring the one with the fewest members. The PTF
+        port of a neighbor-facing DUT port sees what the DUT sends to that neighbor, so the
+        collector route points at the PortChannel peer and captures run on every member.
+      - tx_ingress: a member of another PortChannel, used to inject TX probes; None if absent
+      - portchannels: {name: {members: [{name, index}], peer_addr}}
+      - route_dst_ip: the collector peer; probes sent to it with the router MAC are routed
+        to the collector PortChannel, so any other port can inject them
+      - ifindex: sFlow ifIndex of the source port and of every PortChannel member
+    '''
+    duthost = duthosts[rand_one_dut_hostname]
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+    ptf_indices = mg_facts['minigraph_ptf_indices']
+    status = duthost.get_interfaces_status()
+
+    def is_up(name):
+        return status.get(name, {}).get('oper') == 'up'
+
+    sources = [intf for intf in mg_facts['minigraph_interfaces']
+               if ipaddress.ip_address(intf['peer_addr']).version == 4
+               and intf['attachto'] in ptf_indices and is_up(intf['attachto'])]
+    _pytest_require(sources, "No up routed port with a PTF port")
+    source = sources[0]
+
+    portchannels = {}
+    for intf in mg_facts['minigraph_portchannel_interfaces']:
+        if ipaddress.ip_address(intf['peer_addr']).version != 4:
+            continue
+        members = mg_facts['minigraph_portchannels'][intf['attachto']]['members']
+        if not all(m in ptf_indices for m in members):
+            continue
+        portchannels[intf['attachto']] = {
+            'members': [{'name': m, 'index': ptf_indices[m]} for m in members],
+            'peer_addr': intf['peer_addr'],
+        }
+
+    collectors = sorted((pc for pc in portchannels if is_up(pc)), key=lambda pc: len(portchannels[pc]['members']))
+    _pytest_require(collectors, "No up IPv4 PortChannel with PTF ports")
+    collector_pc = collectors[0]
+    collector_info = portchannels[collector_pc]
+
+    injectors = [m for name, info in portchannels.items() if name != collector_pc and is_up(name)
+                 for m in info['members']]
+
+    names = [source['attachto']] + [m['name'] for pc in portchannels.values() for m in pc['members']]
+    return {
+        'source': {'name': source['attachto'], 'index': ptf_indices[source['attachto']],
+                   'peer_addr': source['peer_addr']},
+        'collector': {'portchannel': collector_pc, 'peer_addr': collector_info['peer_addr'],
+                      'indices': [m['index'] for m in collector_info['members']]},
+        'tx_ingress': injectors[0] if injectors else None,
+        'router_mac': duthost.facts['router_mac'],
+        'portchannels': portchannels,
+        'route_dst_ip': collector_info['peer_addr'],
+        'ifindex': get_port_ifindexes(duthost, names),
+    }
+
+
+@pytest.fixture(scope="module")
+def skip_if_no_mirrored_sflow_tx_ingress(mirrored_sflow_ports):
+    '''Skip TX tests when no other PortChannel member can inject toward the source port.'''
+    if mirrored_sflow_ports['tx_ingress'] is None:
+        pytest.skip("Skip: no PortChannel member available to inject TX probes")
+
+
+@pytest.fixture(scope="module")
+def setup_mirrored_sflow_route(duthosts, rand_one_dut_hostname, mirrored_sflow_ports):
+    '''Route the collector prefix to the collector PortChannel's peer.'''
+    duthost = duthosts[rand_one_dut_hostname]
+    route = 'ip route {} {}'.format(ERSPAN_DST_PREFIX, mirrored_sflow_ports['collector']['peer_addr'])
+    duthost.command('vtysh -c "configure terminal" -c "{}"'.format(route))
+    yield
+    duthost.command('vtysh -c "configure terminal" -c "no {}"'.format(route), module_ignore_errors=True)
+
+
+@pytest.fixture
+def mirrored_sflow_session(request, duthosts, rand_one_dut_hostname, mirrored_sflow_ports,
+                           setup_mirrored_sflow_route):
+    '''
+    Create and tear down an SFLOW mirror session, then wait for it to go active.
+
+    Params (all optional): sample_rate (default 256), truncate_size, direction, udp_dst_port.
+
+    Usage:
+        @pytest.mark.parametrize('mirrored_sflow_session', [{'sample_rate': 256}], indirect=True)
+        def test_something(mirrored_sflow_session): ...
+    '''
+    duthost = duthosts[rand_one_dut_hostname]
+    params = getattr(request, 'param', {}) or {}
+    sample_rate = params.get('sample_rate', 256)
+    direction = params.get('direction', MIRRORED_SFLOW_DEFAULT_DIRECTION)
+    src_port = mirrored_sflow_ports['source']['name']
+    # Skip before creating: the CLI rejects a direction the platform cannot sample
+    if direction in ('rx', 'both'):
+        request.getfixturevalue('skip_if_ingress_sampling_unsupported')
+    if direction in ('tx', 'both'):
+        request.getfixturevalue('skip_if_egress_sampling_unsupported')
+    create_mirrored_sflow_session_config(
+        duthost, MIRRORED_SFLOW_SESSION_NAME, ERSPAN_SRC_IP, ERSPAN_DST_IP, source_port=src_port, direction=direction,
+        sample_rate=sample_rate, truncate_size=params.get('truncate_size'),
+        udp_dst_port=params.get('udp_dst_port'))
+    active = wait_mirror_session_active(duthost, MIRRORED_SFLOW_SESSION_NAME)
+    state_dump = duthost.shell(
+        "sonic-db-cli STATE_DB HGETALL 'MIRROR_SESSION_TABLE|{}'".format(MIRRORED_SFLOW_SESSION_NAME),
+        module_ignore_errors=True)['stdout']
+    logger.info("STATE_DB MIRROR_SESSION_TABLE|%s \n%s", MIRRORED_SFLOW_SESSION_NAME, state_dump)
+    if not active:
+        # The teardown after the yield does not run when setup fails
+        remove_mirror_session(duthost, MIRRORED_SFLOW_SESSION_NAME)
+    _pytest_assert(active, "SFLOW session {} not active; STATE_DB: {}".format(MIRRORED_SFLOW_SESSION_NAME, state_dump))
+
+    yield mirrored_sflow_view(mirrored_sflow_ports, session_name=MIRRORED_SFLOW_SESSION_NAME,
+                              sample_rate=sample_rate, truncate_size=params.get('truncate_size'),
+                              udp_dst_port=params.get('udp_dst_port', SFLOW_DEFAULT_UDP_DST_PORT), direction=direction)
+
+    remove_mirror_session(duthost, MIRRORED_SFLOW_SESSION_NAME)
