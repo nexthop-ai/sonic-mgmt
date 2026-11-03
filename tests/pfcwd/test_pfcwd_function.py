@@ -253,16 +253,19 @@ class PfcCmd(object):
 
 class PfcPktCntrs(object):
     """ PFCwd counter retrieval and verifications  """
-    def __init__(self, dut, rx_action, tx_action):
+    def __init__(self, dut, rx_action, tx_action, is_hw_recovery=False):
         """
         Args:
             dut(AnsibleHost) : dut instance
             action(string): PFCwd action for traffic test
+            is_hw_recovery(bool): whether the watchdog recovers in hardware
         """
         self.dut = dut
         self.asic_type = dut.facts['asic_type']
         self.rx_action = rx_action
         self.tx_action = tx_action
+        # Hardware recovery acts on the egress queue only: no RX counters.
+        self.check_rx = not is_hw_recovery
         if self.tx_action != "forward":
             self.pkt_cntrs_tx = ['PFC_WD_QUEUE_STATS_TX_DROPPED_PACKETS', 'PFC_WD_QUEUE_STATS_TX_DROPPED_PACKETS_LAST']
             self.err_msg_tx = [("Tx drop cnt check failed: Tx drop before: {}  Tx drop after: {} "
@@ -304,11 +307,15 @@ class PfcPktCntrs(object):
         test_state = ['end', 'begin']
         state = test_state[begin]
         self.cntr_val["tx_{}".format(state)] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[0]))
-        self.cntr_val["rx_{}".format(state)] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[0]))
+        if self.check_rx:
+            self.cntr_val["rx_{}".format(state)] = int(
+                PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[0]))
 
         if not begin:
             self.cntr_val["tx_last"] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_tx[1]))
-            self.cntr_val["rx_last"] = int(PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[1]))
+            if self.check_rx:
+                self.cntr_val["rx_last"] = int(
+                    PfcCmd.counter_cmd(self.dut, queue_oid, self.pkt_cntrs_rx[1]))
 
     def verify_pkt_cnts(self, port_type, pkt_cnt):
         """
@@ -331,6 +338,10 @@ class PfcPktCntrs(object):
                 or self.cntr_val["tx_last"] <= 0:
             err_msg = self.err_msg_tx[1].format(pkt_cnt, self.cntr_val["tx_last"])
             pytest_assert(err_msg)
+
+        if not self.check_rx:
+            logger.info("--- Skipping Rx cntrs: no RX counters on hardware ---")
+            return
 
         logger.info("--- Checking Rx {} cntrs ---".format(self.rx_action))
         rx_diff = self.cntr_val["rx_end"] - self.cntr_val["rx_begin"]
@@ -764,7 +775,8 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         Returns:
             loganalyzer(Loganalyzer) : instance
         """
-        restore_time = self.timers['pfc_wd_restore_time_large']
+        restore_time = self.timers['pfc_wd_restore_time_hw'] if self.is_hw_recovery \
+            else self.timers['pfc_wd_restore_time_large']
         detect_time = self.timers['pfc_wd_detect_time']
 
         loganalyzer = LogAnalyzer(ansible_host=self.dut,
@@ -897,7 +909,8 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         loganalyzer.match_regex = []
         loganalyzer.match_regex.extend([EXPECT_PFC_WD_DETECT_RE + fetch_vendor_specific_diagnosis_re(dut)])
 
-        restore_time = self.timers['pfc_wd_restore_time_large']
+        restore_time = self.timers['pfc_wd_restore_time_hw'] if self.is_hw_recovery \
+            else self.timers['pfc_wd_restore_time_large']
         detect_time = self.timers['pfc_wd_detect_time']
         start_wd_on_ports(dut, port, restore_time, detect_time, "drop")
         self.storm_hndle.start_storm()
@@ -910,7 +923,9 @@ class TestPfcwdFunc(SetupPfcwdFunc):
     def set_traffic_action(self, duthost, action):
         action = action if action != "dontcare" else "drop"
         if duthost.facts["asic_type"] in ["mellanox", "cisco-8000", "innovium"] \
-                or is_tunnel_qos_remap_enabled(duthost):
+                or is_tunnel_qos_remap_enabled(duthost) \
+                or self.is_hw_recovery:
+            # HW recovery is egress-only
             self.rx_action = "forward"
         else:
             self.rx_action = action
@@ -961,6 +976,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.neighbors = setup_info['neighbors']
         self.peer_dev_list = dict()
         self.fake_storm = fake_storm
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
         self.storm_hndle = None
         self.rx_action = None
         self.tx_action = None
@@ -991,10 +1007,13 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             # A temporary workaround for TH5 platform as forward action is not working
             if duthost.sonichost._facts['asic_type'] == "cisco-8000" or "7060X6" in duthost.facts['hwsku'].upper():
                 actions = ['dontcare', 'drop']
+            # No 'dontcare' in HW mode
+            if self.is_hw_recovery:
+                actions.remove('dontcare')
             for action in actions:
                 try:
                     self.set_traffic_action(duthost, action)
-                    self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+                    self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action, self.is_hw_recovery)
                     logger.info("{} on port {}: Tx traffic action {}, Rx traffic action {} ".
                                 format(WD_ACTION_MSG_PFX[action], port, self.tx_action, self.rx_action))
                     self.run_test(self.dut, port, action)
@@ -1064,12 +1083,13 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.neighbors = setup_info['neighbors']
         self.peer_dev_list = dict()
         self.fake_storm = fake_storm
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
         self.storm_hndle = None
         self.rx_action = None
         self.tx_action = None
         self.is_dualtor = setup_dut_info['basicParams']['is_dualtor']
         self.set_traffic_action(duthost, "drop")
-        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action, self.is_hw_recovery)
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
@@ -1158,6 +1178,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.neighbors = setup_info['neighbors']
         self.peer_dev_list = dict()
         self.fake_storm = fake_storm
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
         self.storm_hndle = None
         self.is_dualtor = setup_dut_info['basicParams']['is_dualtor']
         logger.info("---- Testing on port {} ----".format(port))
@@ -1166,7 +1187,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.rx_action = None
         self.tx_action = None
         self.set_traffic_action(duthost, "drop")
-        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+        self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action, self.is_hw_recovery)
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
@@ -1256,11 +1277,12 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.neighbors = setup_info['neighbors']
         self.peer_dev_list = dict()
         self.fake_storm = fake_storm
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
         self.storm_hndle = None
         self.rx_action = None
         self.tx_action = None
         self.is_dualtor = setup_dut_info['basicParams']['is_dualtor']
-        action = "dontcare"
+        action = "drop" if self.is_hw_recovery else "dontcare"
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
@@ -1287,7 +1309,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             try:
                 self.set_traffic_action(duthost, action)
                 # Verify that PFC storm is detected and restored
-                self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action)
+                self.stats = PfcPktCntrs(self.dut, self.rx_action, self.tx_action, self.is_hw_recovery)
                 logger.info("{} on port {}. Tx traffic action {}, Rx traffic action {}"
                             .format(WD_ACTION_MSG_PFX[action], port, self.tx_action, self.rx_action))
                 self.run_test(self.dut, port, action)
@@ -1413,6 +1435,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.neighbors = setup_info['neighbors']
         self.peer_dev_list = dict()
         self.fake_storm = False
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
         self.storm_hndle = None
         self.rx_action = None
         self.tx_action = None
@@ -1494,6 +1517,7 @@ class TestPfcwdFunc(SetupPfcwdFunc):
         self.tx_action = None
         self.is_dualtor = setup_dut_info['basicParams']['is_dualtor']
         self.fake_storm = False  # Not needed for this test.
+        self.is_hw_recovery = is_pfcwd_hw_recovery_enabled(duthost)
 
         # skip the pytest when the device does not have neighbors
         # 'rx_port' being None indicates there are no ports available to receive frames for pfc storm
