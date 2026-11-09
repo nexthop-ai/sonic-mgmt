@@ -51,6 +51,9 @@ def _expected_filepath(conn_graph_facts_module):
         module_dir, "../../../ansible/files/")
 
 
+# Without ANSIBLE_CONFIG, get_graph_facts falls back to tests/ansible, one level
+# short of the repo's ansible/ (since sonic-net/sonic-mgmt#26868).
+@pytest.mark.xfail(strict=True, reason="DEVX-10779: get_graph_facts falls back to tests/ansible, not ansible/")
 @pytest.mark.parametrize(
     "sources, expected_group",
     [

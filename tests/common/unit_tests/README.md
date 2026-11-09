@@ -4,6 +4,10 @@ This directory contains unit tests for modules under `tests/common`.
 
 ## Running Unit Tests
 
+CI runs these, with the repo's other offline unit tests, on every PR: see
+`.github/scripts/run_unit_tests.sh` (the `Unit Tests` job in
+`.github/workflows/build-and-test.yml`).
+
 ### Run all unit tests in this directory
 ```bash
 # From repository root

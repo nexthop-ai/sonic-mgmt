@@ -16,7 +16,7 @@ import pytest
 MODULE_PATH = Path(__file__).resolve().parents[2] / "dhcp_relay" / "test_dhcp_relay.py"
 TEST_NAMES = [
     "test_dhcp_relay_default",
-    "test_dhcp_relay_with_source_port_ip_in_relay_enabled",
+    "test_dhcp_relay_with_si_flag_enabled",
 ]
 
 

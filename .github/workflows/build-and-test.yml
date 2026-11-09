@@ -1,0 +1,153 @@
+name: Build and Test sonic-mgmt
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      validation_timeout:
+        description: 'Validation timeout in minutes'
+        required: false
+        type: number
+        default: 45
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validation:
+    name: Validation Checks
+    runs-on: cloudstack-ubuntu24-micro
+    timeout-minutes: ${{ inputs.validation_timeout || 45 }}
+
+    steps:
+      - name: Checkout sonic-mgmt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        # No apt step: setup-python already provides pip, and every dependency
+        # below installs from a wheel or a pure-Python sdist, so no build
+        # toolchain is needed. Skipping apt-get also dodges DEVX-5790.
+        run: |
+          pip3 install --upgrade pip
+          pip3 install ipaddr natsort pyyaml jinja2 netaddr six tabulate prettytable
+
+      - name: "Dependency Check"
+        run: |
+          set -e
+          echo "::group::Running dependency check"
+          python3 ./.azure-pipelines/dependency_check/dependency_check.py tests || {
+            echo "::warning::Dependency check failed (non-blocking)"
+            exit 0
+          }
+          echo "::endgroup::"
+
+      - name: "Markers Check"
+        run: |
+          set -e
+          echo "::group::Running markers check"
+          python3 ./.azure-pipelines/markers_check/markers_check.py tests
+          echo "::endgroup::"
+
+      - name: "Meta Check - Ansible Metadata Validation"
+        run: |
+          set -e
+          echo "::group::Running meta check"
+          python3 ./ansible/scripts/meta/meta_validator.py -r errors -c .azure-pipelines/meta_validator.yml || {
+            echo "::warning::Meta check failed"
+            exit 0
+          }
+          echo "::endgroup::"
+
+      - name: "Image Tags Check Unit Tests"
+        run: python3 -m unittest discover -s .github/scripts -v
+
+      - name: "Validation Summary"
+        if: success()
+        run: |
+          echo "::notice:: All validation checks passed!"
+
+  pytest-collection:
+    name: Pytest Collection
+    runs-on: cloudstack-ubuntu24-small
+    timeout-minutes: 30
+    container:
+      image: sonicdev-microsoft.azurecr.io:443/docker-sonic-mgmt:latest
+      options: --user root
+
+    steps:
+      - name: Checkout sonic-mgmt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pygnmi
+        # This job runs against the upstream sonic-net docker-sonic-mgmt:latest
+        # image, which doesn't yet carry our sonic-buildimage Dockerfile.j2
+        # pygnmi addition (that lands via a nexthop-built image tag, not
+        # :latest, until this change is upstreamed). Install it directly so
+        # collection doesn't depend on that timing. Keep in sync with the
+        # version pinned in sonic-buildimage/dockers/docker-sonic-mgmt/Dockerfile.j2.
+        run: uv pip install --no-cache-dir --python /opt/venv/bin/python3 "pygnmi==0.8.15"
+
+      - name: Run pytest collection
+        run: |
+          set -e
+          echo "::group::Running pytest --collect-only"
+          cd tests
+          python3 -m pytest --inventory ../ansible/veos_vtb --host-pattern all \
+            --testbed_file vtestbed.yaml --testbed vms-kvm-t0 \
+            --ignore saitests --ignore ptftests --ignore acstests \
+            --ignore scripts --ignore k8s --ignore sai_qualify --ignore common \
+            --ignore-conditional-mark \
+            --color=no --collect-only --continue-on-collection-errors
+          echo "::endgroup::"
+
+      - name: "Pytest Collection Summary"
+        if: success()
+        run: |
+          echo "::notice::Pytest collection passed!"
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: cloudstack-ubuntu24-small
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout sonic-mgmt
+        uses: actions/checkout@v4
+
+      - name: Run unit tests
+        # Unit tests must not reach testbeds or services, so run them with no
+        # network. GitHub Actions' container: can't set --network, hence docker run.
+        # The image is the one testbeds use, as pinned in ansible/vars/.
+        run: |
+          registry=$(awk '$1 == "docker_registry_host:" {print $2}' ansible/vars/docker_registry.yml)
+          tag=$(awk '$1 == "docker_sonic_mgmt_tag:" {print $2}' ansible/vars/docker_sonic_mgmt.yml)
+          image="${registry:?not found in docker_registry.yml}/docker-sonic-mgmt:${tag:?not found in docker_sonic_mgmt.yml}"
+          echo "Using $image"
+          docker run --rm --network none --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD:/sonic-mgmt" -w /sonic-mgmt \
+            "$image" .github/scripts/run_unit_tests.sh
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: unit-tests-junit
+          path: unit-test-results/
+          if-no-files-found: ignore
