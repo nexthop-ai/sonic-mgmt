@@ -1,0 +1,132 @@
+# docker-disco (container) DUT: tests that cannot pass in a container sharing the
+# host kernel. Keyed on is_container_dut so the KVM virtual testbed still runs them.
+acl/test_acl.py::TestAclWithReboot:
+  skip:
+    reason: "docker-disco: cold reboot impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+arp/test_wr_arp.py:
+  skip:
+    reason: "docker-disco: warm reboot (kexec) impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+bgp/test_bgp_vrf_authentication.py:
+  skip:
+    reason: "docker-disco: shared host kernel lacks net.ipv4.tcp_l3mdev_exempt_ports (SONiC kernel patch private-sonic-linux-kernel PR #216); cannot pass in a container"
+    conditions:
+      - "is_container_dut == True"
+cacl/test_cacl_function.py::test_cacl_function:
+  skip:
+    reason: "docker-disco: caclmgrd's INPUT DROP lands in the container netns, but mgmt traffic reaches eth0 via the host netns (DNAT + masquerade), so the CTRLPLANE ACL never severs the session. See NOS-19116."
+    conditions:
+      - "is_container_dut == True"
+fips/test_fips.py:
+  skip:
+    reason: "docker-disco: no bootloader (sonic-installer get-fips fails) and host-kernel FIPS state is not the container's"
+    conditions:
+      - "is_container_dut == True"
+generic_config_updater/test_mgmt_interface.py::test_forced_mgmt_routes_update:
+  skip:
+    reason: "docker-disco: /etc/network/interfaces never re-rendered from CONFIG_DB (networking/interfaces-config masked, docker owns eth0)"
+    conditions:
+      - "is_container_dut == True"
+generic_config_updater/test_ntp.py:
+  skip:
+    reason: "docker-disco: NTP config validation needs the masked NTP daemon"
+    conditions:
+      - "is_container_dut == True"
+gnmi/dialout/test_gnmi_dialout.py::test_dialout_mgmt_vrf:
+  skip:
+    reason: "docker-disco: mgmt addr/VRF applied by the host netns, not CONFIG_DB (interfaces-config/networking masked, docker owns eth0)"
+    conditions:
+      - "is_container_dut == True"
+gnmi/test_gnoi_os.py:
+  skip:
+    reason: "docker-disco: no bootloader, so sonic-installer list/activate fails; OS.Activate of a valid image also reboots the DUT"
+    conditions:
+      - "is_container_dut == True"
+gnmi/test_gnoi_system_reboot.py:
+  skip:
+    reason: "docker-disco: gNOI System.Reboot cannot reboot a container"
+    conditions:
+      - "is_container_dut == True"
+mvrf/test_mgmtvrf.py:
+  skip:
+    reason: "docker-disco: mgmt addr/VRF applied by the host netns, not CONFIG_DB (interfaces-config/networking masked, docker owns eth0)"
+    conditions:
+      - "is_container_dut == True"
+ntp/test_ntp.py:
+  skip:
+    reason: "docker-disco: chrony/ntpd masked for host-clock safety; NTP daemon cannot run"
+    conditions:
+      - "is_container_dut == True"
+platform_tests/test_memory_exhaustion.py:
+  skip:
+    reason: "docker-disco: the container has no memory limit and cannot reboot, so tail /dev/zero exhausts the whole VTB host and leaves it hung"
+    conditions:
+      - "is_container_dut == True"
+platform_tests/test_reboot.py:
+  skip:
+    reason: "docker-disco: cold/fast/warm/soft reboot impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+process_monitoring/test_critical_process_monitoring.py:
+  skip:
+    reason: "docker-disco: database recovery issues a SysRq kernel reboot, which on a shared-kernel container reboots the whole VTB host"
+    conditions:
+      - "is_container_dut == True"
+route/test_forced_mgmt_route.py::test_forced_mgmt_route_add_and_remove_by_mgmt_port_status:
+  skip:
+    reason: "docker-disco: forced mgmt routes need networking to re-render /etc/network/interfaces, which is masked"
+    conditions:
+      - "is_container_dut == True"
+route/test_forced_mgmt_route.py::test_update_forced_mgmt:
+  skip:
+    reason: "docker-disco: forced mgmt routes need interfaces-config/networking to re-render /etc/network/interfaces, which is masked"
+    conditions:
+      - "is_container_dut == True"
+route/test_static_route.py::test_static_route_ecmp_warmboot:
+  skip:
+    reason: "docker-disco: warm reboot (kexec) impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+route/test_static_route.py::test_static_route_ipv6_warmboot:
+  skip:
+    reason: "docker-disco: warm reboot (kexec) impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+route/test_static_route.py::test_static_route_warmboot:
+  skip:
+    reason: "docker-disco: warm reboot (kexec) impossible in a container"
+    conditions:
+      - "is_container_dut == True"
+sflow/test_sflow.py::TestReboot::testFastreboot:
+  skip:
+    reason: "docker-disco: fast-reboot needs a bootloader/kexec, absent in a container"
+    conditions:
+      - "is_container_dut == True"
+show_techsupport/test_auto_techsupport.py:
+  skip:
+    reason: "docker-disco: kernel.core_pattern sysctl dropped; no core file, so auto-techsupport never triggers"
+    conditions:
+      - "is_container_dut == True"
+snmp/test_snmp_v2mib.py::test_snmp_v2mib:
+  skip:
+    reason: "docker-disco: shares host kernel; ansible_kernel (host uname) can never appear in SNMP sysDescr built from the image kernel"
+    conditions:
+      - "is_container_dut == True"
+tacacs/test_accounting.py:
+  skip:
+    reason: "docker-disco: auditd/audisp-tacplus masked; TACACS accounting setup cannot reload audisp-tacplus"
+    conditions:
+      - "is_container_dut == True"
+tacacs/test_authorization.py:
+  skip:
+    reason: "docker-disco: auditd/audisp-tacplus masked; TACACS authorization setup cannot reload audisp-tacplus"
+    conditions:
+      - "is_container_dut == True"
+test_pktgen.py:
+  skip:
+    reason: "docker-disco: pktgen kernel module cannot load in a container"
+    conditions:
+      - "is_container_dut == True"

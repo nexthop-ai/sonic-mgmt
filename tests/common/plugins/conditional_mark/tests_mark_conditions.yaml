@@ -2947,6 +2947,12 @@ gnmi:
     conditions:
       - "release in ['202412']"
 
+gnmi/dialout/test_gnmi_dialout.py::test_dialout_mgmt_vrf:
+  skip:
+    reason: "The dial-out client on 202511 cannot bind to a VRF (TELEMETRY_CLIENT Global vrf is not backported)"
+    conditions:
+      - "release in ['202511']"
+
 gnmi/test_events.py:
   skip:
     reason: "Skip gnmi test events for 202211 and older branches"
