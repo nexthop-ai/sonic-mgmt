@@ -92,14 +92,28 @@ def test_container_privileged(duthosts, enum_rand_one_per_hwsku_hostname,
     )['stdout_lines']
     pytest_assert(running_containers, "No running containers found on DUT")
 
-    # Check privileged status for each container using docker inspect
-    unauthorized_privileged = []
-    for container_name in running_containers:
-        result = duthost.shell(
-            r"docker inspect --format \{\{.HostConfig.Privileged\}\} " + container_name
-        )
-        is_privileged = result['stdout'].strip().lower() == 'true'
+    # Short-lived containers (e.g. the `docker run --rm` behind `show version`) can exit
+    # between `docker ps` and `docker inspect`; skip those, fail on any other error.
+    result = duthost.shell(
+        r"docker inspect --format \{\{.Name\}\}=\{\{.HostConfig.Privileged\}\} " + " ".join(running_containers),
+        module_ignore_errors=True
+    )
+    privileged_by_name = {}
+    for line in result['stdout_lines']:
+        name, _, privileged = line.strip().lstrip('/').partition('=')
+        privileged_by_name[name] = privileged.strip().lower() == 'true'
 
+    vanished = [name for name in running_containers if name not in privileged_by_name]
+    for container_name in vanished:
+        pytest_assert(
+            "no such object: {}".format(container_name).lower() in result['stderr'].lower(),
+            "docker inspect failed for container '{}': {}".format(container_name, result['stderr'])
+        )
+    if vanished:
+        logger.info("Containers exited between 'docker ps' and 'docker inspect', skipped: {}".format(vanished))
+
+    unauthorized_privileged = []
+    for container_name, is_privileged in privileged_by_name.items():
         if is_privileged:
             base_name = get_base_container_name(container_name)
             if base_name not in allowed_privileged:
