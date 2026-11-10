@@ -47,8 +47,21 @@ def ignore_expected_loganalyzer_exceptions(duthosts, loganalyzer):
     return
 
 
+@pytest.fixture(scope="module")
+def skip_if_gcu_cannot_manage_pfcwd(duthost):
+    """
+    Skip the module when GCU rejects PFC_WD patches on this platform/version.
+
+    Every testcase removes or re-adds PFC_WD through GCU, either in its body or in
+    the checkpoint rollback, so none of them can pass or clean up on such a DUT.
+    """
+    for op in ("add", "remove"):
+        if not is_valid_platform_and_version(duthost, "PFC_WD", "PFCWD enable/disable", op):
+            pytest.skip("GCU does not support PFC_WD {} on this platform/version".format(op))
+
+
 @pytest.fixture(scope="module", autouse=True)
-def set_default_pfcwd_config(duthost):
+def set_default_pfcwd_config(duthost, skip_if_gcu_cannot_manage_pfcwd):
     """
     Enable pfcwd config before all test runs and disable at the end of all test runs
 
