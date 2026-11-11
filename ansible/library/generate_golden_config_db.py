@@ -1117,19 +1117,50 @@ class GenerateGoldenConfigDBModule(object):
         `config reload` restore the binding + MTU without re-running the macsec
         playbooks. macsec_links is not tied to a topology type, so this runs on
         whatever config the topology branch produced.
+
+        On a multi-ASIC DUT the golden config is keyed by namespace. PORT,
+        PORTCHANNEL and MACSEC_PROFILE live in the asic namespaces that own
+        the ports; FEATURE.macsec is flipped in every namespace.
         """
         config_dict = json.loads(config)
         if self.num_asics > 1:
-            self.module.warn(
-                "macsec_links declared on a multi-ASIC DUT; golden config will "
-                "carry no PORT.macsec/MTU bindings.")
-            return config
+            return json.dumps(self._apply_macsec_links_multiasic(config_dict), indent=4)
 
         rendered = config_dict.setdefault('MACSEC_PROFILE', {})
         if any(name not in rendered for name in self._macsec_profile_names()):
             rendered.update(self._render_macsec_profile_table().get('MACSEC_PROFILE', {}))
-        self._merge_macsec_port_config(config_dict, self._minigraph_config())
+        minigraph_data = self._minigraph_config()
+        self._merge_macsec_port_config(config_dict, minigraph_data)
+        self._enable_macsec_feature(config_dict, minigraph_data)
         return json.dumps(config_dict, indent=4)
+
+    def _apply_macsec_links_multiasic(self, config_dict):
+        """Multi-ASIC form of apply_macsec_links on a namespace-keyed golden config.
+
+        A topology branch that rendered a flat (host-only) golden config is
+        hoisted under 'localhost' first; load_minigraph reads a flat file as
+        host-only on multi-ASIC, so this does not change what it applies.
+        """
+        if 'localhost' not in config_dict and not any(
+                key.startswith('asic') for key in config_dict):
+            config_dict = {'localhost': config_dict}
+
+        minigraph_by_ns = self.get_config_from_minigraph_multiasic()
+        profile_by_ns = self._render_macsec_profile_table()
+        bound = 0
+        for ns, minigraph_data in minigraph_by_ns.items():
+            ns_cfg = config_dict.setdefault(ns, {})
+            if ns != 'localhost':
+                rendered = ns_cfg.setdefault('MACSEC_PROFILE', {})
+                rendered.update(profile_by_ns.get(ns, {}).get('MACSEC_PROFILE', {}))
+                bound += self._merge_macsec_port_config(ns_cfg, minigraph_data, warn_unmatched=False)
+            self._enable_macsec_feature(ns_cfg, minigraph_data)
+        if not bound:
+            self.module.warn(
+                "macsec_links vms {} matched no DEVICE_NEIGHBOR names in any asic "
+                "namespace; golden config will carry no PORT.macsec bindings".format(
+                    sorted(link['vm'] for link in self.macsec_links if link.get('vm'))))
+        return config_dict
 
     def _minigraph_config(self):
         """Render the minigraph-derived CONFIG_DB once for the helpers below.
@@ -1172,18 +1203,18 @@ class GenerateGoldenConfigDBModule(object):
             dst.setdefault(key, dict(fields))
         return dst
 
-    def _merge_macsec_port_config(self, rendered_dict, minigraph_data):
+    def _merge_macsec_port_config(self, rendered_dict, minigraph_data, warn_unmatched=True):
         """Add PORT.<p>.macsec/mtu and PORTCHANNEL.<pc>.mtu entries for every
         DUT port mapped (via minigraph DEVICE_NEIGHBOR) to a VM listed in
-        self.macsec_links.  No-op (with a warning) when minigraph_data is
-        empty: multi-ASIC or a failed minigraph render.
+        self.macsec_links.  Returns the number of ports bound.  No-op (with a
+        warning) when minigraph_data is empty: a failed minigraph render.
         """
         if not minigraph_data:
             self.module.warn(
                 "macsec_links declared but the minigraph CONFIG_DB render is empty "
-                "(multi-ASIC DUT or sonic-cfggen failure); golden config will carry "
+                "(sonic-cfggen failure); golden config will carry "
                 "MACSEC_PROFILE only, without PORT.macsec/MTU bindings.")
-            return
+            return 0
 
         # str(): an unquoted numeric profile name arrives from YAML as an int.
         vm_profile = {
@@ -1191,7 +1222,7 @@ class GenerateGoldenConfigDBModule(object):
             for link in self.macsec_links if link.get('vm')
         }
         if not vm_profile:
-            return
+            return 0
 
         # PORT.macsec is a leafref into MACSEC_PROFILE, so a profile that is
         # not rendered would fail YANG validation at load_minigraph.
@@ -1211,11 +1242,12 @@ class GenerateGoldenConfigDBModule(object):
             if isinstance(info, dict) and info.get('name') in vm_profile
         }
         if not macsec_ports:
-            self.module.warn(
-                "macsec_links vms {} matched no DEVICE_NEIGHBOR names; golden "
-                "config will carry no PORT.macsec bindings".format(
-                    sorted(vm_profile)))
-            return
+            if warn_unmatched:
+                self.module.warn(
+                    "macsec_links vms {} matched no DEVICE_NEIGHBOR names; golden "
+                    "config will carry no PORT.macsec bindings".format(
+                        sorted(vm_profile)))
+            return 0
 
         # 2. PortChannels containing any of those ports.  PORTCHANNEL_MEMBER
         #    keys are emitted as 'PortChannelN|EthernetX' by sonic-cfggen.
@@ -1229,7 +1261,7 @@ class GenerateGoldenConfigDBModule(object):
             if port_name in macsec_port_set:
                 macsec_pcs.add(pc_name)
 
-        # 3. Merge into the rendered golden config (single-ASIC, host-level).
+        # 3. Merge into the rendered golden config (one namespace).
         # `config override-config-table` does TABLE-LEVEL replacement for any
         # table present in golden config — i.e. the entire PORT table in
         # CONFIG_DB is wiped and re-populated from golden config.  That means
@@ -1254,7 +1286,12 @@ class GenerateGoldenConfigDBModule(object):
         for pc in macsec_pcs:
             pc_table.setdefault(pc, {})
             pc_table[pc]['mtu'] = MACSEC_MTU
+        return len(macsec_ports)
 
+    def _enable_macsec_feature(self, rendered_dict, minigraph_data):
+        """Carry FEATURE in golden config with macsec enabled."""
+        if not minigraph_data:
+            return
         # Fill the FEATURE table from minigraph-derived config, then
         # flip FEATURE.macsec.state to 'enabled'.  Without this, every config
         # reload / `config load_minigraph --override_config` after deploy-mg
