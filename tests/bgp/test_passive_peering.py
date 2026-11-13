@@ -12,6 +12,10 @@ from tests.common.helpers.bgp import get_vtysh_cmd_for_asic
 from tests.common.helpers.constants import DEFAULT_NAMESPACE
 from tests.common.utilities import wait_until
 from tests.bgp.bgp_helpers import eos_bgp_neighbor_config_parents
+<<<<<<< HEAD
+=======
+from tests.bgp.bgp_helpers import get_port_pairing_for_neighbor_host
+>>>>>>> 763028c28 (NOS-14504: [bgp] Pick test peers from minigraph so missing LLDP does not drop them (#5052))
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +59,16 @@ def setup(tbinfo, nbrhosts, duthosts, rand_one_dut_front_end_hostname, request):
     dut_asn = tbinfo['topo']['properties']['configuration_properties']['common']['dut_asn']
     confed_asn = duthost.get_bgp_confed_asn()
 
+<<<<<<< HEAD
     lldp_table = duthost.shell("show lldp table")['stdout'].split("\n")[3].split()
     neigh_name = lldp_table[1]
     dut_int = lldp_table[0]
     neigh_int = lldp_table[2]
+=======
+    pairing = get_port_pairing_for_neighbor_host(duthost, nbrhosts, tbinfo)
+    pytest.skip("No established minigraph neighbor found for a known neighbor host") if not pairing else None
+    dut_int, neigh_name = pairing.local_port, pairing.remote_device
+>>>>>>> 763028c28 (NOS-14504: [bgp] Pick test peers from minigraph so missing LLDP does not drop them (#5052))
     if duthost.is_multi_asic:
         asic_index = duthost.get_port_asic_instance(dut_int).asic_index
     else:

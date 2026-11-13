@@ -664,20 +664,31 @@ def get_ptf_recv_port(duthost, vm_name, tbinfo, multi_vrf_topo=False):
     """
     Get ptf receive port
     """
-    if multi_vrf_topo:
-        # When using multi-vrf topologies, the vm_name alone is not unique enough to be used as an
-        # index into the lldp table.  In this scenario, only the host container is listed by name,
-        # with multiple interfaces. So, in order to get the right dut interface, we need to figure
-        # out which host and interface are being used for the passed peer.  The POSIX string for
-        # whitespace is used to avoid python escaping backslashes in the pattern.
-        vrf_data = tbinfo["topo"]["properties"]["convergence_data"]
-        host_map = {vrf: host for host, vrfs in vrf_data["convergence_mapping"].items() for vrf in vrfs}
-        host = host_map[vm_name]
-        peer_config = vrf_data["converged_peers"][host]["vrf"][vm_name]
-        host_if = [k for k in peer_config.keys() if "Ethernet" in k][0]
-        pattern = "{}[[:space:]]*{}".format(host, host_if)
-    else:
-        pattern = vm_name
+    if not multi_vrf_topo:
+        # Take the VM's ports from minigraph, not from 'show lldp table': the wiring does not
+        # change at runtime, and LLDP from the VM can be missing even when its links and BGP
+        # sessions are up. See get_port_pairings(). Read neighbors off this same facts dict so
+        # the ptf-index lookup does not fetch minigraph a second time.
+        mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+        ports = natsorted(
+            port for port, neigh in mg_facts["minigraph_neighbors"].items() if neigh["name"] == vm_name
+        )
+        pytest_assert(ports, "Neighbor {} not found in minigraph neighbors".format(vm_name))
+        return [mg_facts['minigraph_ptf_indices'][port] for port in ports]
+
+    # When using multi-vrf topologies, the vm_name alone is not unique enough to be used as an
+    # index into the lldp table.  In this scenario, only the host container is listed by name,
+    # with multiple interfaces. So, in order to get the right dut interface, we need to figure
+    # out which host and interface are being used for the passed peer.  The POSIX string for
+    # whitespace is used to avoid python escaping backslashes in the pattern.
+    # TODO: move this case to minigraph as well once the multi-vrf DEVICE_NEIGHBOR naming
+    # (host container vs. logical vrf peer) has been confirmed on a multi-vrf testbed.
+    vrf_data = tbinfo["topo"]["properties"]["convergence_data"]
+    host_map = {vrf: host for host, vrfs in vrf_data["convergence_mapping"].items() for vrf in vrfs}
+    host = host_map[vm_name]
+    peer_config = vrf_data["converged_peers"][host]["vrf"][vm_name]
+    host_if = [k for k in peer_config.keys() if "Ethernet" in k][0]
+    pattern = "{}[[:space:]]*{}".format(host, host_if)
 
     ports_output = duthost.shell("show lldp table | grep -w {} | awk '{{print $1}}'".format(pattern))['stdout']
     ports = [line.strip() for line in ports_output.split('\n') if line.strip()]
@@ -1110,3 +1121,243 @@ def eos_bgp_neighbor_config_parents(tbinfo, nbrhosts, logical_neighbor_name, nei
                 return ["router bgp {}".format(primary_asn), "vrf {}".format(logical_neighbor_name)]
 
     return ["router bgp {}".format(neigh_remote_as)]
+<<<<<<< HEAD
+=======
+
+
+def get_bgp_neighbor_names_from_facts(bgp_facts, nbrhosts):
+    """
+    Return the sorted, deduplicated descriptions of the DUT's BGP neighbors that
+    map to a known neighbor host. Internal neighbors (e.g. iBGP peers between
+    asics, whose descriptions are not nbrhosts keys) are excluded.
+    """
+    return sorted(set(v['description'] for v in bgp_facts['bgp_neighbors'].values()
+                      if v['description'] in nbrhosts))
+
+
+PortPairing = namedtuple("PortPairing", ["local_port", "remote_port", "remote_device"])
+
+
+def get_port_pairings(duthost, tbinfo):
+    """
+    Return the DUT's port-to-neighbor wiring as a dict {local_port: PortPairing}, in natural
+    port order (Ethernet0, Ethernet4, ..., Ethernet100).
+
+    The wiring is read from minigraph (DEVICE_NEIGHBOR), i.e. the topology the testbed was
+    deployed from, not from 'show lldp table'. LLDP only reflects what the neighbors are
+    currently advertising: when a neighbor's LLDP frames do not reach the DUT (lldpd down on
+    the VM, frames lost or rewritten on the fanout path) the table is empty, partial, or names
+    the fanout switch, even though every BGP session is up. Tests that only need to know which
+    neighbor sits behind which port must not depend on that.
+    """
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+    return {
+        local_port: PortPairing(local_port=local_port, remote_port=neigh["port"], remote_device=neigh["name"])
+        for local_port, neigh in natsorted(mg_facts["minigraph_neighbors"].items())
+    }
+
+
+def _neighbor_v4_v6_established(bgp_facts, neighbor_name, skip_hosts):
+    """
+    True when neighbor_name has at least one IPv4 and one IPv6 BGP session and every session of
+    either family is established. Matches the assert the callers run on the peer they are handed.
+    """
+    v4_states = []
+    v6_states = []
+    for facts in bgp_facts["bgp_neighbors"].values():
+        description = facts["description"]
+        if not description or description.lower() in skip_hosts or description != neighbor_name:
+            continue
+        if facts["ip_version"] == 4:
+            v4_states.append(facts["state"])
+        elif facts["ip_version"] == 6:
+            v6_states.append(facts["state"])
+    return bool(v4_states) and bool(v6_states) and all(state == "established" for state in v4_states + v6_states)
+
+
+def get_port_pairing_for_neighbor_host(duthost, nbrhosts, tbinfo):
+    """
+    Return the PortPairing of the first DUT port (natural port order) whose neighbor is a known
+    neighbor host and whose IPv4 and IPv6 BGP sessions are established, or None.
+
+    Minigraph order does not move on when a session is down the way an LLDP walk did. The
+    callers assert the chosen peer is established, so a down peer is skipped here and the next
+    candidate is used instead of failing setup on the lowest-numbered port.
+    """
+    bgp_facts_cache = {}
+    skip_hosts = set(host.lower() for host in duthost.get_asic_namespace_list() if host)
+    reject_reasons = []
+    for p in get_port_pairings(duthost, tbinfo).values():
+        if p.remote_device not in nbrhosts:
+            continue
+        try:
+            if duthost.is_multi_asic:
+                asic_index = duthost.get_port_asic_instance(p.local_port).asic_index
+            else:
+                asic_index = None
+        except Exception as e:
+            reason = "{} on {}: failed to get DUT ASIC index, error={}".format(
+                p.remote_device, p.local_port, e)
+            logging.info("Skip %s", reason)
+            reject_reasons.append(reason)
+            continue
+        if asic_index not in bgp_facts_cache:
+            bgp_facts_cache[asic_index] = duthost.bgp_facts(instance_id=asic_index)["ansible_facts"]
+        if not _neighbor_v4_v6_established(bgp_facts_cache[asic_index], p.remote_device, skip_hosts):
+            reason = "{} on {}: IPv4/IPv6 BGP session is not established".format(
+                p.remote_device, p.local_port)
+            logging.info("Skip %s", reason)
+            reject_reasons.append(reason)
+            continue
+        return p
+    if reject_reasons:
+        logging.info("No established neighbor host in minigraph. Reasons: %s", "; ".join(reject_reasons))
+    return None
+
+
+def get_eos_port_pairings(duthost, tbinfo):
+    """
+    Get port pairings with Arista cEOS devices. Return a dict indexed by the local port with
+    value PortPairing tuple
+    """
+    return {port: p for port, p in get_port_pairings(duthost, tbinfo).items() if "ARISTA" in p.remote_device}
+
+
+NeighborAddr = namedtuple("NeighborAddr", ["addr", "addr_v6"])
+
+
+def get_configured_dut_peer_addrs_for_eos(dut_asn, eos_device, tbinfo):
+    """
+    Get the peer IP addresses of DUT that EOS device uses in initial test configuration.  For t1
+    topology an Arista cEOS peer should only have one peering link with dut, and one ip and one ipv6
+    neighbor for BGP peering with the dut
+    """
+    config = tbinfo["topo"]["properties"]["configuration"]
+    if eos_device not in config:
+        logging.error(f"{eos_device} not found in tbinfo configuration")
+        return None
+    eos_config = config[eos_device]
+    if "bgp" in eos_config and dut_asn in eos_config["bgp"]["peers"]:
+        # eos_config is a dict but not a JSON dict. The key of eos_config["bgp"]["peers"] is the
+        # AS number integer value, not AS number as a string value
+        addrs = eos_config["bgp"]["peers"][dut_asn]
+        v4 = next((a for a in addrs if ":" not in a), None)
+        v6 = next((a for a in addrs if ":" in a), None)
+        if v4 is None or v6 is None:
+            logging.error(f"Missing ipv4 or ipv6 addr for {dut_asn} on {eos_device}: {addrs}")
+            return None
+        return NeighborAddr(addr=v4, addr_v6=v6)
+    logging.error(f"No peer with {dut_asn} found in {eos_device}")
+    return None
+
+
+@dataclass
+class TestPeering:
+    dut_peer_port: str
+    dut_peer_addr: str
+    dut_peer_addr_v6: str
+    dut_peer_group: str
+    dut_peer_group_v6: str
+    eos_device: EosHost
+    eos_asn: int
+    eos_peer_port: str
+    eos_peer_addr: str
+    eos_peer_addr_v6: str
+    vm_offset: int
+
+    def exabgp_name(self, addr_family):
+        """
+        The exabgp neighbors peering with a given EOS instance are run on ptfhost. They use the
+        instance name to form the config file path, e.g. /etc/exabgp/ARISTA01T1.conf,
+        /etc/exabgp/ARISTA01T1-v6.conf
+        """
+        return self.eos_device.instance_name if addr_family == "ipv4" else \
+            f"{self.eos_device.instance_name}-v6"
+
+    def exabgp_port(self, addr_family):
+        """The exabgp http port on localhost to post commands"""
+        return EXABGP_BASE_PORT + self.vm_offset if addr_family == "ipv4" else \
+            EXABGP_BASE_PORT_V6 + self.vm_offset
+
+    def peer_addr(self, addr_family):
+        return self.eos_peer_addr if addr_family == "ipv4" else self.eos_peer_addr_v6
+
+    def dut_addr(self, addr_family):
+        return self.dut_peer_addr if addr_family == "ipv4" else self.dut_peer_addr_v6
+
+
+@dataclass
+class TestPeerings:
+    duthost: SonicHost
+    dut_asn: int
+    peerings: list[TestPeering]
+
+
+def get_test_peerings(duthost, nbrhosts, bgp_facts, tbinfo) -> TestPeerings:
+    """
+    Collect cEOS peers for testing. Resolve pairings of ports, addresses, and AS numbers
+    """
+    dut_asn = tbinfo["topo"]["properties"]["configuration_properties"]["common"]["dut_asn"]
+    port_pairings = get_eos_port_pairings(duthost, tbinfo)
+    addr_intf_mapping = get_neighbor_addr_intf_mapping(duthost)
+
+    peerings = []
+    for addr, neighbor in bgp_facts["bgp_neighbors"].items():
+        if neighbor["state"].lower() != "established":
+            continue
+        if addr not in addr_intf_mapping.addr_to_intf:
+            logging.info(f"Skip {addr}, not in NEIGH_TABLE")
+            continue
+        if ":" in addr:
+            continue  # First we only look for ipv4 BGP peering
+
+        intf = addr_intf_mapping.addr_to_intf[addr]
+        if intf not in addr_intf_mapping.intf_to_addr_v6:
+            logging.info(f"Skip {intf}, no ipv6 neighbor")
+            continue
+
+        # Must have a v6 neighbor over the same link
+        addr_v6 = addr_intf_mapping.intf_to_addr_v6[intf][0]
+        if intf not in port_pairings:
+            logging.info(f"Skip {intf}, not found in minigraph neighbors")
+            continue
+        if addr_v6 not in bgp_facts["bgp_neighbors"]:
+            logging.info(f"Skip {addr_v6} for {intf}, not in bgp_neighbors")
+            continue
+
+        pairing = port_pairings[intf]
+        if pairing.remote_device not in nbrhosts:
+            logging.info(f"Skip {pairing.remote_device}, not in nbrhosts")
+            continue
+
+        dut_addr_for_eos = get_configured_dut_peer_addrs_for_eos(
+            dut_asn, pairing.remote_device, tbinfo
+        )
+        if not dut_addr_for_eos:
+            logging.error(f"neighbor addrs for {pairing.remote_device} not found")
+            continue
+
+        eos_asn = tbinfo["topo"]["properties"]["configuration"][pairing.remote_device]["bgp"]["asn"]
+        vm_offset = tbinfo['topo']['properties']['topology']['VMs'][pairing.remote_device]['vm_offset']
+
+        peer_group_v4 = neighbor["peer group"]
+        peer_group_v6 = bgp_facts["bgp_neighbors"][addr_v6]["peer group"]
+
+        peerings.append(
+            TestPeering(
+                dut_peer_port=pairing.local_port,
+                dut_peer_addr=dut_addr_for_eos.addr,
+                dut_peer_addr_v6=dut_addr_for_eos.addr_v6,
+                dut_peer_group=peer_group_v4,
+                dut_peer_group_v6=peer_group_v6,
+                eos_device=nbrhosts[pairing.remote_device]["host"],
+                eos_asn=eos_asn,
+                eos_peer_port=pairing.remote_port,
+                eos_peer_addr=addr,
+                eos_peer_addr_v6=addr_v6,
+                vm_offset=vm_offset,
+            )
+        )
+
+    return TestPeerings(duthost, dut_asn, peerings)
+>>>>>>> 763028c28 (NOS-14504: [bgp] Pick test peers from minigraph so missing LLDP does not drop them (#5052))

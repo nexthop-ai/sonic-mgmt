@@ -6,7 +6,7 @@ import logging
 import pytest
 import time
 
-from tests.bgp.bgp_helpers import eos_bgp_neighbor_config_parents
+from tests.bgp.bgp_helpers import eos_bgp_neighbor_config_parents, get_port_pairings
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.helpers.constants import DEFAULT_NAMESPACE
 from tests.common.config_reload import config_reload
@@ -20,19 +20,6 @@ pytestmark = [
 
 BGP_PASS = "sonic.123"
 MISMATCH_PASS = "badpassword"
-
-
-def get_lldp_neighbors(duthost):
-    neighbors = []
-    for line in duthost.shell("show lldp table")['stdout'].splitlines()[3:]:
-        fields = line.split()
-        if len(fields) >= 3:
-            neighbors.append({
-                'dut_intf': fields[0],
-                'name': fields[1],
-                'neigh_intf': fields[2],
-            })
-    return neighbors
 
 
 def get_peer_addrs(tbinfo, tor1, dut_asn, confed_asn):
@@ -82,15 +69,15 @@ def get_valid_bgp_neighbor(tbinfo, nbrhosts, duthost, dut_asn, confed_asn, is_so
     bgp_facts_cache = {}
     reject_reasons = []
 
-    for lldp_neigh in get_lldp_neighbors(duthost):
-        tor1 = lldp_neigh['name']
+    for pairing in get_port_pairings(duthost, tbinfo).values():
+        tor1 = pairing.remote_device
         if tor1 not in nbrhosts:
             reject_reasons.append("{}: not in nbrhosts".format(tor1))
             continue
 
         try:
             if duthost.is_multi_asic:
-                asic_index = duthost.get_port_asic_instance(lldp_neigh['dut_intf']).asic_index
+                asic_index = duthost.get_port_asic_instance(pairing.local_port).asic_index
             else:
                 asic_index = None
         except Exception as e:
@@ -123,7 +110,7 @@ def get_valid_bgp_neighbor(tbinfo, nbrhosts, duthost, dut_asn, confed_asn, is_so
         neigh_asic_index = None
         if is_sonic_neigh and nbrhosts[tor1]["host"].is_multi_asic:
             try:
-                neigh_asic_index = nbrhosts[tor1]["host"].get_port_asic_instance(lldp_neigh['neigh_intf']).asic_index
+                neigh_asic_index = nbrhosts[tor1]["host"].get_port_asic_instance(pairing.remote_port).asic_index
             except Exception as e:
                 reason = "{}: failed to get neighbor ASIC index, error={}".format(tor1, e)
                 logger.debug("Skipping neighbor {}".format(reason))
@@ -132,8 +119,8 @@ def get_valid_bgp_neighbor(tbinfo, nbrhosts, duthost, dut_asn, confed_asn, is_so
 
         neighbor_info.update({
             'tor1': tor1,
-            'dut_intf': lldp_neigh['dut_intf'],
-            'neigh_intf': lldp_neigh['neigh_intf'],
+            'dut_intf': pairing.local_port,
+            'neigh_intf': pairing.remote_port,
             'asic_index': asic_index,
             'neigh_asic_index': neigh_asic_index,
             'dut_ip_v4': peer_addrs[0],
