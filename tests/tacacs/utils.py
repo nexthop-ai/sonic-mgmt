@@ -5,7 +5,7 @@ import paramiko
 import time
 from tests.common.errors import RunAnsibleModuleFail
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.tacacs.tacacs_helper import start_tacacs_server
+from tests.common.helpers.tacacs.tacacs_helper import start_tacacs_server, tacacs_running
 from tests.common.utilities import wait_until, paramiko_ssh
 from ansible.errors import AnsibleConnectionFailure
 
@@ -15,15 +15,28 @@ TIMEOUT_LIMIT = 120
 
 DEVICE_UNREACHABLE_MAX_RETRIES = 3
 
+# Starting tac_plus on the PTF is occasionally flaky, so the teardown restart retries for this long.
+TACACS_SERVER_START_TIMEOUT = 20
+
 
 @pytest.fixture
-def ensure_tacacs_server_running_after_ut(duthosts, enum_rand_one_per_hwsku_hostname):
-    """make sure tacacs server running after UT finish"""
-    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+def ensure_tacacs_server_running_after_ut(ptfhost):
+    """Restart the PTF TACACS+ server after a test that stops it, even if the test failed.
 
+    A server left stopped makes every later test in the module fail on TACACS+ login.
+    """
     yield
 
-    start_tacacs_server(duthost)
+    restart_tacacs_server_if_down(ptfhost)
+
+
+def restart_tacacs_server_if_down(ptfhost):
+    if tacacs_running(ptfhost):
+        return
+    logger.warning("TACACS+ server not running on PTF after test, restarting")
+    pytest_assert(wait_until(TACACS_SERVER_START_TIMEOUT, 1, 0, start_tacacs_server, ptfhost),
+                  "TACACS+ server on PTF failed to restart")
+    logger.info("TACACS+ server on PTF restarted")
 
 
 def check_server_received(ptfhost, data, timeout=30):
@@ -124,6 +137,7 @@ def ssh_connect_remote_retry(remote_ip, remote_username, remote_password, duthos
             return paramiko_ssh(remote_ip, remote_username, remote_password)
         except paramiko.ssh_exception.AuthenticationException as e:
             logger.info("Paramiko SSH connect failed with authentication: " + repr(e))
+<<<<<<< HEAD
 
             # get syslog for debug
             recent_syslog = duthost.shell('sudo tail -100 /var/log/syslog')['stdout']
@@ -131,6 +145,88 @@ def ssh_connect_remote_retry(remote_ip, remote_username, remote_password, duthos
 
         time.sleep(1)
         retry_count -= 1
+=======
+            # Diagnostic only: a failed fetch must not end the retries.
+            try:
+                recent_syslog = duthost.shell('sudo tail -100 /var/log/syslog', module_ignore_errors=True)['stdout']
+                logger.debug("Target device syslog: {}".format(recent_syslog))
+            except Exception as fetch_error:
+                logger.warning("Could not fetch DUT syslog: {}".format(repr(fetch_error)))
+            if retry_count <= 1:
+                logger.error("SSH authentication failed after all retries: {}".format(repr(e)))
+                raise
+            logger.info("SSH authentication failed, retrying in {}s... ({} retries left)".format(
+                retry_delay, retry_count - 1))
+        except paramiko.ssh_exception.SSHException as e:
+            error_msg = str(e)
+            if "Not allowed at this time" not in error_msg and "Error reading SSH protocol banner" not in error_msg:
+                logger.error("SSH connection failed with exception: {}".format(repr(e)))
+                raise
+            if retry_count <= 1:
+                logger.error("TACACS+ authorization failed after all retries: {}".format(error_msg))
+                raise
+            logger.info("TACACS+ authorization not ready ({}), retrying in {}s... ({} retries left)".format(
+                error_msg, retry_delay, retry_count - 1))
+        except Exception as e:
+            logger.error("Unexpected error during SSH connection: {}".format(repr(e)))
+            raise
+
+        time.sleep(retry_delay)
+        retry_count -= 1
+        retry_delay += 1  # linear backoff
+
+
+def wait_for_tacacs_authorization_ready(duthost, remote_ip, remote_username, remote_password, timeout=30):
+    """
+    Wait until TACACS+ authorization is ready to accept SSH connections.
+
+    This function polls the DUT by attempting SSH connections until successful,
+    or until the timeout is reached. This is necessary after changing AAA authorization
+    settings to ensure the SSH/PAM modules have reloaded the TACACS+ configuration.
+
+    Args:
+        duthost: The DUT host object
+        remote_ip: IP address to connect to
+        remote_username: Username for SSH connection
+        remote_password: Password for SSH connection
+        timeout: Maximum time to wait in seconds (default: 30)
+
+    Returns:
+        True if TACACS+ authorization is ready, False otherwise
+    """
+    def try_connect():
+        try:
+            # Attempt a quick SSH connection to verify TACACS+ authorization is working
+            ssh_client = paramiko_ssh(remote_ip, remote_username, remote_password)
+            ssh_client.close()
+            logger.info("TACACS+ authorization is ready - SSH connection successful")
+            return True
+        except paramiko.ssh_exception.AuthenticationException as e:
+            # Must precede SSHException, which it subclasses.
+            logger.warning("Authentication failed during readiness check: {}".format(repr(e)))
+            return False
+        except paramiko.ssh_exception.SSHException as e:
+            error_msg = str(e)
+            # These errors indicate TACACS+ authorization is not ready yet
+            if "Not allowed at this time" in error_msg or "Error reading SSH protocol banner" in error_msg:
+                logger.debug("TACACS+ authorization not ready yet: {}".format(repr(e)))
+            else:
+                logger.warning("Unexpected SSH error during readiness check: {}".format(repr(e)))
+            return False
+        except Exception as e:
+            logger.debug("Connection attempt failed: {}".format(repr(e)))
+            return False
+
+    logger.info("Waiting for TACACS+ authorization to be ready (timeout: {}s)...".format(timeout))
+    result = wait_until(timeout, 2, 0, try_connect)
+
+    if result:
+        logger.info("TACACS+ authorization is ready")
+    else:
+        logger.warning("TACACS+ authorization readiness check timed out after {}s".format(timeout))
+
+    return result
+>>>>>>> 4c83cb8de (NOS-11732: [tacacs] Always restart the PTF TACACS+ server after server-down tests (#4914))
 
 
 def duthost_shell_with_unreachable_retry(duthost, command):
