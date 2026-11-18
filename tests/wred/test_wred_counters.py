@@ -23,6 +23,10 @@ ROUTE_PATTERN_PREFIX = "ASIC_STATE:SAI_OBJECT_TYPE_ROUTE_ENTRY:"
 PACKET_COUNT = 100
 QUEUE = 3
 BLOCKING_SCHEDULER = "SCHEDULER_BLOCK_DATA_PLANE"
+# Congestion bytes sent per egress queue. Measured on mrdl206 (NH-4240L): th6 admits about 25KB into a blocked
+# queue before its first WRED drop, so 20KB leaves the test packets admitted.
+CONGESTION_BYTES_PER_QUEUE = 20000
+TH6_CONGESTION_BYTES_PER_QUEUE = 60000
 
 # SRv6-related constants
 LOCATOR_NAME = "loc_wred"
@@ -482,15 +486,17 @@ def clear_queue_wred_counters(duthost, egress_ports, expect_drop):
     check_wred_counters(duthost, egress_ports, expect_drop, expect_zero=True)
 
 
-def create_congestion(ptfadapter, router_mac, ip_version, neigh_ip, dscp, ingress_port_index, egress_port_count):
+def create_congestion(ptfadapter, router_mac, ip_version, neigh_ip, dscp, ingress_port_index, egress_port_count,
+                      bytes_per_queue):
     logger.info("Creating congestion on egress queues.")
     # Using TCP for congestion packets so that we can distinguish them from the test packets.
     pkt = get_congestion_packet(router_mac, ip_version, neigh_ip, ect_enabled=True, dscp=dscp)
     logger.info(f"Congestion packet: {pkt}")
-    # The goal is to put at least 15KB of data into each egress queue. We send 20KB to each queue to account for
-    # possible traffic imbalance among LAG members.
+    # Send at least bytes_per_queue to the queue the flow hashes to: 15KB is enough on most ASICs, th6 needs more
+    # than about 25KB. All congestion packets are one flow and hash to one PortChannel member, so sending
+    # bytes_per_queue per member puts all of it on that member.
     pkt_len = len(pkt)
-    num_packets = ((20000 + pkt_len - 1) // pkt_len) * egress_port_count
+    num_packets = ((bytes_per_queue + pkt_len - 1) // pkt_len) * egress_port_count
     logger.info(f"Sending {num_packets} congestion packets to ingress port {ingress_port_index}.")
     testutils.send(ptfadapter, ingress_port_index, pkt, count=num_packets)
 
@@ -517,8 +523,13 @@ def test_wred_counters(duthost, ptfadapter, setup, ect_enabled):
     exp_pkt_mask = get_expected_packet_mask(pkt, test_params["ip_version"], expected_dest_ip)
     clear_queue_wred_counters(duthost, list(test_params["egress_ports"].keys()), expect_drop=not expect_ecn)
 
+    if duthost.get_asic_name() == "th6":
+        bytes_per_queue = TH6_CONGESTION_BYTES_PER_QUEUE
+    else:
+        bytes_per_queue = CONGESTION_BYTES_PER_QUEUE
     create_congestion(ptfadapter, router_mac, test_params["ip_version"], test_params["neigh_ip"],
-                      test_params["dscp"], test_params["ingress_port_index"], len(test_params["egress_ports"]))
+                      test_params["dscp"], test_params["ingress_port_index"], len(test_params["egress_ports"]),
+                      bytes_per_queue)
 
     ptfadapter.dataplane.flush()
     logger.info(f"Sending {PACKET_COUNT} test packets to ingress port {test_params['ingress_port_index']}.")
