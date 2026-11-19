@@ -195,6 +195,7 @@ def test_gnmi_configdb_incremental_02(gnmi_tls, vrf_config):  # noqa: F811
     """
     client = gnmi_tls.pygnmi_client
 
+<<<<<<< HEAD
     # GNMI set request with invalid path
     text = '"down"'
     update_list = [("/sonic-db:CONFIG_DB/localhost/PORTABC/Ethernet100/admin_status", text)]
@@ -202,6 +203,30 @@ def test_gnmi_configdb_incremental_02(gnmi_tls, vrf_config):  # noqa: F811
         client.set(update=update_list)
     except Exception as e:
         logger.info("Incremental config failed: " + str(e))
+=======
+
+def read_device_metadata(duthost, field):
+    return duthost.shell(f'sonic-db-cli CONFIG_DB hget "DEVICE_METADATA|localhost" {field}')["stdout"]
+
+
+@pytest.fixture
+def restore_test_field(duthosts, rand_one_dut_hostname):
+    '''
+    Put DEVICE_METADATA|localhost TEST_FIELD back the way the test found it
+    '''
+    duthost = duthosts[rand_one_dut_hostname]
+    key = '"DEVICE_METADATA|localhost"'
+    # sonic-db-cli prints hexists as "True"/"False"; accept a redis-style "1" too.
+    hexists = duthost.shell(f"sonic-db-cli CONFIG_DB hexists {key} {TEST_FIELD}")["stdout"].strip()
+    was_set = hexists.lower() in ("1", "true")
+    original = read_device_metadata(duthost, TEST_FIELD)
+    # A value of ours is left over from an interrupted run, not the DUT's own.
+    if original.startswith(CHANGE_PREFIX):
+        was_set = False
+    yield
+    if was_set:
+        duthost.shell(f"sonic-db-cli CONFIG_DB hset {key} {TEST_FIELD} {shlex.quote(original)}")
+>>>>>>> a33941840 (NOS-24367: [gnmi] Restore a set field in test_gnmi_configdb instead of deleting it (#5261))
     else:
         pytest.fail("Set request with invalid path")
 
