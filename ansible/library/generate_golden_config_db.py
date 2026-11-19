@@ -1154,6 +1154,8 @@ class GenerateGoldenConfigDBModule(object):
                 rendered = ns_cfg.setdefault('MACSEC_PROFILE', {})
                 rendered.update(profile_by_ns.get(ns, {}).get('MACSEC_PROFILE', {}))
                 bound += self._merge_macsec_port_config(ns_cfg, minigraph_data, warn_unmatched=False)
+            # The host (localhost) FEATURE row is the one that starts the per-ASIC
+            # macsec containers; the asicN rows are kept consistent with it.
             self._enable_macsec_feature(ns_cfg, minigraph_data)
         if not bound:
             self.module.warn(

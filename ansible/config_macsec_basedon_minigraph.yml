@@ -57,7 +57,7 @@
         for ns in {{ dut_namespaces | map('quote') | join(' ') }}; do
           opt=""; [ -n "$ns" ] && opt="-n $ns"
           for k in $(sonic-db-cli $opt CONFIG_DB KEYS 'PORT|*'); do
-            [ -n "$(sonic-db-cli $opt CONFIG_DB HGET "$k" macsec)" ] && echo "$ns ${k#PORT|}"
+            [ -n "$(sonic-db-cli $opt CONFIG_DB HGET "$k" macsec)" ] && echo "${ns:+$ns }${k#PORT|}"
           done
         done
         true
@@ -78,7 +78,12 @@
 
     - name: Wait for MACSEC_PORT_TABLE state=ok on every MACsec port
       become: true
-      shell: sonic-db-cli {{ '-n ' ~ item.split()[0] if item.split() | length > 1 else '' }} STATE_DB HGET 'MACSEC_PORT_TABLE|{{ item.split()[-1] }}' state
+      vars:
+        # item is "<namespace> <port>" on multi-ASIC, "<port>" on single-ASIC.
+        macsec_fields: "{{ item.split() }}"
+        macsec_port: "{{ macsec_fields | last }}"
+        macsec_ns_opt: "{{ '-n ' ~ macsec_fields | first if macsec_fields | length > 1 else '' }}"
+      shell: sonic-db-cli {{ macsec_ns_opt }} STATE_DB HGET 'MACSEC_PORT_TABLE|{{ macsec_port }}' state
       register: macsec_state
       until: macsec_state.stdout | trim == 'ok'
       # 200 x 3s = 600s per port worst case: MKA on Broadcom DNX can land
