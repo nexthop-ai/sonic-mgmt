@@ -881,9 +881,14 @@ def _physical_ports(host, names):
     ports = set()
     for name in names:
         if name.startswith("PortChannel"):
-            keys = host.shell("sonic-db-cli CONFIG_DB KEYS 'PORTCHANNEL_MEMBER|{}|*'".format(name),
-                              module_ignore_errors=True).get("stdout", "").split()
-            ports.update(key.split("|")[-1] for key in keys)
+            # A PortChannel is not a front-panel port, so its namespace cannot
+            # be looked up; ask every namespace for the membership.
+            namespaces = host.get_asic_namespace_list() if host.is_multi_asic else [None]
+            for ns in namespaces:
+                keys = host.shell("sonic-db-cli {} CONFIG_DB KEYS 'PORTCHANNEL_MEMBER|{}|*'".format(
+                    "-n {}".format(ns) if ns else "", name),
+                    module_ignore_errors=True).get("stdout", "").split()
+                ports.update(key.split("|")[-1] for key in keys)
         else:
             ports.add(name)
     return ports
@@ -1187,7 +1192,7 @@ def _parse_show_macsec_counters(text):
 
 
 def get_macsec_counters(duthost, port):
-    cmd = f"show macsec {port}"
+    cmd = f"show macsec {getns_prefix(duthost, port)} {port}"
     output = duthost.command(cmd)["stdout"]
 
     out_dict = _parse_show_macsec_counters(output)
@@ -1198,7 +1203,7 @@ def get_macsec_counters(duthost, port):
 def get_macsec_ingress_sa_counters(duthost, port, an):
     """Counters of the ingress SA on ``an`` of ``port``, or None if that AN is
     not shown. Unlike get_macsec_counters this never merges SAs."""
-    output = duthost.command(f"show macsec {port}")["stdout"]
+    output = duthost.command(f"show macsec {getns_prefix(duthost, port)} {port}")["stdout"]
     return _parse_show_macsec_counters(output)['ingress_by_an'].get(an)
 
 
