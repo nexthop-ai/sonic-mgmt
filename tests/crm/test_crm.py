@@ -579,17 +579,30 @@ def generate_neighbors(amount, ip_ver):
 
 def configure_nexthop_groups(amount, interface, duthost, asichost, test_name):
     """ Configure bunch of nexthop groups on DUT. Bash template is used to speedup configuration """
+    # Registered for cleanup before anything is created, so every delete skips entries that are already
+    # absent: a call that fails partway must not turn into a teardown failure that blocks the next test.
     del_template = """
     %s
     for s in {{neigh_ip_list}}
     do
-        ip -4 {{ns_prefix}} route del ${s}/32 nexthop via ${s} nexthop via 2.0.0.1
+        if [ -n "$(ip -4 {{ns_prefix}} route show exact ${s}/32)" ]; then
+            ip -4 {{ns_prefix}} route del ${s}/32 nexthop via ${s} nexthop via 2.0.0.1
+        else
+            echo "absent, skipped: route ${s}/32"
+        fi
     done
-    ip -4 {{ns_prefix}} route del 2.0.0.0/8 dev {{iface}}
-    ip {{ns_prefix}} neigh del 2.0.0.1 lladdr 11:22:33:44:55:66 dev {{iface}}
-    for s in {{neigh_ip_list}}
+    if [ -n "$(ip -4 {{ns_prefix}} route show exact 2.0.0.0/8 dev {{iface}})" ]; then
+        ip -4 {{ns_prefix}} route del 2.0.0.0/8 dev {{iface}}
+    else
+        echo "absent, skipped: route 2.0.0.0/8"
+    fi
+    for s in 2.0.0.1 {{neigh_ip_list}}
     do
-        ip {{ns_prefix}} neigh del ${s} lladdr 11:22:33:44:55:66 dev {{iface}}
+        if [ -n "$(ip {{ns_prefix}} neigh show ${s} dev {{iface}})" ]; then
+            ip {{ns_prefix}} neigh del ${s} lladdr 11:22:33:44:55:66 dev {{iface}}
+        else
+            echo "absent, skipped: neigh ${s}"
+        fi
     done""" % (NS_PREFIX_TEMPLATE)
 
     neigh_template = """
