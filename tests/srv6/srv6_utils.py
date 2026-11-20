@@ -5,6 +5,7 @@ import re
 import string
 import time
 from collections import defaultdict
+from natsort import natsorted
 import pytest
 import requests
 import ptf.packet as scapy
@@ -721,37 +722,37 @@ def verify_asic_db_sid_entry_exist(duthost, sonic_db_cli):
 
 
 def get_ptf_src_port_and_dut_port_and_neighbor(dut, tbinfo):
-    """Get the PTF port mapping for the duthost or an asic of the duthost"""
+    """DUT port, its PTF ports, and the BGP neighbor behind it, from minigraph.
+
+    LLDP is not used: the fanout's lldpd answers on the wire, so the table
+    names the fanout and never matches a BGP neighbor.
+    """
     dut_mg_facts = dut.get_extended_minigraph_facts(tbinfo)
     ports_map = dut_mg_facts["minigraph_ptf_indices"]
     if len(ports_map) == 0:
         pytest.skip("No PTF ports found for {}".format(dut))
 
-    lldp_table = dut.command("show lldp table")['stdout'].split("\n")[3:]
-    neighbor_table = [line.split() for line in lldp_table]
-    for entry in neighbor_table:
-        intf = entry[0]
-        if intf in ports_map:
-            # Check if this interface is part of a portchannel
-            ptf_ports = [ports_map[intf]]
+    bgp_peer_names = {peer["name"] for peer in dut_mg_facts.get("minigraph_bgp", [])}
+    for intf, neigh in natsorted(dut_mg_facts.get("minigraph_neighbors", {}).items()):
+        if intf not in ports_map or neigh["name"] not in bgp_peer_names:
+            continue
 
-            # Check if the interface is a member of any portchannel
-            if 'minigraph_portchannels' in dut_mg_facts:
-                for pc_name, pc_info in dut_mg_facts['minigraph_portchannels'].items():
-                    if intf in pc_info.get('members', []):
-                        # Found a portchannel - get PTF ports for all members
-                        logger.info("Interface {} is a member of portchannel {}".format(intf, pc_name))
-                        ptf_ports = []
-                        for member in pc_info['members']:
-                            if member in ports_map:
-                                ptf_ports.append(ports_map[member])
-                                logger.info("Added portchannel member {} with PTF port {}".format(
-                                    member, ports_map[member]))
-                        break
+        ptf_ports = [ports_map[intf]]
+        if 'minigraph_portchannels' in dut_mg_facts:
+            for pc_name, pc_info in dut_mg_facts['minigraph_portchannels'].items():
+                if intf in pc_info.get('members', []):
+                    logger.info("Interface {} is a member of portchannel {}".format(intf, pc_name))
+                    ptf_ports = []
+                    for member in pc_info['members']:
+                        if member in ports_map:
+                            ptf_ports.append(ports_map[member])
+                            logger.info("Added portchannel member {} with PTF port {}".format(
+                                member, ports_map[member]))
+                    break
 
-            return intf, ptf_ports, entry[1]  # local intf, ptf_src_ports (list), neighbor hostname
+        return intf, ptf_ports, neigh["name"]
 
-    pytest.skip("No active LLDP neighbor found for {}".format(dut))
+    pytest.skip("No PTF-connected port with a BGP neighbor in minigraph for {}".format(dut))
     return None
 
 

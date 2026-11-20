@@ -5,8 +5,13 @@ import logging
 
 from tests.srv6.srv6_utils import MySIDs, verify_appl_db_sid_entry_exist, SRv6, \
     validate_techsupport_generation, validate_srv6_counters, clear_srv6_counters, \
+<<<<<<< HEAD
     get_neighbor_mac, verify_asic_db_sid_entry_exist, ROUTE_BASE, run_srv6_traffic_test, \
     run_srv6_no_sid_blackhole_test
+=======
+    get_neighbor_mac, verify_asic_db_sid_entry_exist, ROUTE_BASE, \
+    run_srv6_no_sid_blackhole_test, get_ptf_src_port_and_dut_port_and_neighbor
+>>>>>>> aef440db5 (NOS-23659: [srv6] Pick the dataplane neighbor from minigraph, not LLDP (#5301))
 from tests.common.reboot import reboot
 from tests.common.config_reload import config_reload
 from tests.common.helpers.assertions import pytest_assert
@@ -25,6 +30,203 @@ pytestmark = [
 ]
 
 
+<<<<<<< HEAD
+=======
+def run_srv6_traffic_test(duthost, dut_mac, ptf_src_ports, neighbor_ip, ptfadapter, ptfhost, with_srh,
+                          sid_mode=USID):
+    # Convert single port to list for uniform handling
+    if isinstance(ptf_src_ports, int):
+        ptf_src_ports_list = [ptf_src_ports]
+    else:
+        ptf_src_ports_list = ptf_src_ports
+
+    # Use the first port for sending packets
+    ptf_src_port = ptf_src_ports_list[0]
+
+    for i in range(0, 10):
+        # generate a random payload
+        payload = ''.join(random.choices(string.ascii_letters + string.digits, k=20))
+        if sid_mode.full_sid:
+            injected_pkt = simple_ipv6_sr_packet(
+                eth_dst=dut_mac,
+                eth_src=ptfadapter.dataplane.get_mac(0, ptf_src_port).decode(),
+                ipv6_src=ptfhost.mgmt_ipv6 if ptfhost.mgmt_ipv6 else "1000::1",
+                ipv6_dst=sid_mode.sid("fcbb:bbbb:1::/48").split('/')[0],
+                srh_seg_left=1,
+                srh_seg_list=["fcbb:bbbb:2::"],
+                srh_nh=41,
+                inner_frame=IPv6() / UDP(dport=4791) / Raw(load=payload)
+            )
+        elif with_srh:
+            injected_pkt = simple_ipv6_sr_packet(
+                eth_dst=dut_mac,
+                eth_src=ptfadapter.dataplane.get_mac(0, ptf_src_port).decode(),
+                ipv6_src=ptfhost.mgmt_ipv6 if ptfhost.mgmt_ipv6 else "1000::1",
+                ipv6_dst="fcbb:bbbb:1:2::",
+                srh_seg_left=1,
+                srh_nh=41,
+                inner_frame=IPv6() / UDP(dport=4791) / Raw(load=payload)
+            )
+        else:
+            injected_pkt = Ether(dst=dut_mac, src=ptfadapter.dataplane.get_mac(0, ptf_src_port).decode()) \
+                           / IPv6(src=ptfhost.mgmt_ipv6 if ptfhost.mgmt_ipv6 else "1000::1", dst="fcbb:bbbb:1:2::") \
+                           / IPv6() / UDP(dport=4791) / Raw(load=payload)
+
+        expected_pkt = injected_pkt.copy()
+        expected_pkt['Ether'].dst = get_neighbor_mac(duthost, neighbor_ip)
+        expected_pkt['Ether'].src = dut_mac
+        expected_pkt['IPv6'].dst = "fcbb:bbbb:2::"
+        expected_pkt['IPv6'].hlim -= 1
+        if sid_mode.full_sid:
+            expected_pkt[IPv6ExtHdrRouting].segleft = 0
+        logger.debug("Expected packet #{}: {}".format(i, expected_pkt.summary()))
+        runSendReceive(injected_pkt, ptf_src_port, expected_pkt, ptf_src_ports_list, True, ptfadapter)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def srv6_enabled_dut(rand_selected_dut):
+    """Turn SRv6 on where the SAI needs it, and leave it on.
+
+    On DNX SRv6 is off by default, and with it off the SAI rejects every SID.
+    Enabling restarts swss, so wait for BGP to come back before the cases run.
+    """
+    duthost = rand_selected_dut
+    if not check_srv6_platform_requirements(duthost) or get_srv6_global_status(duthost) == 'true':
+        return
+    bgp_neighbors = duthost.get_bgp_neighbors_per_asic_from_config()
+    config_srv6_global_status(duthost, 'true')
+    pytest_assert(wait_until(180, 15, 5, verify_srv6_global_status, duthost, 'true'),
+                  "SRv6 could not be enabled")
+    pytest_assert(wait_until(300, 10, 30, duthost.check_bgp_session_state_all_asics, bgp_neighbors),
+                  "BGP sessions did not come back after enabling SRv6")
+    pytest_assert(refresh_macsec_info(duthost), "MACsec links did not come back after enabling SRv6")
+
+
+def skip_full_sid_without_srh(setup_info, with_srh):
+    if setup_info['sid_mode'].full_sid and not with_srh:
+        pytest.skip("End needs an SRH")
+
+
+def check_sids_after_event(duthost, cores):
+    """APPL_DB, the chip and FRR agree on the SIDs, and no core was generated."""
+    if not duthost.is_multi_asic:
+        assert wait_until(180, 10, 0, sid_state_consistent, duthost), \
+            "APPL_DB {}, chip {} and FRR {} disagree on the SIDs".format(
+                appl_sid_count(duthost), asic_mysid_count(duthost), frr_sid_count(duthost))
+    assert core_count(duthost) == cores, "a core was generated"
+
+
+@pytest.fixture()
+def setup_uN(duthosts, enum_frontend_dut_hostname, enum_frontend_asic_index, tbinfo, sid_mode):
+    duthost = duthosts[enum_frontend_dut_hostname]
+    asic_index = enum_frontend_asic_index
+    if sid_mode.full_sid and not check_srv6_platform_requirements(duthost) \
+            and switch_chip_id(duthost) not in SID_CHIPS:
+        pytest.skip("full SID runs on DNX, TH6 and TH5-512")
+    sid = sid_mode.sid("fcbb:bbbb:1::/48")
+
+    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
+    ptf_port_ids = []
+    for interface in list(mg_facts["minigraph_ptf_indices"].keys()):
+        port_id = mg_facts["minigraph_ptf_indices"][interface]
+        ptf_port_ids.append(port_id)
+
+    if duthost.is_multi_asic:
+        cli_options = " -n " + duthost.get_namespace_from_asic_id(asic_index)
+        dut_asic = duthost.asic_instance(asic_index)
+        dut_mac = dut_asic.get_router_mac()
+        dut_port, ptf_src_ports, neighbor = get_ptf_src_port_and_dut_port_and_neighbor(dut_asic, tbinfo)
+    else:
+        cli_options = ''
+        dut_mac = duthost.facts["router_mac"]
+        dut_port, ptf_src_ports, neighbor = get_ptf_src_port_and_dut_port_and_neighbor(duthost, tbinfo)
+
+    logger.info("Doing test on DUT port {} | PTF ports {}".format(dut_port, ptf_src_ports))
+
+    neighbor_ip = None
+    # get neighbor IP
+    lines = duthost.command("show ipv6 bgp sum")['stdout'].split("\n")
+    for line in lines:
+        if neighbor in line:
+            neighbor_ip = line.split()[0]
+    assert neighbor_ip, "Unable to find neighbor {} IP".format(neighbor)
+
+    # use DUT portchannel if applicable
+    pc_info = duthost.command("show int portchannel")['stdout']
+    if dut_port in pc_info:
+        lines = pc_info.split("\n")
+        for line in lines:
+            if dut_port in line:
+                dut_port = line.split()[1]
+                logger.info("Using portchannel interface: {}".format(dut_port))
+                break
+
+    sonic_db_cli = "sonic-db-cli" + cli_options
+
+    # add a locator configuration entry
+    duthost.command(sonic_db_cli + " CONFIG_DB HSET SRV6_MY_LOCATORS\\|loc1 "
+                    "prefix fcbb:bbbb:1::/48 block_len 32 node_len 16 func_len {}{}"
+                    .format(sid_mode.func_len, " full_sid true" if sid_mode.full_sid else ""))
+    # add a uN (or End) sid configuration entry
+    duthost.command(sonic_db_cli + " CONFIG_DB HSET SRV6_MY_SIDS\\|loc1\\|{} action {} decap_dscp_mode pipe"
+                    .format(sid, sid_mode.behavior))
+    random.seed(time.time())
+
+    def _add_forward_route():
+        duthost.command(sonic_db_cli + " CONFIG_DB HSET STATIC_ROUTE\\|default\\|fcbb:bbbb:2::/48 NULL NULL")
+        duthost.command(
+            sonic_db_cli +
+            " CONFIG_DB HSET STATIC_ROUTE_NEXTHOP\\|default\\|fcbb:bbbb:2::/48\\|{}\\|{} NULL NULL"
+            .format(neighbor_ip, dut_port))
+
+    def _add_blackhole_route():
+        duthost.command(sonic_db_cli + " CONFIG_DB HSET STATIC_ROUTE\\|default\\|fcbb:bbbb::/32 NULL NULL")
+        duthost.command(
+            sonic_db_cli +
+            " CONFIG_DB HSET STATIC_ROUTE_NEXTHOP\\|default\\|fcbb:bbbb::/32\\|none\\|none blackhole true")
+
+    # add the static route for IPv6 forwarding towards PTF's uSID and the blackhole route in a random order
+    if random.randint(0, 1) == 0:
+        _add_forward_route()
+        _add_blackhole_route()
+    else:
+        _add_blackhole_route()
+        _add_forward_route()
+    duthost.command("config save -y")
+    # Verify that the ASIC DB has the SRv6 SID entries
+    assert wait_until(20, 5, 0, verify_asic_db_sid_entry_exist, duthost, sonic_db_cli), \
+        "ASIC_STATE:SAI_OBJECT_TYPE_MY_SID_ENTRY entries are missing in ASIC_DB"
+
+    setup_info = {
+        "asic_index": asic_index,
+        "duthost": duthost,
+        "dut_mac": dut_mac,
+        "dut_port": dut_port,
+        "ptf_src_ports": ptf_src_ports,
+        "neighbor_ip": neighbor_ip,
+        "cli_options": cli_options,
+        "ptf_port_ids": ptf_port_ids,
+        "sid_mode": sid_mode,
+        "appl_key": "SRV6_MY_SID_TABLE:{}:{}:{}:0:{}".format(
+            BLOCK_LEN, NODE_LEN, sid_mode.func_len if sid_mode.full_sid else 0, sid.split('/')[0]),
+    }
+
+    yield setup_info
+
+    # delete the SRv6 configuration
+    duthost.command(sonic_db_cli + " CONFIG_DB DEL SRV6_MY_LOCATORS\\|loc1")
+    duthost.command(sonic_db_cli + " CONFIG_DB DEL SRV6_MY_SIDS\\|loc1\\|{}".format(sid))
+    # STATIC_ROUTE_NEXTHOP leafrefs back to STATIC_ROUTE, so delete it first.
+    duthost.command(
+        sonic_db_cli +
+        " CONFIG_DB DEL STATIC_ROUTE_NEXTHOP\\|default\\|fcbb:bbbb:2::/48\\|{}\\|{}".format(neighbor_ip, dut_port))
+    duthost.command(sonic_db_cli + " CONFIG_DB DEL STATIC_ROUTE_NEXTHOP\\|default\\|fcbb:bbbb::/32\\|none\\|none")
+    duthost.command(sonic_db_cli + " CONFIG_DB DEL STATIC_ROUTE\\|default\\|fcbb:bbbb:2::/48")
+    duthost.command(sonic_db_cli + " CONFIG_DB DEL STATIC_ROUTE\\|default\\|fcbb:bbbb::/32")
+    duthost.command("config save -y")
+
+
+>>>>>>> aef440db5 (NOS-23659: [srv6] Pick the dataplane neighbor from minigraph, not LLDP (#5301))
 class SRv6Base():
 
     @pytest.fixture(autouse=True)
