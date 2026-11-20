@@ -34,6 +34,55 @@ GNMI_PROGRAM_NAME = ""
 GNMI_PORT = 0
 # Base wait unit (seconds) for GNMI server startup; the listening-port poll allows up to 2x this
 GNMI_SERVER_START_WAIT_TIME = 15
+<<<<<<< HEAD
+=======
+DUT_COMMAND_TIMEOUT = timedelta(seconds=30)
+
+
+def open_dut_ssh(duthost):
+    '''
+    Connected SSH client for duthost's management IP; use it as a context manager so it is closed. For running
+    commands while a gRPC channel is open: duthost.shell is unsafe then, because Ansible forks this process.
+    '''
+    creds = creds_on_dut(duthost)
+    return paramiko_ssh(duthost.mgmt_ip, creds["sonicadmin_user"], creds["sonicadmin_password"])
+
+
+def run_dut_command(ssh, cmd: str, timeout: timedelta = DUT_COMMAND_TIMEOUT) -> str:
+    '''
+    Run cmd over ssh and return its stdout. Fails the test if cmd exits non-zero or ends without an exit status,
+    if reading its stdout and then its stderr ever waits longer than timeout for data, or if it has not exited
+    timeout after its output closes. The default suits short commands such as a single DB write. Logs cmd at INFO,
+    so it must not contain a secret.
+    '''
+    rc, out, err = dut_command_result(ssh, cmd, timeout)
+    pytest_assert(rc == 0, f"{cmd!r} exited {rc}; stdout {out!r}, stderr {err!r}")
+    return out
+
+
+def dut_command_result(ssh, cmd: str, timeout: timedelta = DUT_COMMAND_TIMEOUT, quiet: bool = False):
+    '''
+    Run cmd over ssh and return (exit status, stdout, stderr), whatever the status. Fails the test as
+    run_dut_command does when reading stalls, when cmd does not exit, or when it ends without an exit status.
+    Logs at INFO, or at DEBUG when quiet.
+    '''
+    log = logger.debug if quiet else logger.info
+    log("Running on DUT: %r", cmd)
+    start = time.monotonic()
+    _, stdout, stderr = ssh.exec_command(cmd, timeout=timeout.total_seconds())
+    try:
+        out = stdout.read().decode(errors="replace")
+        err = stderr.read().decode(errors="replace")
+    except socket.timeout:
+        pytest.fail(f"{cmd!r} stalled: waited {timeout} for output")
+    if not wait_until(timeout.total_seconds(), 0.1, 0, stdout.channel.exit_status_ready):
+        pytest.fail(f"{cmd!r} closed its output but did not exit within {timeout}")
+    rc = stdout.channel.recv_exit_status()
+    pytest_assert(rc != -1, f"{cmd!r} ended without an exit status (killed, or the session dropped); "
+                            f"stdout {out!r}, stderr {err!r}")
+    log("%r exited %d after %.2f s", cmd, rc, time.monotonic() - start)
+    return rc, out, err
+>>>>>>> 72d2de77a (NOS-8352: [gnmi] end-to-end tests for the subscription state rows in STATE_DB (#4373))
 
 
 def is_mgmt_vrf_enabled(duthost):

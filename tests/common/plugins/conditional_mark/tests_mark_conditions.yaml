@@ -3051,6 +3051,23 @@ gnmi/test_gnmi_stress.py::test_gnmi_latency_01:
     conditions:
       - "'bmc' in topo_type"
 
+gnmi/test_gnmi_subscription_state.py:
+  skip:
+    reason: "Not applicable on multi-asic DUTs / dut ipv6 mgmt ip not supported"
+    conditions_logical_operator: or
+    conditions:
+      - "is_multi_asic==True"
+      - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
+
+gnmi/test_gnmi_subscription_state.py::test_openconfig_subscription_row:
+  skip:
+    reason: "Not applicable on multi-asic DUTs / dut ipv6 mgmt ip not supported / Requires COUNTERS_DB, not available on BMC"
+    conditions_logical_operator: or
+    conditions:
+      - "is_multi_asic==True"
+      - "is_mgmt_ipv6_only==True and https://github.com/sonic-net/sonic-mgmt/issues/20395"
+      - "'bmc' in topo_type"
+
 gnmi/test_gnoi_killprocess.py:
   skip:
     reason: "Test noisy due to restart issue not relevant to GNOI. Disabling them to rewrite."
