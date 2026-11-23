@@ -1073,6 +1073,46 @@ def update_dut_arp_table(duthost, ip):
     duthost.command("ping {} -c 3".format(ip), module_ignore_errors=True)
 
 
+def check_ip_reachable(duthost, ip):
+    """
+    Check that an IP is reachable from the DUT
+
+    Stronger than checking that the address exists: a successful ping means the
+    RIF is programmed and the return path works, which is what traffic needs.
+
+    Args:
+        duthost: DUT host object
+        ip: IP address without prefix length, e.g. '172.16.250.2'
+
+    Returns:
+        Bool value which confirms the IP answers
+    """
+    return duthost.command("ping -c 1 -W 1 {}".format(ip),
+                           module_ignore_errors=True)['rc'] == 0
+
+
+def check_interface_ip(duthost, interface, ip):
+    """
+    Check that an IP address is present on a DUT interface in the kernel
+
+    `config interface ip add` returns as soon as CONFIG_DB is written; intfmgrd
+    programs the address onto the netdev afterwards. Traffic sent straight after
+    the command can reach the DUT before the address exists, and the DUT then
+    has nothing to answer on.
+
+    Args:
+        duthost: DUT host object
+        interface: Interface name, e.g. 'Ethernet64' or 'PortChannel0001'
+        ip: Address with prefix length, e.g. '172.16.250.1/30'
+
+    Returns:
+        Bool value which confirms the address is on the interface
+    """
+    out = duthost.shell("ip -4 addr show dev {}".format(interface),
+                        module_ignore_errors=True)['stdout']
+    return ip.split('/')[0] in out
+
+
 def check_balancing(port_hit_cnt):
     """
     Verify load-balancing

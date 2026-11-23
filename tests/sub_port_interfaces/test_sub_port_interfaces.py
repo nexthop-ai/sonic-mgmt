@@ -5,7 +5,10 @@ Tests sub-port interfaces in SONiC.
 import random
 import pytest
 
+from ipaddress import ip_network
+
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import wait_until
 from sub_ports_helpers import generate_and_verify_traffic
 from sub_ports_helpers import get_port_mtu
 from sub_ports_helpers import shutdown_port
@@ -15,6 +18,10 @@ from sub_ports_helpers import remove_vlan
 from sub_ports_helpers import check_sub_port
 from sub_ports_helpers import remove_sub_port
 from sub_ports_helpers import create_sub_port_on_dut
+from sub_ports_helpers import check_interface_ip
+from sub_ports_helpers import check_ip_reachable
+from sub_ports_helpers import add_ip_to_dut_port
+from sub_ports_helpers import get_portchannel_members
 
 pytestmark = [
     pytest.mark.topology('t0', 't1')
@@ -483,3 +490,213 @@ class TestSubPortStress(object):
                                         dst_port=sub_port,
                                         ip_dst=value['ip'],
                                         pkt_action='fwd')
+
+
+class TestSubPortParentPort(object):
+    """The parent port must keep serving its own IP while sub-ports exist on it.
+
+    Creating the first sub-port changes the parent port's hostif vlan tag mode.
+    If untagged frames then reach the CPU still carrying the port's internal
+    vlan the kernel drops them, arp stops resolving and the parent port IP goes
+    unreachable, while the sub-ports keep working.
+
+    Runs for both port types, so a parent that is a LAG is covered too.
+    """
+
+    # One /30 per parent, outside the sub-port pool (two parents x 256 /30s
+    # stop at 172.16.7.255), so these cannot collide with sub-port addresses.
+    PARENT_SUBNET = u'172.16.250.0/24'
+
+    @pytest.fixture
+    def parent_port_ips(self, duthost, ptfhost, apply_config_on_the_dut):
+        """Give every parent port and its PTF counterpart an address of their own."""
+        sub_ports = apply_config_on_the_dut['sub_ports']
+
+        parents, seen = [], set()
+        for sub_port in sorted(sub_ports):
+            parent = sub_port.split('.')[0]
+            if parent in seen:
+                continue
+            seen.add(parent)
+            parents.append((parent, sub_ports[sub_port]['neighbor_port'].split('.')[0]))
+
+        configured = []
+        for (parent, ptf_parent), subnet in zip(parents, ip_network(self.PARENT_SUBNET).subnets(new_prefix=30)):
+            dut_ip, ptf_ip = ('{}/{}'.format(host, 30) for host in subnet.hosts())
+            add_ip_to_dut_port(duthost, parent, dut_ip)
+            # `ip address add` is not idempotent, and the PTF teardown only clears
+            # sub-interfaces and bonds, so an interrupted run would fail setup here.
+            ptfhost.shell('ip address replace {} dev {}'.format(ptf_ip, ptf_parent))
+            configured.append((parent, ptf_parent, dut_ip, ptf_ip))
+
+        # The config command returns once CONFIG_DB is written; orchagent programs
+        # the RIF afterwards. Wait for the neighbour to answer before sending
+        # traffic, so a slow build is not reported as a regression.
+        for parent, ptf_parent, dut_ip, ptf_ip in configured:
+            pytest_assert(wait_until(30, 1, 0, check_ip_reachable, duthost, ptf_ip.split('/')[0]),
+                          'DUT could not reach PTF {} on parent {} within 30s'.format(ptf_ip, parent))
+
+        yield configured
+
+        for parent, ptf_parent, dut_ip, ptf_ip in configured:
+            duthost.shell('config interface ip remove {} {}'.format(parent, dut_ip),
+                          module_ignore_errors=True)
+            ptfhost.shell('ip address del {} dev {}'.format(ptf_ip, ptf_parent),
+                          module_ignore_errors=True)
+            # An address left on a PortChannel makes 'config portchannel del' fail
+            # during LAG teardown, which surfaces with no trace of the cause.
+            pytest_assert(wait_until(10, 1, 0, lambda: not check_interface_ip(duthost, parent, dut_ip)),
+                          '{} was not removed from {}'.format(dut_ip, parent))
+
+    def _verify_parents(self, duthost, ptfadapter, configured):
+        """Every parent port answers on its own IP."""
+        for parent, ptf_parent, dut_ip, ptf_ip in configured:
+            # untagged, because the PTF port name carries no vlan
+            generate_and_verify_traffic(duthost=duthost,
+                                        ptfadapter=ptfadapter,
+                                        src_port=ptf_parent,
+                                        ip_src=ptf_ip,
+                                        dst_port=parent,
+                                        ip_dst=dut_ip,
+                                        pkt_action='fwd')
+
+    def _verify_sub_ports(self, duthost, ptfadapter, sub_ports):
+        """Every sub-port answers on its own IP."""
+        for sub_port, value in list(sub_ports.items()):
+            generate_and_verify_traffic(duthost=duthost,
+                                        ptfadapter=ptfadapter,
+                                        src_port=value['neighbor_port'],
+                                        ip_src=value['neighbor_ip'],
+                                        dst_port=sub_port,
+                                        ip_dst=value['ip'],
+                                        pkt_action='fwd')
+
+    def test_parent_port_reachable_with_sub_ports(self, duthost, ptfadapter, parent_port_ips,
+                                                  apply_config_on_the_dut, apply_config_on_the_ptf):
+        """
+        Validates that every parent port answers on its own IP while sub-ports exist.
+
+        Test steps:
+            1.) Setup configuration of sub-ports on the DUT.
+            2.) Setup configuration of sub-ports on the PTF.
+            3.) Add an IP to each parent port and to its PTF counterpart.
+            4.) Send untagged ICMP request from PTF to each parent port IP.
+            5.) Verify that DUT sends an ICMP reply.
+            6.) Verify each sub-port still answers on its own IP.
+
+        Pass Criteria: PTF gets ICMP reply from every parent port and from every sub-port.
+        """
+        self._verify_parents(duthost, ptfadapter, parent_port_ips)
+        # the sub-ports must not have been disturbed
+        self._verify_sub_ports(duthost, ptfadapter, apply_config_on_the_dut['sub_ports'])
+
+    def test_parent_port_reachable_when_sub_ports_removed(self, duthost, ptfadapter, parent_port_ips,
+                                                          apply_config_on_the_dut, apply_config_on_the_ptf):
+        """
+        Validates that the parent port survives the sub-ports going away and coming back.
+
+        The parent's hostif vlan tag mode changes when the first sub-port is
+        created and changes back when the last one is removed, so the removal
+        edge is the next most likely place for the parent to break.
+
+        Test steps:
+            1.) Setup configuration of sub-ports on the DUT and the PTF.
+            2.) Add an IP to each parent port and to its PTF counterpart.
+            3.) Verify every parent port answers.
+            4.) Remove every sub-port from the DUT.
+            5.) Verify every parent port still answers.
+            6.) Create the sub-ports again.
+            7.) Verify every parent port and every sub-port answers.
+
+        Pass Criteria: the parent ports answer with sub-ports present, with none
+                       present, and after they are created a second time.
+        """
+        sub_ports = apply_config_on_the_dut['sub_ports']
+
+        self._verify_parents(duthost, ptfadapter, parent_port_ips)
+
+        for sub_port, value in list(sub_ports.items()):
+            remove_sub_port(duthost, sub_port, value['ip'])
+            pytest_assert(wait_until(30, 2, 0, check_sub_port, duthost, sub_port, True),
+                          'Sub-port {} was not removed from the DUT'.format(sub_port))
+
+        self._verify_parents(duthost, ptfadapter, parent_port_ips)
+
+        for sub_port, value in list(sub_ports.items()):
+            create_sub_port_on_dut(duthost, sub_port, value['ip'])
+
+        self._verify_parents(duthost, ptfadapter, parent_port_ips)
+        self._verify_sub_ports(duthost, ptfadapter, sub_ports)
+
+    def test_parent_port_reachable_after_lag_member_readded(self, duthost, ptfadapter, parent_port_ips,
+                                                            apply_config_on_the_dut, apply_config_on_the_ptf):
+        """
+        Validates that a lag member added while sub-ports exist gets the same treatment.
+
+        A member joining a lag that already carries sub-ports needs the parent's
+        hostif vlan tag mode applied to it as well. If it does not, traffic over
+        that member behaves differently from the rest of the lag.
+
+        Test steps:
+            1.) Setup configuration of sub-ports on a lag and on the PTF.
+            2.) Add an IP to each parent and to its PTF counterpart.
+            3.) Remove one member from the lag and add it back.
+            4.) Verify every parent port still answers.
+            5.) Verify every sub-port still answers.
+
+        Pass Criteria: parent ports and sub-ports answer after the member rejoins.
+        """
+        parent = parent_port_ips[0][0]
+        if not parent.startswith('PortChannel'):
+            pytest.skip('Only applies when the parent is a lag')
+
+        members = get_portchannel_members(duthost, parent)
+        pytest_assert(members, 'No members found on {}'.format(parent))
+        member = sorted(members)[0]
+
+        duthost.shell('config portchannel member del {} {}'.format(parent, member))
+        pytest_assert(wait_until(30, 2, 0, lambda: member not in get_portchannel_members(duthost, parent)),
+                      '{} was not removed from {}'.format(member, parent))
+
+        duthost.shell('config portchannel member add {} {}'.format(parent, member))
+        pytest_assert(wait_until(60, 2, 0, lambda: member in get_portchannel_members(duthost, parent)),
+                      '{} did not rejoin {}'.format(member, parent))
+
+        for p, ptf_p, dut_ip, ptf_ip in parent_port_ips:
+            pytest_assert(wait_until(60, 2, 0, check_ip_reachable, duthost, ptf_ip.split('/')[0]),
+                          'DUT could not reach PTF {} after {} rejoined'.format(ptf_ip, member))
+
+        self._verify_parents(duthost, ptfadapter, parent_port_ips)
+        self._verify_sub_ports(duthost, ptfadapter, apply_config_on_the_dut['sub_ports'])
+
+    def test_sub_port_ip_answers_over_the_parent(self, duthost, ptfadapter, parent_port_ips,
+                                                 apply_config_on_the_dut, apply_config_on_the_ptf):
+        """
+        Validates traffic arriving untagged on the parent for a sub-port IP.
+
+        The existing routing tests use a different physical port. This one keeps
+        both addresses on the same physical port, so an untagged frame on the
+        parent has to be accepted and answered for an address that belongs to a
+        sub-port of that same port.
+
+        Test steps:
+            1.) Setup configuration of sub-ports on the DUT and the PTF.
+            2.) Add an IP to each parent and to its PTF counterpart.
+            3.) Send untagged ICMP from the PTF parent to each sub-port IP of that parent.
+            4.) Verify that DUT sends an ICMP reply.
+
+        Pass Criteria: the DUT answers its sub-port addresses over the parent port.
+        """
+        sub_ports = apply_config_on_the_dut['sub_ports']
+
+        for parent, ptf_parent, dut_ip, ptf_ip in parent_port_ips:
+            for sub_port, value in list(sub_ports.items()):
+                if sub_port.split('.')[0] != parent:
+                    continue
+                generate_and_verify_traffic(duthost=duthost,
+                                            ptfadapter=ptfadapter,
+                                            src_port=ptf_parent,
+                                            ip_src=ptf_ip,
+                                            dst_port=parent,
+                                            ip_dst=value['ip'],
+                                            pkt_action='fwd')
