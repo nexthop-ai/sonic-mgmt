@@ -338,14 +338,10 @@ def verify_lldp_table(duthost, intf_status_output, test_name=""):
     logger.info("LLDP table interfaces{}: {}".format(context, sorted(lldp_table_interfaces)))
     logger.info("LLDP table interfaces in total: {}".format(len(lldp_table_interfaces)))
 
-    # On virtual/KVM testbeds, eth0 has no LLDP neighbor so it won't appear in the LLDP table
-    if is_virtual_platform(duthost):
-        if 'eth0' not in lldp_table_interfaces:
-            logger.info("eth0 not in LLDP table (expected on virtual/KVM testbed){}"
-                        .format(context))
-    else:
-        pytest_assert('eth0' in lldp_table_interfaces,
-                      "eth0 is missing from LLDP table{}".format(context))
+    # eth0 is in this neighbor table only when the management switch sends LLDP, which
+    # depends on the lab, not the DUT. verify_lldpcli_interfaces asserts lldpd manages eth0.
+    if 'eth0' not in lldp_table_interfaces:
+        logger.info("eth0 not in LLDP table (no management LLDP neighbor){}".format(context))
 
     # For LLDP table comparison: exclude eth0 from lldp_table, exclude PortChannels and admin down from intf_status
     lldp_table_interfaces_no_eth0 = lldp_table_interfaces - {'eth0'}
@@ -494,14 +490,9 @@ def verify_lldpctl_facts(duthost, enum_frontend_asic_index, intf_status_output, 
         skip_interface_pattern_list=["Ethernet-BP", "Ethernet-IB"] + internal_port_list
     )['ansible_facts']
 
-    # Verify eth0 is in lldpctl_facts (only on physical testbeds)
-    if is_virtual_platform(duthost):
-        if 'eth0' not in lldpctl_facts.get('lldpctl', {}):
-            logger.info("eth0 not in lldpctl_facts (expected on virtual/KVM testbed){}"
-                        .format(context))
-    else:
-        pytest_assert('eth0' in lldpctl_facts.get('lldpctl', {}),
-                      "eth0 is missing from lldpctl_facts{}".format(context))
+    # eth0 has an LLDP neighbor only when the management switch sends LLDP; see verify_lldp_table.
+    if 'eth0' not in lldpctl_facts.get('lldpctl', {}):
+        logger.info("eth0 not in lldpctl_facts (no management LLDP neighbor){}".format(context))
 
     # Get interfaces from lldpctl_facts (excluding eth0)
     lldpctl_facts_interfaces = set(lldpctl_facts.get('lldpctl', {}).keys()) - {'eth0'}
