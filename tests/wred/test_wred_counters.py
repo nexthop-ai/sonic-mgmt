@@ -23,6 +23,14 @@ ROUTE_PATTERN_PREFIX = "ASIC_STATE:SAI_OBJECT_TYPE_ROUTE_ENTRY:"
 PACKET_COUNT = 100
 QUEUE = 3
 BLOCKING_SCHEDULER = "SCHEDULER_BLOCK_DATA_PLANE"
+<<<<<<< HEAD
+=======
+INTERNAL_PORT_PREFIXES = ("Ethernet-Rec", "Ethernet-IB", "Ethernet-BP")
+# Congestion bytes sent per egress queue. Measured on mrdl206 (NH-4240L): th6 admits about 25KB into a blocked
+# queue before its first WRED drop, so 20KB leaves the test packets admitted.
+CONGESTION_BYTES_PER_QUEUE = 20000
+TH6_CONGESTION_BYTES_PER_QUEUE = 60000
+>>>>>>> 42dee5c45 (NOS-22916: [wred] Exclude internal recirculation ports when picking the ingress port (#5385))
 
 # SRv6-related constants
 LOCATOR_NAME = "loc_wred"
@@ -206,14 +214,18 @@ def select_egress_interface(duthost, minigraph_facts, ipv4=True):
         return select_egress_interface_ipv6(duthost, portchannel_info)
 
 
-def select_ingress_port(duthost, exclude_ports=[]):
+def select_ingress_port(duthost, ptf_indices, exclude_ports=[]):
     """
-        Returns the name of an oper UP Ethernet interface that is not in the exclude_ports list.
+        Returns the name of an oper UP front-panel Ethernet interface that has a PTF index and is not
+        in the exclude_ports list. Internal ports (recirculation, inband, backplane) are skipped by name
+        as well: some topologies give them a PTF index that belongs to a front-panel port.
         PTF will send traffic to this interface.
     """
     interfaces_status = duthost.show_interface(command="status")["ansible_facts"]["int_status"]
     for intf, info in interfaces_status.items():
-        if info["oper_state"].lower() == "up" and intf.startswith("Ethernet") and intf not in exclude_ports:
+        if (info["oper_state"].lower() == "up" and intf.startswith("Ethernet")
+                and not intf.startswith(INTERNAL_PORT_PREFIXES)
+                and intf in ptf_indices and intf not in exclude_ports):
             logger.info(f"Selected '{intf}' as ingress port.")
             return intf
     pytest.skip("No suitable ingress port found on the DUT.")
@@ -299,7 +311,7 @@ def setup(duthost, tbinfo, request, enable_wred_counters, create_blocking_schedu
                                                      ipv4=(test_params["ip_version"] == "ipv4"))
     test_params["neigh_ip"] = neigh_ip
     test_params["egress_ports"] = {port: ptf_indices[port] for port in egress_ports}
-    ingress_port = select_ingress_port(duthost, exclude_ports=egress_ports)
+    ingress_port = select_ingress_port(duthost, ptf_indices, exclude_ports=egress_ports)
     test_params["ingress_port_index"] = ptf_indices[ingress_port]
     policy, wred_profile_name = create_wred_profile
     test_params["policy"] = policy
