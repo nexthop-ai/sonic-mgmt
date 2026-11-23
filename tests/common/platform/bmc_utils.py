@@ -10,7 +10,7 @@ import pytest
 
 
 from tests.common.helpers.assertions import pytest_assert
-from tests.common.helpers.sonic_db import CONFIG_DB, STATE_DB, redis_hget, redis_hgetall, redis_hset
+from tests.common.helpers.sonic_db import CONFIG_DB, STATE_DB, redis_hdel, redis_hget, redis_hgetall, redis_hset
 from tests.common.utilities import wait_until
 
 logger = logging.getLogger(__name__)
@@ -349,6 +349,64 @@ def get_major_leak_min_sensors(duthost, default=None):
         return override
     platform_val = get_platform_major_leak_num_min_sensors(duthost, default=None)
     return platform_val if platform_val is not None else default
+
+
+# --- Leak control policy helpers ------------------------------------------
+
+LEAK_CONTROL_POLICY_KEY = 'LEAK_CONTROL_POLICY|policy'
+
+
+def get_leak_control_policy(duthost):
+    """Return CONFIG_DB LEAK_CONTROL_POLICY|policy as a field dict ({} when absent)."""
+    return redis_hgetall(duthost, CONFIG_DB, LEAK_CONTROL_POLICY_KEY)
+
+
+def restore_leak_control_policy(duthost, snapshot):
+    """Put LEAK_CONTROL_POLICY|policy back to `snapshot` (as returned by get_leak_control_policy).
+
+    Fields added since the snapshot are removed so the row matches exactly. bmcctld reads
+    the policy on every event, so no daemon restart is needed.
+    """
+    extra = [field for field in get_leak_control_policy(duthost) if field not in snapshot]
+    if extra:
+        redis_hdel(duthost, CONFIG_DB, LEAK_CONTROL_POLICY_KEY, *extra)
+    if snapshot:
+        redis_hset(duthost, CONFIG_DB, LEAK_CONTROL_POLICY_KEY, **snapshot)
+
+
+@contextmanager
+def leak_control_policy_restored(duthost):
+    """Snapshot LEAK_CONTROL_POLICY|policy for the `with` block and restore it on exit."""
+    snapshot = get_leak_control_policy(duthost)
+    try:
+        yield snapshot
+    finally:
+        restore_leak_control_policy(duthost, snapshot)
+
+
+def set_system_leak_policy(duthost, enabled):
+    """Enable or disable system leak policy enforcement through the BMC CLI."""
+    duthost.shell("config liquid-cool leak-control system {}".format('enabled' if enabled else 'disabled'))
+
+
+def set_system_leak_action(duthost, severity, action):
+    """Set the system leak action for `severity` (critical|minor) through the BMC CLI."""
+    duthost.shell("config liquid-cool leak-action system {} {}".format(severity, action))
+
+
+def wait_system_leak_status(duthost, expected, timeout, interval=1):
+    """Wait until SYSTEM_LEAK_STATUS|system device_leak_status is `expected` (a value or a tuple of values)."""
+    if isinstance(expected, str):
+        expected = (expected,)
+    return wait_until(timeout, interval, 0, lambda: get_system_leak_status(duthost) in expected)
+
+
+def get_switch_host_oper_status(duthost):
+    """Return the SWITCH-HOST Oper-Status from `show chassis module status` (lowercase, '' when absent)."""
+    for row in duthost.show_and_parse("show chassis module status") or []:
+        if (row.get('name') or '').strip().startswith('SWITCH-HOST'):
+            return (row.get('oper-status') or '').strip().lower()
+    return ''
 
 
 # --- Switch-Host power-cycle verification ---------------------------------

@@ -101,6 +101,13 @@ def mocker_factory(localhost, duthosts, enum_rand_one_per_hwsku_hostname):
             if mocker_type:
                 mocker_object = mocker_type(dut)
                 mockers.append(mocker_object)
+        elif 'nexthop' in platform and dut.is_bmc():
+            from tests.common.helpers.nexthop.nexthop_bmc_liquid_leakage_control_test_helper \
+                import LiquidLeakageMockerNexthopBMC  # noqa: F401
+            mocker_type = BaseMocker.get_mocker_type(mocker_name)
+            if mocker_type:
+                mocker_object = mocker_type(dut)
+                mockers.append(mocker_object)
         else:
             pytest.skip("No mocker defined for this platform {}".format(platform))
         return mocker_object

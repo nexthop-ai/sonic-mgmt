@@ -10,6 +10,7 @@
   * [Thermalctld Daemon Tests](#thermalctld-daemon-tests)
   * [CLI Command Tests](#cli-command-tests)
   * [BMC Watchdog Tests](#bmc-watchdog-tests)
+  * [Leak Detection End-to-End Tests](#leak-detection-end-to-end-tests)
 
 ---
 
@@ -992,3 +993,96 @@ Verify BMC watchdog: `watchdogutil arm`/`disarm` round-trips correctly **and** `
 - Safe on a live BMC: the keepalive script continues kicking `/dev/watchdog0` every 60s independently of `watchdogutil disarm`
 
 ---
+
+### Leak Detection End-to-End Tests
+
+`tests/platform_tests/test_bmc_leak_detection.py` drives the leak sensing hardware instead of STATE_DB and checks the whole chain: sensor -> BMC leak-fault input -> thermalctld -> STATE_DB / `show platform leak status` -> bmcctld policy action -> Switch-Host power, plus recovery. The hardware is driven through the vendor `LiquidLeakageMockerBMC` (`mocker_factory(duthost, 'LiquidLeakageMockerBMC')`).
+
+Nexthop implementation (`tests/common/helpers/nexthop/nexthop_bmc_liquid_leakage_control_test_helper.py`): the switch-card FPGA register "Leak Sensor Test 0" (0x012C, bit 31 enable, bits 1:0 domain selector) drives the real leak comparator of the selected domain, so the fault reaches the BMC exactly as a wet sensor would. The register is only reachable from the paired Switch-Host (`fpga write32 SWITCHCARD_FPGA 0x012C ...`), one domain is injected at a time, and the severity is fixed by the wiring (cold plates -> MINOR fault line, drip-tray ropes -> CRITICAL fault line); `sensors_supporting(state)` tells the tests which sensor can report which severity, and `FAULT` cannot be mocked (a sensor fault never reaches the BMC). After a CRITICAL power-off the host must be back before the register can be cleared and bmcctld blocks `power_on` while the leak is CRITICAL, so `restore_all_sensors()` recovers the host with the system leak policy disabled, clears the injection, then restores the policy.
+
+Shared fixtures: `bmc` (skips unless the DUT is a liquid-cooled BMC with thermalctld and bmcctld RUNNING), `switch_host`, `leak_mocker` (skips when a leak is already reported), `leak_policy` (snapshot/restore of `LEAK_CONTROL_POLICY|policy`).
+
+#### Test Case #35: test_minor_leak_single_sensor
+
+**Test Objective**:
+A single MINOR sensor leak is detected, reported and logged, and clears, without touching the Switch-Host.
+
+**Test Steps**:
+1. Pick a sensor that can report MINOR; snapshot the Switch-Host `uptime -s`; place syslog and event.log markers
+2. Inject the leak; wait for `SYSTEM_LEAK_STATUS|system device_leak_status = MINOR`
+3. Check `LIQUID_COOLING_INFO|<sensor>` (`leaking=Yes`, `leak_severity=MINOR`, `leak_sensor_status=Good`) and the `show platform leak status` row
+4. Wait 20 s; the Switch-Host `uptime -s` is unchanged
+5. Syslog has `Liquid cooling leakage sensor <name> reported leaking` and the bmcctld `MINOR_SYSTEM_LEAK` event; `/host/bmc/event.log` has no MINOR entry
+6. Clear the injection; `SYSTEM_LEAK_STATUS` returns to `None`, the sensor reports `No`, syslog has `recovered from leaking`
+
+**Expected Result**:
+- Detection within 10 s of the injection (thermalctld polls every 0.5 s)
+- MINOR is syslog-only and never powers the Switch-Host off
+
+---
+
+#### Test Case #36: test_critical_leak_powers_off_switch_host
+
+**Test Objective**:
+A CRITICAL leak powers the Switch-Host off, the BMC refuses to power it on while the leak is present, and the host recovers once the leak clears.
+
+**Test Steps**:
+1. Set `leak-control system enabled` and `leak-action system critical power_off` (restored afterwards); snapshot the Switch-Host `uptime -s` and boot id; place an event.log marker
+2. Inject a CRITICAL leak; wait for `SYSTEM_LEAK_STATUS = CRITICAL`, then `wait_host_off` (BMC reports `SWITCH-HOST` Offline and the host stops answering ping)
+3. `show platform leak status` shows the sensor `Yes` / `CRITICAL`; event.log has `CRITICAL system leak detected` and `ACTION DONE: action='power_off' trigger='CRITICAL_SYSTEM_LEAK'`
+4. `config chassis modules shutdown SWITCH-HOST` then `startup`; after 20 s the module is still Offline and syslog has `admin_up ... BLOCKED (CRITICAL_LEAK_PRESENT`
+5. Clear the leak through the mocker (policy disabled, shutdown/startup, host boots, register cleared, policy restored)
+6. `SYSTEM_LEAK_STATUS = None`, event.log has `CRITICAL system leak cleared`, the module is Online and the Switch-Host boot id changed
+
+**Expected Result**:
+- Power-off within 120 s of the injection (observed: under 1 s on NH-4240L)
+- No power-on while the leak is present; a real power cycle once it clears
+
+---
+
+#### Test Case #37: test_reboot_cause_after_leak_power_off
+
+**Test Objective**:
+After a BMC leak power-off the Switch-Host attributes its reboot to the BMC.
+
+**Test Steps**:
+1. Reuse the pre-power-off `uptime -s` from TC#36 when it ran in the same session, otherwise run the same CRITICAL power cycle
+2. `verify_bmc_initiated_reboot(host, pre_uptime, 'power down request from bmc')`
+
+**Expected Result**:
+- `show reboot-cause` on the Switch-Host contains `power down request from bmc` (fails with `Unknown` on images without the BMC power-down decode, NOS-17108)
+
+---
+
+#### Test Case #38: test_minor_leak_escalates_after_max_minor_duration
+
+**Test Objective**:
+A MINOR leak left in place escalates once `max_minor_duration_sec` (from `show platform leak profiles`) elapses, and not before.
+
+**Test Steps**:
+1. Skip when the sensor has no escalation window or it exceeds 900 s; the target severity is MAJOR on images with MAJOR support, else CRITICAL (then `leak-action system critical power_off` is set)
+2. Inject the MINOR leak; wait for `SYSTEM_LEAK_STATUS = MINOR`
+3. 10 s before the window ends the status is still MINOR
+4. Within 20 s after the window the status is the target severity; syslog has `Leak on sensor <name> escalated from MINOR to <severity> after <N>s`
+5. CRITICAL: `wait_host_off` and event.log `ACTION DONE: action='power_off'`; MAJOR: the Switch-Host `uptime -s` is unchanged after 20 s
+6. Clear the leak (recovering the host when it was powered off); `SYSTEM_LEAK_STATUS = None`
+
+**Expected Result**:
+- Escalation at `max_minor_duration_sec` within a 10 s tolerance on a synchronized BMC clock (NOS-24594 tracks the wall-clock timer)
+
+---
+
+#### Test Case #39: test_critical_leak_action_configuration
+
+**Test Objective**:
+A configured non-power action, or a disabled system leak policy, leaves the Switch-Host up on a CRITICAL leak.
+
+**Test Steps** (parametrized: `critical_syslog_only` = policy enabled + `leak-action system critical syslog_only`; `policy_disabled` = `leak-control system disabled` + action power_off):
+1. Apply the configuration through the CLI and confirm it in CONFIG_DB `LEAK_CONTROL_POLICY|policy`
+2. Inject a CRITICAL leak; wait for `SYSTEM_LEAK_STATUS = CRITICAL`
+3. After 20 s the Switch-Host `uptime -s` is unchanged and the module is Online
+4. Syslog has `Event 'CRITICAL_SYSTEM_LEAK' -> action 'syslog_only'`, or `SYSTEM_LEAK handler done: ... result=SKIPPED (policy=disabled)`
+5. Clear the leak before the policy is restored (re-enabling power_off on a latched CRITICAL must not dispatch)
+
+**Expected Result**:
+- No power action in either configuration; the policy is read live by bmcctld
