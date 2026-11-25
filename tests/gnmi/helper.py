@@ -113,12 +113,18 @@ def recover_cert_config(duthost, stopped_programs=None):
         env.gnmi_process,
     )
     kill_container_processes(duthost, processes)
-    # Restore only the programs that apply_cert_config explicitly stopped
+    # Restore the programs that apply_cert_config stopped
     if stopped_programs:
         for program in stopped_programs:
             logger.info("Restarting supervisord program: %s", program)
             dut_command = "docker exec %s supervisorctl start %s" % (env.gnmi_container, program)
             duthost.shell(dut_command, module_ignore_errors=True)
+    # gnmi-native doesn't autostart, so start it even if setup found it already stopped (left
+    # over from an interrupted run); otherwise the wait below fails on every later run.
+    if env.gnmi_program not in (stopped_programs or []):
+        logger.info("Starting supervisord program that setup didn't stop: %s", env.gnmi_program)
+        dut_command = "docker exec %s supervisorctl start %s" % (env.gnmi_container, env.gnmi_program)
+        duthost.shell(dut_command, module_ignore_errors=True)
 
     # Remove gnmi client cert common name
     del_gnmi_client_common_name(duthost, "test.client.gnmi.sonic")
