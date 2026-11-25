@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 # Renaming "pytest_assert" to avoid the "unknown hook 'pytest_assert'" error.
 from tests.common.helpers.assertions import pytest_assert as py_assert
 from tests.common.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
+from tests.common.helpers.qos_helpers import get_queue_key, select_ingress_port
 from tests.common.utilities import wait_until
 
 
@@ -145,19 +146,6 @@ def select_egress_interface(duthost, minigraph_facts, ipv4=True):
         return select_egress_interface_ipv4(duthost, portchannel_info)
     else:
         return select_egress_interface_ipv6(duthost, portchannel_info)
-
-
-def select_ingress_port(duthost, exclude_ports=[]):
-    """
-        Returns the name of an oper UP Ethernet interface that is not in the exclude_ports list.
-        PTF will send traffic to this interface.
-    """
-    interfaces_status = duthost.show_interface(command="status")["ansible_facts"]["int_status"]
-    for intf, info in interfaces_status.items():
-        if info["oper_state"].lower() == "up" and intf.startswith("Ethernet") and intf not in exclude_ports:
-            logger.info(f"Selected '{intf}' as ingress port.")
-            return intf
-    pytest.skip("No suitable ingress port found on the DUT.")
 
 
 def get_dest_mac(duthost, tbinfo, minigraph_facts, ingress_port, router_mac):
@@ -307,8 +295,9 @@ def apply_blocking_scheduler(duthost, egress_ports, queues):
     """
     for port in egress_ports:
         for queue in queues:
-            logger.info(f"Setting the scheduler of {port}|{queue} to '{BLOCKING_SCHEDULER}'...")
-            duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET 'QUEUE|{port}|{queue}' 'scheduler' '{BLOCKING_SCHEDULER}'")
+            queue_key = get_queue_key(duthost, port, queue, sonic_db_cli)
+            logger.info(f"Setting the scheduler of {queue_key} to '{BLOCKING_SCHEDULER}'...")
+            duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET '{queue_key}' 'scheduler' '{BLOCKING_SCHEDULER}'")
     logger.info(f"Waiting {ASIC_DB_SYNC_TIME} seconds for the configuration to take effect...")
     time.sleep(ASIC_DB_SYNC_TIME)  # Wait for the configuration to take effect
 
@@ -490,9 +479,9 @@ class WatermarkTestBase(ABC):
         return select_egress_interface(duthost, minigraph_facts, ipv4=(self.IP_VERSION == "ipv4"))
 
     @pytest.fixture(scope="class")
-    def ingress_port(self, duthost, egress_interface):
+    def ingress_port(self, duthost, minigraph_facts, egress_interface):
         _, egress_ports = egress_interface
-        return select_ingress_port(duthost, exclude_ports=egress_ports)
+        return select_ingress_port(duthost, minigraph_facts["minigraph_ptf_indices"], exclude_ports=egress_ports)
 
     @pytest.fixture(scope="class")
     def tc_lists(self, duthost, config_facts, ingress_port):

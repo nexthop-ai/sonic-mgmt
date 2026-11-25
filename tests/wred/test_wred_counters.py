@@ -7,6 +7,19 @@ import ast
 
 from tests.common.helpers.assertions import pytest_assert
 from tests.common.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
+<<<<<<< HEAD
+=======
+from tests.common.helpers.qos_helpers import get_queue_key, select_ingress_port
+from tests.common.helpers.srv6_helper import (
+    SRV6_DEFAULT_ARG_LEN,
+    SRV6_DEFAULT_BLOCK_LEN,
+    SRV6_DEFAULT_NODE_LEN,
+    SRV6_SID_POLL_INTERVAL,
+    SRV6_SID_PROGRAM_TIMEOUT,
+    appl_db_my_sid_key,
+)
+from tests.common.utilities import wait_until
+>>>>>>> 1f8c860ca (NOS-22501: [watermark][wred] Fix ingress port and VOQ queue key selection with shared QoS helpers (#4742))
 from ptf.mask import Mask
 
 
@@ -23,6 +36,13 @@ ROUTE_PATTERN_PREFIX = "ASIC_STATE:SAI_OBJECT_TYPE_ROUTE_ENTRY:"
 PACKET_COUNT = 100
 QUEUE = 3
 BLOCKING_SCHEDULER = "SCHEDULER_BLOCK_DATA_PLANE"
+<<<<<<< HEAD
+=======
+# Congestion bytes sent per egress queue. Measured on mrdl206 (NH-4240L): th6 admits about 25KB into a blocked
+# queue before its first WRED drop, so 20KB leaves the test packets admitted.
+CONGESTION_BYTES_PER_QUEUE = 20000
+TH6_CONGESTION_BYTES_PER_QUEUE = 60000
+>>>>>>> 1f8c860ca (NOS-22501: [watermark][wred] Fix ingress port and VOQ queue key selection with shared QoS helpers (#4742))
 
 # SRv6-related constants
 LOCATOR_NAME = "loc_wred"
@@ -206,6 +226,7 @@ def select_egress_interface(duthost, minigraph_facts, ipv4=True):
         return select_egress_interface_ipv6(duthost, portchannel_info)
 
 
+<<<<<<< HEAD
 def select_ingress_port(duthost, exclude_ports=[]):
     """
         Returns the name of an oper UP Ethernet interface that is not in the exclude_ports list.
@@ -219,6 +240,8 @@ def select_ingress_port(duthost, exclude_ports=[]):
     pytest.skip("No suitable ingress port found on the DUT.")
 
 
+=======
+>>>>>>> 1f8c860ca (NOS-22501: [watermark][wred] Fix ingress port and VOQ queue key selection with shared QoS helpers (#4742))
 def find_qos_mapping_table_name(duthost, egress_ports, qos_mapping):
     qos_table_name = ""
     for port in egress_ports:
@@ -308,13 +331,14 @@ def setup(duthost, tbinfo, request, enable_wred_counters, create_blocking_schedu
 
     test_params["prev_scheduler"] = {}
     for port in egress_ports:
-        logger.info(f"Setting the WRED profile of {port}|{QUEUE} to '{wred_profile_name}'.")
-        duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET 'QUEUE|{port}|{QUEUE}' 'wred_profile' '{wred_profile_name}'")
+        queue_key = get_queue_key(duthost, port, QUEUE, sonic_db_cli)
+        logger.info(f"Setting the WRED profile of {queue_key} to '{wred_profile_name}'.")
+        duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET '{queue_key}' 'wred_profile' '{wred_profile_name}'")
         test_params["prev_scheduler"][port] = \
-            duthost.shell(f"{sonic_db_cli} CONFIG_DB HGET 'QUEUE|{port}|{QUEUE}' 'scheduler'")["stdout"].strip()
-        logger.info(f"The original scheduler of {port}|{QUEUE} is '{test_params['prev_scheduler'][port]}'.")
-        logger.info(f"Setting the scheduler of {port}|{QUEUE} to '{BLOCKING_SCHEDULER}'.")
-        duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET 'QUEUE|{port}|{QUEUE}' 'scheduler' '{BLOCKING_SCHEDULER}'")
+            duthost.shell(f"{sonic_db_cli} CONFIG_DB HGET '{queue_key}' 'scheduler'")["stdout"].strip()
+        logger.info(f"The original scheduler of {queue_key} is '{test_params['prev_scheduler'][port]}'.")
+        logger.info(f"Setting the scheduler of {queue_key} to '{BLOCKING_SCHEDULER}'.")
+        duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET '{queue_key}' 'scheduler' '{BLOCKING_SCHEDULER}'")
 
     # Add a static route to NEXTHOP_PREFIX via the selected egress interface if testing with SRv6 packets.
     if is_srv6_test:
@@ -499,8 +523,9 @@ def restore_original_schedulers(duthost, prev_schedulers):
     logger.info("Restoring original schedulers for all egress queues.")
     for port, scheduler in prev_schedulers.items():
         if scheduler:
-            logger.info(f"Restoring scheduler of {port}|{QUEUE} to '{scheduler}'.")
-            duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET 'QUEUE|{port}|{QUEUE}' 'scheduler' '{scheduler}'")
+            queue_key = get_queue_key(duthost, port, QUEUE, sonic_db_cli)
+            logger.info(f"Restoring scheduler of {queue_key} to '{scheduler}'.")
+            duthost.shell(f"{sonic_db_cli} CONFIG_DB HSET '{queue_key}' 'scheduler' '{scheduler}'")
     logger.info("Waiting 10 seconds for the configuration to take effect.")
     time.sleep(10)  # Wait for the configuration to take effect
 
