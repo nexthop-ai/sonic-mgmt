@@ -102,6 +102,21 @@ SRV6_PACKETS = [
         'inner_pkt_ver': '4',
         'exp_process_result': 'forward',
     },
+    {
+        'action': SRV6_UN,
+        'packet_type': 'three_u_sid',
+        'srh_seg_left': None,
+        'srh_seg_list': None,
+        'inner_dscp': None,
+        'outer_dscp': None,
+        'dst_ipv6': '2001:1000:0100:0200:0300::',
+        'exp_dst_ipv6': '2001:1000:0200:0300::',
+        'exp_inner_dscp_pipe': None,
+        'exp_outer_dscp_uniform': PacketTrimmingConfig.DSCP << 2,
+        'exp_srh_seg_left': None,
+        'inner_pkt_ver': '4',
+        'exp_process_result': 'forward',
+    },
     {   # SRv6 packet with srh header
         'action': SRV6_UN,
         'packet_type': 'two_u_sid',
@@ -174,6 +189,61 @@ QUEUE_LEVEL_TRIM_SENT_DROP_SUPPORTED_PLATFORMS = [
     "nvidia_sn6",
 ]
 
+<<<<<<< HEAD
+=======
+QUEUE_LEVEL_TRIM_SENT_SUPPORTED_ASICS = [
+    "th6",
+]
+
+BLOCK_QUEUE_DROP_EQUALS_TRIM_ASICS = [
+    "th5",
+    "th6",
+]
+
+TX_DRP_EQUALS_TRIM_ASICS = [
+    "th6",
+]
+
+# ASICs that rewrite the trimmed packet's IP length (and, as a consequence of
+# the normal egress rewrite, its IP header checksum) so both are correct for
+# the truncated frame. The upstream test plan and the mask below assumed no
+# platform does this, so these fields were excluded from every comparison -
+# which left stub header correctness with no coverage at all on any platform.
+#
+# Verified on th6 (NH-4220, SAI 15.2.0) over 7,981 captured stubs: IP
+# total_len 4986 -> 374 for a 392 B trim size, and the header checksum
+# validates for the truncated header on every one of them. The L4 checksum is
+# carried over from the original and stays stale, which is spec-compliant -
+# the SAI proposal's guarantee covers the IP header only.
+#
+# Leave an ASIC out of this list to keep the old permissive behaviour.
+TRIM_HEADER_REWRITE_ASICS = [
+    "th6",
+]
+
+# Subset of TRIM_HEADER_REWRITE_ASICS that leave the L4 length alone when they
+# rewrite the IP length: the stub keeps the original UDP header, so its length
+# field still describes the untruncated payload. Captured on th6 (NH-4220,
+# main.202418) for a 400 B ipv4_udp probe trimmed to 392 B: ingress ip.len=386
+# udp.len=366, stub ip.len=374 udp.len=366, where an expected packet built at
+# the trim size carries udp.len=354. The UDP length is masked for these ASICs;
+# an ASIC in TRIM_HEADER_REWRITE_ASICS but not here has its UDP length compared
+# on trimmed packets. This is the observed behaviour, not a spec guarantee -
+# the SAI proposal only covers the IP header.
+TRIM_L4_LENGTH_STALE_ASICS = [
+    "th6",
+]
+
+# Blocking-scheduler pir/cir for th6, in bytes/sec. The th6 shaper quantises:
+# the default pir=1 byte/s programs a 0 kbps shaper (queue passes traffic
+# completely unshaped - NOS-14461 blocker 2), while 125000 bytes/s programs
+# the 1024 kbps hardware floor (verified on NH-4220 via
+# bcm_cosq_gport_bandwidth_get readback and traffic: 5000 offered -> ~3400
+# through, remainder queued). The blocked queue therefore leaks ~1 Mbps
+# rather than fully stopping, like th5.
+TH6_BLOCK_SCHEDULER_PIR = 125000
+
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 # Constants for the trimming during warm reboot test
 WARM_REBOOT_SCRIPT_NAME = "trim_warm_reboot_traffic.py"
 WARM_REBOOT_SCRIPT_PATH = f"/tmp/{WARM_REBOOT_SCRIPT_NAME}"

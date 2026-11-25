@@ -38,10 +38,25 @@ from tests.packet_trimming.constants import (DEFAULT_SRC_PORT, DEFAULT_DST_PORT,
                                              WARM_REBOOT_CAPTURE_LOG, WARM_REBOOT_REPORT_FILE,
                                              WARM_REBOOT_PACKET_RATE, WARM_REBOOT_PACKET_SIZE,
                                              WARM_REBOOT_CAPTURE_SNAP_LEN, WARM_REBOOT_CAPTURE_BUFFER_SIZE,
+<<<<<<< HEAD
                                              WARM_REBOOT_CAPTURE_START_WAIT, WARM_REBOOT_ANALYZER_WAIT,
                                              DYNAMIC_TH, FALLBACK_BLOCK_QUEUE_RESERVED_BYTES,
                                              QUEUE_LEVEL_TRIM_SENT_DROP_SUPPORTED_PLATFORMS)
 from tests.packet_trimming.packet_trimming_config import PacketTrimmingConfig
+=======
+                                             WARM_REBOOT_CAPTURE_START_WAIT, WARM_REBOOT_ANALYZER_TIMEOUT,
+                                             WARM_REBOOT_DRAIN_SCHEDULER_NAME,
+                                             WARM_REBOOT_DRAIN_TIMEOUT, WARM_REBOOT_DRAIN_POLL_INTERVAL,
+                                             WARM_REBOOT_DRAIN_QUIET_PACKETS, WARM_REBOOT_DRAIN_QUIET_POLLS,
+                                             WARM_REBOOT_DRAIN_START_GRACE, WARM_REBOOT_FRAME_OVERHEAD,
+                                             QUEUE_LEVEL_TRIM_SENT_DROP_SUPPORTED_PLATFORMS,
+                                             QUEUE_LEVEL_TRIM_SENT_SUPPORTED_ASICS,
+                                             TX_DRP_EQUALS_TRIM_ASICS,
+                                             BLOCK_QUEUE_DROP_EQUALS_TRIM_ASICS,
+                                             TRIM_HEADER_REWRITE_ASICS,
+                                             TH6_BLOCK_SCHEDULER_PIR)
+from tests.packet_trimming.packet_trimming_config import PacketTrimmingConfig, build_complete_tc_to_dscp_map
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 
 logger = logging.getLogger(__name__)
 
@@ -792,6 +807,158 @@ def fill_egress_buffer(duthost, ptfadapter, port_id, buffer_size, target_queue, 
         interface_packets[interface] = fill_packet
         logger.info(f"Created packet for interface {interface} with src_port={src_port}")
 
+<<<<<<< HEAD
+=======
+    return interface_packets
+
+
+def top_up_egress_buffer(duthost, ptfadapter, port_id, fill_packets, count=FILL_TOPUP_PACKET_COUNT):
+    """
+    Refill the blocked egress queue right before a verification burst, on ASICs whose blocking
+    scheduler leaks (LEAKY_BLOCK_SCHEDULER_ASICS); a no-op elsewhere.
+
+    The scheduler used to block the queue is a shaper, and on Broadcom it leaks: th5 by design, th6 at
+    a hardware floor that also moves between SAI releases (~84 pps on NH-4220 main.198001, ~280 pps on
+    main.202418, same box and config). Every leaked packet frees buffer space, so any pause between
+    filling the queue and sending the verification packets lets some of them be admitted and forwarded
+    whole instead of trimmed - and a pause of a second or two is enough to swallow a whole burst.
+    Sending a short fill burst immediately before the verification packets, from the same PTF port
+    with nothing in between, puts the queue back at its threshold whatever the leak rate is. The PTF
+    sends far faster than the shaper leaks (tens of MB/s against hundreds of kB/s), so `count` only
+    needs to cover the space a pause could have freed with margin, not the whole buffer.
+
+    Args:
+        duthost: DUT host object, for the ASIC name
+        ptfadapter: PTF adapter
+        port_id (int): PTF port the fill traffic is sent from
+        fill_packets (dict): {interface: packet} from build_fill_packets
+        count (int): fill packets to send per interface
+    """
+    if not topup_packet_count(duthost, fill_packets, count):
+        logger.info(f"{duthost.get_asic_name()} blocks the egress queue without leaking, no top-up needed")
+        return
+
+    for interface, fill_packet in fill_packets.items():
+        testutils.send(ptfadapter, port_id=port_id, pkt=fill_packet, count=count)
+    logger.info(f"Topped up the egress buffer with {count} fill packets per interface: {list(fill_packets)}")
+
+
+def topup_packet_count(duthost, fill_packets, count=FILL_TOPUP_PACKET_COUNT):
+    if not fill_packets or duthost.get_asic_name() not in LEAKY_BLOCK_SCHEDULER_ASICS:
+        return 0
+    return count * len(fill_packets)
+
+
+def send_with_retry(ptfadapter, send, description, max_retries=SEND_MAX_RETRIES):
+    """
+    Run `send`, a callable doing one or more PTF sends, and rerun it from the start if a send times out.
+
+    Sends on the PTF nanomsg channel can time out transiently while the PTF agent is busy. Only that
+    error is retried; anything else propagates at once.
+
+    Args:
+        ptfadapter: PTF adapter
+        send (callable): performs the sends; called again from the start on every retry
+        description (str): what is being sent, for the log and the error
+        max_retries (int): attempts before giving up
+
+    Returns:
+        int: attempts made, the successful one included
+
+    Raises:
+        RuntimeError: if every attempt times out; chained to the last NNError
+    """
+    last_exception = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            send()
+            return attempt
+        except NNError as e:
+            last_exception = e
+            logger.warning(f"Send of {description} failed (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(2)
+                # Drop whatever the interrupted attempt already put on the wire
+                ptfadapter.dataplane.flush()
+    raise RuntimeError(f"Failed to send {description} after {max_retries} attempts: {last_exception}") \
+        from last_exception
+
+
+def send_probe_burst(duthost, ptfadapter, port_id, pkt, count, fill_packets=None):
+    """
+    Send the verification burst, preceded by the egress-buffer top-up when `fill_packets` is given.
+
+    The top-up of every interface and the probe burst are one retried unit: a timeout anywhere restarts
+    the whole sequence, so the last traffic before the probe is always a complete, back-to-back fill of
+    every blocked queue (see top_up_egress_buffer for why any pause before the probe matters).
+
+    Args:
+        duthost: DUT host object
+        ptfadapter: PTF adapter
+        port_id (int): PTF port to send from
+        pkt: verification packet
+        count (int): verification packets to send
+        fill_packets (dict): {interface: packet} from build_fill_packets, or None for no top-up
+
+    Returns:
+        int: upper bound of the packets sent, counting every attempt as complete
+    """
+    def burst():
+        if fill_packets:
+            top_up_egress_buffer(duthost, ptfadapter, port_id, fill_packets)
+        testutils.send(ptfadapter, port_id=port_id, pkt=pkt, count=count)
+
+    attempts = send_with_retry(ptfadapter, burst, f"probe burst from PTF port {port_id}")
+    return attempts * (topup_packet_count(duthost, fill_packets) + count)
+
+
+def fill_egress_buffer(duthost, ptfadapter, port_id, buffer_size, target_queue, dst_addr, dscp_value, interfaces,
+                       packet_size_in_queue=None):
+    """
+    Fill the specified port queue's buffer to trigger packet trimming.
+    If multiple interfaces are provided, fill with the buffers of all interfaces.
+
+    Args:
+        duthost: DUT host object
+        ptfadapter: PTF adapter object
+        port_id: Source port ID for sending packets
+        buffer_size: Buffer size to fill (in bytes)
+        target_queue: Target queue number
+        dst_addr: Destination address (IPv4 or IPv6)
+        dscp_value: DSCP value used for classification to target queue
+        interfaces: Single interface or list of interfaces to fill
+        packet_size_in_queue: Packet size (bytes) as it lands on target_queue. Defaults to wire size
+            (1500). When filling the trim queue, pass the trim size (e.g. 256) so the packet count is
+            calculated correctly since trimmed packets are smaller than the original packets.
+
+    Returns:
+        int: Actual number of packets sent
+    """
+    # Convert single interface to list if necessary
+    if isinstance(interfaces, str):
+        interfaces = [interfaces]
+
+    logger.info(f"Filling buffer to trigger packet trimming for interfaces: {interfaces}")
+
+    # Check queue counters before filling
+    for interface in interfaces:
+        logger.info(f"Queue counters before filling for {interface}:")  # noqa: E231
+        duthost.shell(f"show queue counters {interface}")
+        duthost.shell(f"show queue counters {interface} --json")
+
+    # Create a large packet to efficiently fill the buffer
+    fill_packet_size = 1500  # Standard Ethernet MTU
+    # Size as the packet lands on target_queue (e.g. trim_size when filling trim queue)
+    effective_size = packet_size_in_queue or fill_packet_size
+    fill_packet_count = buffer_size // effective_size * 3
+
+    logger.info(f"Buffer size for queue {target_queue} is approximately {buffer_size} bytes")
+    logger.info(f"Sending {fill_packet_count} packets of wire size {fill_packet_size} bytes "
+                f"(effective in-queue size {effective_size} bytes) to fill the buffer")
+
+    interface_packets = build_fill_packets(duthost, dst_addr, dscp_value, interfaces, fill_packet_size)
+
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
     # Send packets to fill the buffer in batches to avoid connection timeout
     ptfadapter.dataplane.flush()
 
@@ -820,9 +987,9 @@ def fill_egress_buffer(duthost, ptfadapter, port_id, buffer_size, target_queue, 
                         pkt=fill_packet,
                         count=BATCH_PACKET_COUNT
                     )
+                    total_sent_packets += BATCH_PACKET_COUNT
                     logger.info(f"Sent {BATCH_PACKET_COUNT} packets for {interface}")
 
-                total_sent_packets += BATCH_PACKET_COUNT * len(interfaces)
                 batch_success = True
 
             except Exception as e:
@@ -852,8 +1019,8 @@ def fill_egress_buffer(duthost, ptfadapter, port_id, buffer_size, target_queue, 
                         pkt=fill_packet,
                         count=remaining_packets
                     )
+                    total_sent_packets += remaining_packets
                     logger.info(f"Sent {remaining_packets} remaining packets for {interface}")
-                total_sent_packets += remaining_packets * len(interfaces)
                 remaining_success = True
             except Exception as e:
                 retries += 1
@@ -1046,7 +1213,18 @@ def verify_srv6_packet_with_trimming(duthost, ptfadapter, config_setup, ingress_
     """
     try:
         trimmed_ports = egress_port['dut_members']
+        ingress_ports = ingress_port['dut_members']
         port_compute_buffer = egress_port['dut_members'][0]
+
+        logger.info('Validate SRv6 table in APPL DB')
+        # uN SIDs reach APPL_DB with func_len 0, so pin the key fields instead of inheriting
+        # the helper defaults, which carry the locator's func_len.
+        pytest_assert(wait_until(60, 5, 0, validate_srv6_in_appl_db, duthost, SRV6_MY_SID_LIST, 32, 16, 0, 0),
+                      "SRv6 table in APPL DB is not as expected")
+
+        logger.info('Validate SRv6 table in ASIC DB')
+        pytest_assert(wait_until(60, 5, 0, validate_srv6_in_asic_db, duthost, SRV6_MY_SID_LIST),
+                      "SRv6 table in ASIC DB is not as expected")
 
         trimming_context = ConfigTrimming(
             duthost,
@@ -1055,7 +1233,10 @@ def verify_srv6_packet_with_trimming(duthost, ptfadapter, config_setup, ingress_
         )
 
         with trimming_context:
+            counters_before = snapshot_trim_counters(duthost, trimmed_ports, ingress_ports)
+
             # Fill the buffer first if requested
+            fill_sent = 0
             if fill_buffer:
                 # Get buffer configuration and size to calculate how many packets to send
                 buffer_size = compute_buffer_threshold(
@@ -1068,7 +1249,7 @@ def verify_srv6_packet_with_trimming(duthost, ptfadapter, config_setup, ingress_
                 dst_addr = egress_port['ipv4'] or egress_port['ipv6']
                 if not dst_addr:
                     raise ValueError(f"Both IPv4 and IPv6 addresses are None for egress port {egress_port['name']}")
-                fill_egress_buffer(
+                fill_sent = fill_egress_buffer(
                     duthost,
                     ptfadapter,
                     ingress_port['ptf_id'],
@@ -1079,8 +1260,21 @@ def verify_srv6_packet_with_trimming(duthost, ptfadapter, config_setup, ingress_
                     trimmed_ports
                 )
 
+<<<<<<< HEAD
             validate_srv6_function(duthost, ptfadapter, config_setup, ingress_port, egress_port, send_pkt_size,
                                    send_pkt_dscp, recv_pkt_size, recv_pkt_dscp)
+=======
+            try:
+                burst_sent = validate_srv6_function(duthost, ptfadapter, config_setup, ingress_port, egress_port,
+                                                    send_pkt_size, send_pkt_dscp, recv_pkt_size, recv_pkt_dscp,
+                                                    fill_packets=fill_packets)
+            except Exception:
+                log_queue_trim_counters(duthost, trimmed_ports)
+                raise
+
+            verify_srv6_trim_counter_deltas(duthost, counters_before, trimmed_ports, ingress_ports,
+                                            packets_sent=fill_sent + burst_sent, block_queue=block_queue)
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 
     except Exception as e:
         logger.error(f"Packet trimming verification failed: {str(e)}")
@@ -2365,6 +2559,7 @@ def validate_srv6_function(duthost, ptfadapter, dscp_mode, ingress_port, egress_
         send_pkt_dscp (int): DSCP value of the packet to send
         recv_pkt_size (int): Expected size of the received packet after trimming
         recv_pkt_dscp (int): Expected DSCP value in the received packet
+<<<<<<< HEAD
     """
     logger.info('Validate SRv6 table in APPL DB')
     pytest_assert(wait_until(60, 5, 0, validate_srv6_in_appl_db, duthost, SRV6_MY_SID_LIST),
@@ -2374,9 +2569,19 @@ def validate_srv6_function(duthost, ptfadapter, dscp_mode, ingress_port, egress_
     pytest_assert(wait_until(60, 5, 0, validate_srv6_in_asic_db, duthost, SRV6_MY_SID_LIST),
                   "SRv6 table in ASIC DB is not as expected")
 
+=======
+        fill_packets (dict): {interface: packet} from build_fill_packets when the egress queue was
+            filled, so it can be topped up right before the burst (see top_up_egress_buffer); None
+            when trimming is not expected and nothing was filled
+
+    Returns:
+        int: upper bound of the packets sent into the egress queue, top-ups included
+    """
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
     router_mac = duthost.facts["router_mac"]
 
     packet_count = PacketTrimmingConfig.get_verify_packet_count(duthost)
+    packets_sent = 0
 
     for srv6_packet in SRV6_PACKETS:
         logger.info('-------------------------------------------------------------------------')
@@ -2448,10 +2653,19 @@ def validate_srv6_function(duthost, ptfadapter, dscp_mode, ingress_port, egress_
         else:
             verify_ports = [egress_port['ptf_id']]
 
+        check_burst_trims = fill_packets and srv6_packet['exp_process_result'] == 'forward'
+        if check_burst_trims:
+            trims_before = sum_port_trims(duthost, egress_port['dut_members'])
+
         ptfadapter.dataplane.flush()
 
         logger.info(f"Send SRv6 packet(s) from PTF port {ingress_port['ptf_id']} to upstream")
+<<<<<<< HEAD
         testutils.send(ptfadapter, ingress_port['ptf_id'], srv6_pkt, count=packet_count)
+=======
+        packets_sent += send_probe_burst(duthost, ptfadapter, ingress_port['ptf_id'], srv6_pkt, packet_count,
+                                         fill_packets)
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 
         logger.info('SRv6 packet format:\n ---------------------------')
         logger.info(f'{dump_packet_detail(srv6_pkt)}\n---------------------------')
@@ -2467,6 +2681,16 @@ def validate_srv6_function(duthost, ptfadapter, dscp_mode, ingress_port, egress_
             logger.info(f'No packet received on {verify_ports}')
         else:
             logger.error(f"Wrong expected process result: {srv6_packet['exp_process_result']}")
+
+        if check_burst_trims:
+            burst_trims = sum_port_trims(duthost, egress_port['dut_members']) - trims_before
+            logger.info(f"{srv6_packet['packet_type']}: {burst_trims} packets trimmed by the {packet_count} "
+                        f"packet burst")
+            pytest_assert(burst_trims >= packet_count,
+                          f"{srv6_packet['packet_type']}: only {burst_trims} packets trimmed by the "
+                          f"{packet_count} packet SRv6 burst into the full egress queue")
+
+    return packets_sent
 
 
 def create_srv6_packet_for_trimming(
@@ -3191,6 +3415,16 @@ def get_port_trim_counters_json(duthost, port):
     Return:
         {'TRIM_DRP_PKTS': '0', 'TRIM_PKTS': '100', 'TRIM_TX_PKTS': '100'}
     """
+    port_data = get_raw_port_trim_counters(duthost, port)
+
+    # Convert all counter values, handle 'N/A' and comma-separated numbers
+    convert_all_counter_values(port_data)
+
+    logger.info(f"Trim counters for port {port}: {port_data}")
+    return port_data
+
+
+def get_raw_port_trim_counters(duthost, port):
     result = duthost.shell(f"show interfaces counters trim {port} --json")
 
     # Extract JSON part from output (skip timestamp line if present)
@@ -3211,12 +3445,11 @@ def get_port_trim_counters_json(duthost, port):
     # Remove the STATE field from the returned data
     if "STATE" in port_data:
         del port_data["STATE"]
-
-    # Convert all counter values, handle 'N/A' and comma-separated numbers
-    convert_all_counter_values(port_data)
-
-    logger.info(f"Trim counters for port {port}: {port_data}")
     return port_data
+
+
+def is_port_trim_tx_reported(duthost, port):
+    return get_raw_port_trim_counters(duthost, port).get('TRIM_TX_PKTS', 'N/A') != 'N/A'
 
 
 def get_queue_trim_counters_json(duthost, port):
@@ -3388,6 +3621,348 @@ def is_queue_level_trim_sent_drop_supported(duthost):
     return False
 
 
+<<<<<<< HEAD
+=======
+def is_queue_level_trim_sent_supported(duthost):
+    """
+    Check whether the queue-vs-port TrimSent consistency equation holds on this device.
+    """
+    if is_queue_level_trim_sent_drop_supported(duthost):
+        return True
+    return duthost.get_asic_name() in QUEUE_LEVEL_TRIM_SENT_SUPPORTED_ASICS
+
+
+def read_settled(read, description, key=None, is_complete=None, max_reads=5):
+    key = key or (lambda counters: counters)
+    previous = read()
+    for _ in range(max_reads - 1):
+        time.sleep(TRIMMING_COUNTER_INTERVAL / 1000 + 1)
+        latest = read()
+        if key(latest) == key(previous) and (is_complete is None or is_complete(latest)):
+            return latest
+        previous = latest
+    logger.warning(f"{description} still changing after {max_reads} reads; using the latest")
+    return previous
+
+
+def read_settled_port_trim_counters(duthost, port):
+    return read_settled(lambda: get_port_trim_counters_json(duthost, port), f"Trim counters on {port}")
+
+
+def sum_port_trims(duthost, ports):
+    return sum(read_settled_port_trim_counters(duthost, port)['TRIM_PKTS'] for port in ports)
+
+
+def get_port_tx_drp(duthost, port):
+    stdout = duthost.shell(f"portstat -j -i {port}")['stdout']
+    counters = json.loads(stdout[stdout.find('{'):]).get(port, {})
+    pytest_assert('TX_DRP' in counters, f"No TX_DRP counter for {port} in portstat output: {stdout}")
+    return int(counters['TX_DRP'].replace(',', ''))
+
+
+def log_queue_trim_counters(duthost, ports):
+    for port in ports:
+        try:
+            get_queue_trim_counters_json(duthost, port)
+        except Exception as e:
+            logger.warning(f"Could not read the queue counters of {port}: {e}")
+
+
+def recalculates_trim_headers(duthost):
+    """
+    Whether this ASIC rewrites a trimmed packet's IP length so it is correct
+    for the truncated frame (see TRIM_HEADER_REWRITE_ASICS).
+    """
+    return duthost.get_asic_name() in TRIM_HEADER_REWRITE_ASICS
+
+
+def recalculates_trim_l4_length(duthost):
+    """
+    Whether this ASIC also rewrites a trimmed packet's UDP length, so the field
+    can be compared on trimmed packets. False for an ASIC that does not rewrite
+    headers at all, and for one in TRIM_L4_LENGTH_STALE_ASICS that rewrites the
+    IP length but carries the original UDP header over.
+    """
+    return recalculates_trim_headers(duthost) and duthost.get_asic_name() not in TRIM_L4_LENGTH_STALE_ASICS
+
+
+def verify_ipv4_header_checksum(packet_bytes):
+    """
+    Validate an IPv4 header checksum straight from the wire bytes.
+
+    A correct IPv4 header sums to zero under the ones-complement sum when the
+    stored checksum is included, so this needs no expected value and no
+    platform-specific constant. Use it on a captured stub rather than
+    comparing the checksum field against a locally built packet - the IP "id"
+    is chosen by the ASIC and feeds the checksum, so a field comparison would
+    be unsound.
+
+    Args:
+        packet_bytes: the received frame, starting at the Ethernet header
+
+    Returns:
+        bool: True if the IPv4 header checksum validates
+    """
+    if len(packet_bytes) < 34 or packet_bytes[12:14] != b"\x08\x00":
+        return False
+    ihl = (packet_bytes[14] & 0x0F) * 4
+    header = packet_bytes[14:14 + ihl]
+    if len(header) < ihl:
+        return False
+    if len(header) % 2:
+        header += b"\x00"
+    total = 0
+    for i in range(0, len(header), 2):
+        total += (header[i] << 8) | header[i + 1]
+    while total >> 16:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF == 0
+
+
+def get_trimming_global_from_asic(duthost):
+    """
+    Read the switch-level packet-trim attributes as they were actually
+    programmed, from ASIC_DB rather than CONFIG_DB.
+
+    Returns:
+        dict: SAI_SWITCH_ATTR_PACKET_TRIM_* attribute name -> value, empty if
+              the switch entry or the attributes are absent
+    """
+    cmd_keys = 'redis-cli -n 1 keys "ASIC_STATE:SAI_OBJECT_TYPE_SWITCH:oid*"'
+    result = duthost.shell(cmd_keys, module_ignore_errors=True)
+    keys = [k for k in result["stdout"].strip().split("\n") if k]
+    if not keys:
+        logger.warning("No switch object found in ASIC_DB")
+        return {}
+
+    attrs = {}
+    for key in keys:
+        result = duthost.shell(f'redis-cli -n 1 hgetall "{key}"', module_ignore_errors=True)
+        lines = [ln for ln in result["stdout"].strip().split("\n") if ln]
+        for field, value in zip(lines[0::2], lines[1::2]):
+            if "PACKET_TRIM" in field:
+                attrs[field] = value
+    return attrs
+
+
+def verify_trimming_global_in_asic(duthost, size, queue, dscp=None, tc=None, timeout=30):
+    """
+    Verify the global trimming configuration reached the ASIC.
+
+    The CLI writing CONFIG_DB is not evidence that anything was programmed:
+    where SAI rejects an attribute, swss logs an error and leaves CONFIG_DB
+    and the ASIC diverged, while the CLI still reports success (NOS-14458).
+    Without this check the suite configures trimming, gets a non-functional
+    box, and passes anyway (NOS-15149).
+
+    Args:
+        duthost: DUT host object
+        size (int): expected trim size, or None where the platform fixes it and it is never programmed
+        queue (int): expected trim queue index
+        dscp (int or str): expected DSCP value, or 'from-tc'
+        tc (int): expected TC value, required when dscp is 'from-tc'
+        timeout (int): seconds to allow for orchagent/syncd to program
+
+    Returns:
+        bool: True if every configured attribute matches in ASIC_DB
+    """
+    expected = {
+        "SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_INDEX": str(queue),
+    }
+    if size is not None:
+        expected["SAI_SWITCH_ATTR_PACKET_TRIM_SIZE"] = str(size)
+    if dscp == "from-tc":
+        expected["SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE"] = \
+            "SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC"
+        if tc is not None:
+            expected["SAI_SWITCH_ATTR_PACKET_TRIM_TC_VALUE"] = str(tc)
+    elif dscp is not None:
+        expected["SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE"] = \
+            "SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE"
+        expected["SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE"] = str(dscp)
+
+    def _programmed():
+        actual = get_trimming_global_from_asic(duthost)
+        mismatches = {
+            field: (want, actual.get(field, "<absent>"))
+            for field, want in expected.items()
+            if actual.get(field) != want
+        }
+        if mismatches:
+            logger.info(f"Trimming not yet programmed in ASIC_DB: {mismatches}")
+            return False
+        return True
+
+    if wait_until(timeout, 2, 0, _programmed):
+        logger.info("Global trimming configuration confirmed in ASIC_DB")
+        return True
+
+    actual = get_trimming_global_from_asic(duthost)
+    logger.error(
+        "Global trimming configuration did not reach the ASIC. "
+        f"expected={expected} actual={actual}. "
+        "CONFIG_DB and the ASIC are diverged - check syslog for a SAI "
+        "rejection (NOS-14456/NOS-14458)."
+    )
+    return False
+
+
+def read_egress_trim_counters(duthost, port, is_complete=None, max_reads=5):
+    counted_as_drop = duthost.get_asic_name() in TX_DRP_EQUALS_TRIM_ASICS
+
+    def read():
+        return {
+            'port': get_port_trim_counters_json(duthost, port),
+            'queues': get_queue_trim_counters_json(duthost, port),
+            'tx_drp': get_port_tx_drp(duthost, port) if counted_as_drop else None,
+        }
+
+    def key(counters):
+        queues = {queue: [queue_counters[field] for field in
+                          ('trimpacket', 'trimsentpacket', 'trimdroppacket', 'droppacket')]
+                  for queue, queue_counters in counters['queues'].items()}
+        return counters['port'], queues, counters['tx_drp']
+
+    return read_settled(read, f"Trim counters on {port}", key=key, is_complete=is_complete, max_reads=max_reads)
+
+
+def snapshot_trim_counters(duthost, egress_ports, ingress_ports):
+    """
+    Snapshot settled trim counters as {'egress': {port: read_egress_trim_counters}, 'ingress': {port: counters}}.
+    """
+    return {
+        'egress': {port: read_egress_trim_counters(duthost, port) for port in egress_ports},
+        'ingress': {port: read_settled_port_trim_counters(duthost, port) for port in ingress_ports},
+    }
+
+
+def verify_srv6_queue_trim_counter_cross_check(duthost, queues_before, queues_after, port, port_trim_sent,
+                                               trim_queue, block_queue):
+    """
+    Cross-check a port's queue-scope trim counters against its port-scope TRIM_TX_PKTS delta:
+      block queue trimpacket == sum(queue trimpacket)   (the congested queue is the one that trimmed)
+    Where queue-level TrimSent is supported (is_queue_level_trim_sent_supported) and port_trim_sent is not None:
+      sum(queue trimsentpacket) == port TRIM_TX_PKTS   (the port's trims are the queues' trims)
+      trim queue totalpacket >= sum(queue trimsentpacket)   (the trims left on the trim queue)
+    Where queue-level TrimDrop is also supported (is_queue_level_trim_sent_drop_supported):
+      sum(queue trimpacket) == trimsentpacket + trimdroppacket   (every trim is sent or dropped)
+    On every platform:
+      block queue droppacket >= block queue trimpacket   (SAI: each trimmed original counts as a queue drop)
+    On BLOCK_QUEUE_DROP_EQUALS_TRIM_ASICS:
+      block queue droppacket == block queue trimpacket   (and every drop on the congested queue is a trim)
+
+    Args:
+        duthost: DUT host object
+        queues_before (dict): the port's {queue: counters} before the traffic
+        queues_after (dict): the port's {queue: counters} after the traffic
+        port (str): port name, e.g. "Ethernet96"
+        port_trim_sent (int): the port's TRIM_TX_PKTS delta over the same window
+        trim_queue (int): the configured trimming queue index
+        block_queue (int): the queue held by the blocking scheduler
+    """
+    trim_queue_key = f"UC{trim_queue}"
+    block_queue_key = f"UC{block_queue}"
+
+    def total(key):
+        return sum(counters[key] - queues_before[queue][key] for queue, counters in queues_after.items())
+
+    def queue_delta(queue, key):
+        return queues_after[queue][key] - queues_before[queue][key]
+
+    queue_trim = total('trimpacket')
+    queue_trim_sent = total('trimsentpacket')
+    queue_trim_drop = total('trimdroppacket')
+    trim_queue_tx = queue_delta(trim_queue_key, 'totalpacket')
+    logger.info(f"{port} queue scope: trim={queue_trim} trim_sent={queue_trim_sent} trim_drop={queue_trim_drop}, "
+                f"{trim_queue_key} tx={trim_queue_tx}, port trim_sent={port_trim_sent}")
+    block_queue_trim = queue_delta(block_queue_key, 'trimpacket')
+    block_queue_drop = queue_delta(block_queue_key, 'droppacket')
+    logger.info(f"{port} {block_queue_key}: drop={block_queue_drop} trim={block_queue_trim}")
+
+    pytest_assert(block_queue_trim == queue_trim,
+                  f"{port}: {block_queue_key} trimmed {block_queue_trim} packets but the port's queues "
+                  f"trimmed {queue_trim}; the congested queue must account for every trim")
+
+    if port_trim_sent is not None and is_queue_level_trim_sent_supported(duthost):
+        pytest_assert(queue_trim_sent == port_trim_sent,
+                      f"{port}: queue trim sent {queue_trim_sent} != port trim sent {port_trim_sent}")
+        pytest_assert(trim_queue_tx >= queue_trim_sent,
+                      f"{port}: {trim_queue_key} transmitted {trim_queue_tx} packets, fewer than the "
+                      f"{queue_trim_sent} trimmed packets sent")
+    else:
+        logger.info(f"{port}: queue-level or port-level TrimSent not reported, skipping its cross-check")
+
+    if is_queue_level_trim_sent_drop_supported(duthost):
+        pytest_assert(queue_trim == queue_trim_sent + queue_trim_drop,
+                      f"{port}: queue trimmed {queue_trim} != trim sent {queue_trim_sent} plus "
+                      f"trim dropped {queue_trim_drop}")
+
+    pytest_assert(block_queue_drop >= block_queue_trim,
+                  f"{port}: {block_queue_key} dropped {block_queue_drop} packets but trimmed "
+                  f"{block_queue_trim}; every trimmed original must count as a queue drop")
+    if duthost.get_asic_name() in BLOCK_QUEUE_DROP_EQUALS_TRIM_ASICS:
+        pytest_assert(block_queue_drop == block_queue_trim,
+                      f"{port}: {block_queue_key} dropped {block_queue_drop} packets but trimmed "
+                      f"{block_queue_trim}; on a trim-enabled queue every drop must be a trim")
+
+
+def verify_srv6_trim_counter_deltas(duthost, before, egress_ports, ingress_ports, packets_sent, block_queue):
+    """
+    Assert the port trim counter identities over `packets_sent` packets sent into the blocked queue
+    (buffer fill + bursts) since the `before` snapshot:
+      0 < sum(TRIM_PKTS over egress ports) <= packets_sent  (trimmed, and nothing counted twice)
+      TRIM_PKTS == TRIM_TX_PKTS eventually, where TRIM_TX_PKTS is reported (every trimmed packet leaves)
+      portstat TX_DRP == TRIM_PKTS on TX_DRP_EQUALS_TRIM_ASICS  (every packet the port dropped was trimmed)
+      ingress port TRIM_PKTS == 0                           (trimming is egress-only)
+
+    Each egress port is also cross-checked against its queue-scope counters
+    (verify_srv6_queue_trim_counter_cross_check).
+    """
+    trim_queue = PacketTrimmingConfig.get_trim_queue(duthost)
+    total_trimmed = 0
+    for port in egress_ports:
+        port_before = before['egress'][port]
+
+        def delta(counters, key):
+            return counters['port'][key] - port_before['port'][key]
+
+        trim_tx_reported = is_port_trim_tx_reported(duthost, port)
+        if trim_tx_reported:
+            after = read_egress_trim_counters(
+                duthost, port, max_reads=16,
+                is_complete=lambda counters: delta(counters, 'TRIM_TX_PKTS') == delta(counters, 'TRIM_PKTS'))
+        else:
+            after = read_egress_trim_counters(duthost, port)
+        trimmed = delta(after, 'TRIM_PKTS')
+        trim_sent = delta(after, 'TRIM_TX_PKTS') if trim_tx_reported else None
+        trim_drop = delta(after, 'TRIM_DRP_PKTS')
+        logger.info(f"{port}: trimmed={trimmed} trim_sent={trim_sent} trim_drop={trim_drop}; sent={packets_sent}")
+        total_trimmed += trimmed
+        if trim_tx_reported:
+            pytest_assert(trimmed == trim_sent,
+                          f"{port}: trimmed {trimmed} != trim sent {trim_sent} (trim dropped {trim_drop})")
+        else:
+            logger.info(f"{port}: TRIM_TX_PKTS not reported, skipping the trimmed == trim sent check")
+        if after['tx_drp'] is not None:
+            tx_drp = after['tx_drp'] - port_before['tx_drp']
+            logger.info(f"{port}: tx_drp={tx_drp}")
+            pytest_assert(tx_drp == trimmed, f"{port}: TX_DRP {tx_drp} != trimmed {trimmed}")
+        verify_srv6_queue_trim_counter_cross_check(duthost, port_before['queues'], after['queues'], port, trim_sent,
+                                                   trim_queue, block_queue)
+
+    logger.info(f"Trimmed {total_trimmed} of {packets_sent} packets sent on {egress_ports}")
+    pytest_assert(total_trimmed > 0, f"No packets trimmed on {egress_ports} during the burst")
+    pytest_assert(total_trimmed <= packets_sent,
+                  f"Trimmed {total_trimmed} packets on {egress_ports} but only {packets_sent} were sent")
+
+    for port in ingress_ports:
+        ingress_trimmed = (read_settled_port_trim_counters(duthost, port)['TRIM_PKTS'] -
+                           before['ingress'][port]['TRIM_PKTS'])
+        pytest_assert(ingress_trimmed == 0,
+                      f"Ingress port {port} trimmed {ingress_trimmed} packets; trimming is egress-only")
+
+
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 def verify_queue_and_port_trim_sent_counter_consistency(duthost, port, port_trim_sent_packets=None, supported=None):
     """
     Verify the consistency of the trim sent counter on the queue and the port level.

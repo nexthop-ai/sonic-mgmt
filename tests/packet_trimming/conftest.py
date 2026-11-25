@@ -131,7 +131,13 @@ def test_params(duthost, mg_facts, dut_qos_maps_module, downstream_links, upstre
         'trim_buffer_profiles': trim_buffer_profiles,
         'ingress_port': {
             'name': ingress_port_name,
+<<<<<<< HEAD
             'ptf_id': ingress_port[ingress_port_name]['ptf_port_id'],
+=======
+            'ptf_id': ingress_ptf_id,
+            'qos_port': ingress_qos_port,
+            'dut_members': ingress_port[ingress_port_name]['dut_members'],
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
         },
         'egress_ports': egress_ports
     }

@@ -19,8 +19,15 @@ from tests.packet_trimming.packet_trimming_helper import (
     verify_queue_and_port_trim_counter_consistency, get_queue_trim_counters_json, compare_counters,
     has_non_zero_trim_counters, configure_port_mirror_session, remove_port_mirror_session,
     verify_queue_and_port_trim_sent_counter_consistency, verify_queue_and_port_trim_drop_counter_consistency,
+<<<<<<< HEAD
     compute_buffer_threshold, fill_egress_buffer, ConfigTrimming, start_warm_reboot_traffic,
     start_warm_reboot_capture, collect_warm_reboot_loss_report)
+=======
+    compute_buffer_threshold, fill_egress_buffer,
+    ConfigTrimming, start_warm_reboot_traffic,
+    start_warm_reboot_capture, stop_warm_reboot_sender, collect_warm_reboot_loss_report,
+    drain_warm_reboot_queue, remove_warm_reboot_drain_scheduler)
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 
 logger = logging.getLogger(__name__)
 
@@ -184,20 +191,21 @@ class BasePacketTrimming:
             for buffer_profile in test_params['trim_buffer_profiles']:
                 configure_trimming_action(duthost, test_params['trim_buffer_profiles'][buffer_profile], "on")
 
-        with allure.step(f"Verify SRv6 packets after trimming in {self.trimming_mode} mode"):
-            recv_pkt_dscp = self.get_srv6_recv_pkt_dscp()
-            verify_srv6_packet_with_trimming(
-                duthost=duthost,
-                ptfadapter=ptfadapter,
-                config_setup=setup_srv6,
-                ingress_port=test_params['ingress_port'],
-                egress_port=test_params['egress_ports'][0],
-                block_queue=test_params['block_queue'],
-                send_pkt_size=DEFAULT_PACKET_SIZE,
-                send_pkt_dscp=DEFAULT_DSCP,
-                recv_pkt_size=PacketTrimmingConfig.get_trim_size(duthost),
-                recv_pkt_dscp=recv_pkt_dscp
-            )
+        recv_pkt_dscp = self.get_srv6_recv_pkt_dscp()
+        for send_pkt_size in [DEFAULT_PACKET_SIZE, JUMBO_PACKET_SIZE]:
+            with allure.step(f"Verify {send_pkt_size}B SRv6 packets after trimming in {self.trimming_mode} mode"):
+                verify_srv6_packet_with_trimming(
+                    duthost=duthost,
+                    ptfadapter=ptfadapter,
+                    config_setup=setup_srv6,
+                    ingress_port=test_params['ingress_port'],
+                    egress_port=test_params['egress_ports'][0],
+                    block_queue=test_params['block_queue'],
+                    send_pkt_size=send_pkt_size,
+                    send_pkt_dscp=DEFAULT_DSCP,
+                    recv_pkt_size=PacketTrimmingConfig.get_trim_size(duthost),
+                    recv_pkt_dscp=recv_pkt_dscp
+                )
 
     def test_stability_during_feature_toggles(self, duthost, ptfadapter, test_params):
         """
@@ -438,9 +446,13 @@ class BasePacketTrimming:
                 for port in egress_port['dut_members']:
                     port_trim_tx_value = get_port_trim_counters_json(duthost, port)['TRIM_TX_PKTS']
                     ports_trim_sent_counters.append(port_trim_tx_value)
+<<<<<<< HEAD
                     # Verify queue-level TrimSent matches port-level TrimSent
                     verify_queue_and_port_trim_sent_counter_consistency(duthost, port, port_trim_tx_value,
                                                                         supported=queue_level_trim_supported)
+=======
+                    verify_queue_and_port_trim_sent_counter_consistency(duthost, port, port_trim_tx_value)
+>>>>>>> 2129ef3e4 (NOS-16639: counter-tracking srv6 packet trim test (#3248))
 
             pytest_assert(sum(ports_trim_sent_counters) == switch_trim_sent_value and switch_trim_sent_value != 0,
                           "Trim sent counter on switch level is not equal to the sum of trim sent counter on port "
